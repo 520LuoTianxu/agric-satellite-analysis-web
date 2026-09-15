@@ -1,0 +1,19 @@
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Next.js and Node outputs
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Local tooling
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.idea/
+*.log

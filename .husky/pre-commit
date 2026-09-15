@@ -1,0 +1,8 @@
+#!/bin/sh
+
+echo "Running frontend checks..."
+npm run lint --silent || { echo "FAIL: frontend lint failed"; exit 1; }
+npm run type-check --silent || { echo "FAIL: frontend type-check failed"; exit 1; }
+python scripts/check-i18n-keys.py || { echo "FAIL: i18n key parity failed"; exit 1; }
+
+echo "OK: Frontend checks passed"
