@@ -27,7 +27,7 @@ python scripts/check-i18n-keys.py
 
 ```text
 agric-satellite-analysis-workspace/
-├── agric-satellite-analysis/
+├── agric-satellite-analysis-api/
 └── agric-satellite-analysis-web/
 ```
 

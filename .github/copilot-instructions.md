@@ -1,6 +1,6 @@
 # agric-satellite-analysis-web contribution notes
 
-This repository contains the standalone Next.js frontend for agric-satellite-analysis. The FastAPI backend is maintained in the sibling `agric-satellite-analysis` repository.
+This repository contains the standalone Next.js frontend for agric-satellite-analysis. The FastAPI backend is maintained in the sibling `agric-satellite-analysis-api` repository.
 
 ## Commands
 
