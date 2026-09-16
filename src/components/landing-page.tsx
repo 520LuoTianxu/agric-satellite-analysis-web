@@ -165,7 +165,9 @@ export function LandingPage({ isAuthenticated = true }: { isAuthenticated?: bool
     const t = useTranslations("landing");
     const tf = useTranslations("faq");
     const tc = useTranslations("common");
-    const openApp = () => { window.location.href = "/dashboard"; };
+    const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
+    // 进入应用时带上反向代理前缀，确保子路径部署不会跳回域名根路径。
+    const openApp = () => { window.location.href = `${basePath}/dashboard`; };
 
     const NAV = [
         { href: "#how-it-works", label: t("navHow") },

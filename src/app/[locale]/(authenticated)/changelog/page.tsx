@@ -77,7 +77,9 @@ export default function ChangelogPage() {
         let cancelled = false;
         (async () => {
             try {
-                const res = await fetch("/api/changelog");
+                const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
+                // 使用构建时配置的前缀访问 Next API 路由，避免子路径部署时请求落到站点根路径。
+                const res = await fetch(`${basePath}/api/changelog`);
                 if (!res.ok) throw new Error("Failed to load changelog");
                 const data = await res.json();
                 if (!cancelled) {

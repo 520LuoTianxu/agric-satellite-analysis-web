@@ -20,6 +20,13 @@ const PROTOMAPS = process.env.NEXT_PUBLIC_PROTOMAPS_URL || "";
 const API_RAW = process.env.NEXT_PUBLIC_API_URL || "";
 const OSS_RAW = process.env.NEXT_PUBLIC_OSS_URL || "";
 
+// 子路径必须在构建时确定，Next.js 会据此生成静态资源和页面路由地址。
+// 留空时保持根路径部署，兼容本地开发和现有根路径环境。
+const BASE_PATH_NAME = (process.env.NEXT_PUBLIC_BASE_PATH || "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+const BASE_PATH = BASE_PATH_NAME ? `/${BASE_PATH_NAME}` : "";
+
 // CSP needs origins only (no paths) - extract scheme+host+port
 function toOrigin(url) {
     try { return new URL(url).origin; } catch { return ""; }
@@ -44,6 +51,7 @@ const INTERNAL_API = process.env.INTERNAL_API_URL || "http://localhost:8000";
 
 const nextConfig = {
     output: "standalone",
+    basePath: BASE_PATH,
     async rewrites() {
         return [
             {
