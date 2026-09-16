@@ -14,6 +14,8 @@ import {
 } from "@/lib/api";
 import CropSelect from "@/components/field/crop-select";
 import LandScorecardRadar from "@/components/charts/land-scorecard-radar";
+import dynamic from "next/dynamic";
+import { Link } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -38,7 +40,11 @@ interface LandReportTabProps {
     landId: string;
     cropType?: string | null;
     onCropBound?: (cropKey: string) => void;
+    onReportReady?: () => void;
+    showSeasonGrowth?: boolean;
 }
+
+const AssessmentPdfPreview = dynamic(() => import("./assessment-pdf-preview"), { ssr: false });
 
 type ScorecardState = "loading" | "empty" | "legacy" | "ready";
 
@@ -106,7 +112,7 @@ function isCropRequiredError(err: any): boolean {
     return false;
 }
 
-export default function LandReportTab({ landId, cropType, onCropBound }: LandReportTabProps) {
+export default function LandReportTab({ landId, cropType, onCropBound, onReportReady, showSeasonGrowth = true }: LandReportTabProps) {
     const t = useTranslations("landReportTab");
     const [latest, setLatest] = useState<NdviJob | null>(null);
     const [loading, setLoading] = useState(true);
@@ -192,12 +198,12 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
     useEffect(() => {
         refreshMeta();
         refreshScorecard();
-        refreshSgMeta();
+        if (showSeasonGrowth) refreshSgMeta();
         return () => {
             if (pollRef.current) clearInterval(pollRef.current);
             if (sgPollRef.current) clearInterval(sgPollRef.current);
         };
-    }, [refreshMeta, refreshScorecard, refreshSgMeta]);
+    }, [refreshMeta, refreshScorecard, refreshSgMeta, showSeasonGrowth]);
 
     const stopSgPoll = () => {
         if (sgPollRef.current) {
@@ -304,26 +310,24 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
     const sgInFlight =
         sgGenerating || sgLatest?.status === "pending" || sgLatest?.status === "running";
 
-    const stopPoll = () => {
-        if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-        }
-    };
-
-    const startPoll = (jobId: string) => {
-        stopPoll();
+    const assessmentJobId = latest?.id;
+    const assessmentJobStatus = latest?.status;
+    useEffect(() => {
+        if (!assessmentJobId || !["pending", "running"].includes(assessmentJobStatus || "")) return;
+        let cancelled = false;
+        // 根据服务端任务状态恢复轮询，刷新或切换到首页后仍能自动展示完成的报告。
         pollRef.current = setInterval(async () => {
             try {
-                const job = await jobsApi.get(jobId);
+                const job = await jobsApi.get(assessmentJobId);
+                if (cancelled) return;
                 setLatest(job);
                 if (job.status === "succeeded") {
-                    stopPoll();
                     setGenerating(false);
                     toast.success(t("generateDone"));
                     void refreshScorecard();
-                } else if (job.status === "failed") {
-                    stopPoll();
+                    // 报告完成后由地块页面跳转首页，并保留当前地块作为报告选择。
+                    onReportReady?.();
+                } else if (job.status === "failed" || job.status === "cancelled") {
                     setGenerating(false);
                     toast.error(job.error || t("generateFailed"));
                 }
@@ -331,7 +335,12 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                 /* keep polling briefly */
             }
         }, 2000);
-    };
+        return () => {
+            cancelled = true;
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+        };
+    }, [assessmentJobId, assessmentJobStatus, onReportReady, refreshScorecard, t]);
 
     const runGenerate = async (cropKey?: string) => {
         setGenerating(true);
@@ -378,6 +387,7 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                 setGenerating(false);
                 toast.success(t("generateDone"));
                 void refreshScorecard();
+                onReportReady?.();
                 return;
             }
             if (job.status === "failed") {
@@ -386,7 +396,6 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                 return;
             }
             toast.message(t("pullAndGenerateStarted"));
-            startPoll(job.id);
         } catch (e: any) {
             setGenerating(false);
             if (isCropRequiredError(e)) {
@@ -470,6 +479,8 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                 </div>
             ) : (
                 <>
+                    <details open={!hasPdf} className="space-y-3">
+                        <summary className="cursor-pointer text-xs font-medium">{t("generationSettings")}</summary>
                     <div
                         className={`rounded-lg border p-3 space-y-3 ${
                             needsCrop
@@ -580,6 +591,7 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                         </label>
                     </div>
 
+                    </details>
                     <div className="flex flex-wrap gap-2">
                         <Button
                             size="sm"
@@ -610,7 +622,12 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                             )}
                             {t("download")}
                         </Button>
+                        {onReportReady && <Button size="sm" variant="outline" asChild>
+                            <Link href={`/?fieldId=${encodeURIComponent(landId)}`}>{t("viewOnHome")}</Link>
+                        </Button>}
                     </div>
+
+                    {hasPdf && latest && <AssessmentPdfPreview key={latest.id} landId={landId} jobId={latest.id} />}
 
                     {scorecardState === "loading" ? (
                         <Skeleton className="h-64 w-full rounded-lg" />
@@ -791,6 +808,7 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
             )}
 
             {/* ── 生育期长势报告 ─────────────────────────────────────── */}
+            {showSeasonGrowth && (
             <div className="border-t pt-4 space-y-3">
                 <div className="space-y-1">
                     <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -973,6 +991,7 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                     </>
                 )}
             </div>
+            )}
 
         </div>
     );

@@ -11,6 +11,7 @@ dist/
 build/
 *.tsbuildinfo
 public/CHANGELOG.md
+public/pdfjs/
 
 # Local tooling
 .DS_Store

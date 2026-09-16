@@ -24,7 +24,8 @@
     "settings": "Settings",
     "changelog": "Changelog",
     "overview": "Nationwide",
-    "projectRemoteSensing": "Remote sensing"
+    "projectRemoteSensing": "Remote sensing",
+    "landReports": "Land reports"
   },
   "sidebar": {
     "workspaces": "Workspaces",
@@ -1141,7 +1142,9 @@
     "cdfinanceHrBaseIdPlaceholder": "e.g. 10; leave blank for server CDFINANCE_HR_BASE_ID",
     "aiReferenceScore": "AI reference score",
     "aiReferenceDisclaimer": "AI reference only · not an admission decision",
-    "aiReferenceHint": "For discussion only. Does not replace the program overall score and must not be used as a site-admission conclusion."
+    "aiReferenceHint": "For discussion only. Does not replace the program overall score and must not be used as a site-admission conclusion.",
+    "generationSettings": "Report generation settings",
+    "viewOnHome": "View on home"
   },
   "overviewPage": {
     "fitRegion": "Fit region",
@@ -1235,5 +1238,26 @@
     "noteFacts": "Facts (scene counts, NDVI/NDMI, drought/flood, harvest) are computed from products — never invented by the LLM.",
     "noteLlm": "AI narrative needs BAILIAN_API_KEY; without it the PDF still includes facts and charts.",
     "cdfinanceReuseHint": "Uses the cdfinance Token / groupId / hr-base-id above (if filled) to refresh questionnaire and NPK before generate."
+  },
+  "reportPreview": {
+    "title": "Full assessment report",
+    "loading": "Loading report…",
+    "failed": "Unable to load the report. Retry or download the PDF.",
+    "retry": "Retry",
+    "page": "Page {page} / {total}",
+    "pageFailed": "Unable to render this page. Please download the PDF."
+  },
+  "landReportsHome": {
+    "title": "Land assessment reports",
+    "selectLand": "Select a land parcel",
+    "search": "Search land name or ID",
+    "loadFailed": "Unable to load. Please retry.",
+    "retry": "Retry",
+    "noLands": "No matching land parcels",
+    "previous": "Previous",
+    "next": "Next",
+    "total": "{total} parcels",
+    "viewLand": "View land",
+    "selectHint": "Select a land parcel to view or generate an assessment report."
   }
 }

@@ -1,12 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "@/i18n/navigation";
+import { Suspense } from "react";
+import LandReportsHome from "@/components/field/land-reports-home";
+import { Loader2 } from "lucide-react";
 
-export default function HomeRedirectPage() {
-    const router = useRouter();
-    useEffect(() => {
-        router.replace("/overview");
-    }, [router]);
-    return null;
+export default function HomePage() {
+    return <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="h-5 w-5 animate-spin" /></div>}><LandReportsHome /></Suspense>;
 }

@@ -24,7 +24,8 @@
     "settings": "设置",
     "changelog": "更新日志",
     "overview": "全国态势",
-    "projectRemoteSensing": "项目遥感"
+    "projectRemoteSensing": "项目遥感",
+    "landReports": "选地报告"
   },
   "sidebar": {
     "workspaces": "工作区",
@@ -1141,7 +1142,9 @@
     "cdfinanceHrBaseIdPlaceholder": "例如 10；留空则用服务端 CDFINANCE_HR_BASE_ID",
     "aiReferenceScore": "AI 参考分",
     "aiReferenceDisclaimer": "AI参考分 · 不可作为准入结论",
-    "aiReferenceHint": "仅供讨论参考，不能替代程序综合分，也不可作为现场准入结论。"
+    "aiReferenceHint": "仅供讨论参考，不能替代程序综合分，也不可作为现场准入结论。",
+    "generationSettings": "报告生成设置",
+    "viewOnHome": "首页查看报告"
   },
   "overviewPage": {
     "fitRegion": "适配视野",
@@ -1235,5 +1238,26 @@
     "noteFacts": "事实口径：景数、NDVI/NDMI、干旱/洪涝、收获检测均由程序从遥感产品计算，不由 AI 编造。",
     "noteLlm": "AI 解读需配置 BAILIAN_API_KEY；未配置时 PDF 仍含遥感事实与曲线图。",
     "cdfinanceReuseHint": "将使用上方「中和农信凭证」中的 Token / groupId / hr-base-id（如已填写）在生成前刷新问卷与 NPK。"
+  },
+  "reportPreview": {
+    "title": "完整分析报告",
+    "loading": "正在加载报告…",
+    "failed": "报告加载失败，可重试或下载 PDF 查看。",
+    "retry": "重试",
+    "page": "第 {page} / {total} 页",
+    "pageFailed": "本页渲染失败，请下载 PDF 查看。"
+  },
+  "landReportsHome": {
+    "title": "选地分析报告",
+    "selectLand": "选择地块",
+    "search": "搜索地块名称或编号",
+    "loadFailed": "加载失败，请重试。",
+    "retry": "重试",
+    "noLands": "暂无匹配地块",
+    "previous": "上一页",
+    "next": "下一页",
+    "total": "共 {total} 个",
+    "viewLand": "查看地块",
+    "selectHint": "选择地块查看或生成选地分析报告。"
   }
 }

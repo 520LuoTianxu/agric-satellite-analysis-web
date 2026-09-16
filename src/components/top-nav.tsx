@@ -11,6 +11,7 @@ import { TenantSwitcher } from "@/components/tenant-switcher";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
+    { href: "/" as const, labelKey: "landReports" as const },
     { href: "/overview" as const, labelKey: "overview" as const },
     { href: "/farms" as const, labelKey: "projectRemoteSensing" as const },
     { href: "/alerts" as const, labelKey: "alerts" as const },
@@ -37,8 +38,8 @@ export function TopNav() {
 
     return (
         <header className="sticky top-0 z-40 shrink-0 border-b border-border/80 bg-background/95 backdrop-blur-md">
-            <div className="grid h-14 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-3 sm:px-5">
-                <Link href="/overview" className="flex min-w-0 items-center gap-2">
+            <div className="grid grid-cols-2 items-center gap-2 px-3 py-2 md:h-14 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-5 md:py-0">
+                <Link href="/" className="order-1 flex min-w-0 items-center gap-2">
                     <Leaf className="h-6 w-6 shrink-0 text-primary" />
                     <span className="truncate text-sm font-semibold tracking-tight sm:text-base">
                         {tCommon("brandName")}
@@ -47,17 +48,17 @@ export function TopNav() {
 
                 <nav
                     aria-label={tCommon("brandName")}
-                    className="inline-flex items-center rounded-full bg-muted p-1"
+                    className="order-3 col-span-2 inline-flex max-w-full items-center justify-self-center overflow-x-auto rounded-full bg-muted p-1 md:order-2 md:col-span-1"
                 >
                     {NAV_ITEMS.map((item) => {
-                        const active = pathname.startsWith(item.href);
+                        const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
                         const showBadge = item.labelKey === "alerts" && openAlertCount > 0;
                         return (
                             <Link
                                 key={item.href}
                                 href={item.href}
                                 className={cn(
-                                    "relative rounded-full px-3 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:text-sm",
+                                    "relative shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:text-sm",
                                     active
                                         ? "bg-background text-primary shadow-sm"
                                         : "text-muted-foreground hover:text-foreground",
@@ -74,7 +75,7 @@ export function TopNav() {
                     })}
                 </nav>
 
-                <div className="flex items-center justify-end gap-0.5 sm:gap-1">
+                <div className="order-2 flex min-w-0 items-center justify-end gap-0.5 sm:gap-1 md:order-3">
                     <TenantSwitcher />
                     <ThemeToggle />
                     <LanguageSwitcher side="bottom" align="end" />

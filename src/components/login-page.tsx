@@ -14,9 +14,9 @@ import { useAuth } from "@/components/auth-provider";
 import { AuthApiError } from "@/lib/auth";
 
 function safeRedirect(value: string | null): string {
-    if (!value) return "/overview";
+    if (!value) return "/";
     if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/login")) {
-        return "/overview";
+        return "/";
     }
     return value;
 }

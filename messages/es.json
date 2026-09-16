@@ -24,7 +24,8 @@
     "settings": "Configuración",
     "changelog": "Cambios",
     "overview": "Panorama nacional",
-    "projectRemoteSensing": "Teledetección"
+    "projectRemoteSensing": "Teledetección",
+    "landReports": "Informes de terreno"
   },
   "sidebar": {
     "workspaces": "Espacios de trabajo",
@@ -1141,7 +1142,9 @@
     "cdfinanceHrBaseIdPlaceholder": "p. ej. 10; vacío = CDFINANCE_HR_BASE_ID del servidor",
     "aiReferenceScore": "Puntuación de referencia IA",
     "aiReferenceDisclaimer": "Solo referencia IA · no es conclusión de admisión",
-    "aiReferenceHint": "Solo para debate. No sustituye la puntuación del programa ni sirve como conclusión de admisión del sitio."
+    "aiReferenceHint": "Solo para debate. No sustituye la puntuación del programa ni sirve como conclusión de admisión del sitio.",
+    "generationSettings": "Configuración del informe",
+    "viewOnHome": "Ver en inicio"
   },
   "overviewPage": {
     "fitRegion": "Ajustar región",
@@ -1235,5 +1238,26 @@
     "noteFacts": "Facts (scene counts, NDVI/NDMI, drought/flood, harvest) are computed from products — never invented by the LLM.",
     "noteLlm": "AI narrative needs BAILIAN_API_KEY; without it the PDF still includes facts and charts.",
     "cdfinanceReuseHint": "Usa Token / groupId / hr-base-id de arriba (si están) para refrescar cuestionario y NPK antes de generar."
+  },
+  "reportPreview": {
+    "title": "Informe completo de evaluación",
+    "loading": "Cargando informe…",
+    "failed": "No se pudo cargar el informe. Reintente o descargue el PDF.",
+    "retry": "Reintentar",
+    "page": "Página {page} / {total}",
+    "pageFailed": "No se pudo mostrar esta página. Descargue el PDF."
+  },
+  "landReportsHome": {
+    "title": "Informes de evaluación del terreno",
+    "selectLand": "Seleccionar parcela",
+    "search": "Buscar nombre o ID de parcela",
+    "loadFailed": "No se pudo cargar. Reintente.",
+    "retry": "Reintentar",
+    "noLands": "No hay parcelas coincidentes",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "total": "{total} parcelas",
+    "viewLand": "Ver parcela",
+    "selectHint": "Seleccione una parcela para ver o generar un informe de evaluación."
   }
 }

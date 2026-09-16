@@ -1276,8 +1276,10 @@ function FieldDetailPageContent() {
 
                                     <TabsContent value="land-report" className="mt-0">
                                         <LandReportTab
+                                            key={landId}
                                             landId={landId}
                                             cropType={land.crop_type}
+                                            onReportReady={() => router.push(`/?fieldId=${encodeURIComponent(landId)}`)}
                                             onCropBound={(key) => {
                                                 setLand((prev) => (prev ? { ...prev, crop_type: key } : prev));
                                             }}

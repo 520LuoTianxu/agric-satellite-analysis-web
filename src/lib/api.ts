@@ -783,6 +783,13 @@ export interface AssessmentGenerateBody {
 }
 
 export const assessmentApi = {
+    latestReportMeta: () => apiFetch<NdviJob>("/assessment-reports/latest/meta"),
+    /** 前端自行渲染 PDF，兼容只保存了 PDF 的历史报告。 */
+    latestPdf: async (landId: string, signal?: AbortSignal) => {
+        const res = await fetch(`${getApiBase()}/lands/${encodeURIComponent(landId)}/assessment-report/latest`, { signal });
+        if (!res.ok) throw new ApiError(res.status, "Report preview failed");
+        return new Uint8Array(await res.arrayBuffer());
+    },
     generate: (landId: string, body?: AssessmentGenerateBody) =>
         apiFetch<NdviJob>(`/lands/${landId}/assessment-report`, {
             method: "POST",
