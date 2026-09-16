@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import React, { Suspense, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
 import dynamic from "next/dynamic";
 import { landsApi } from "@/lib/api";
@@ -35,11 +35,11 @@ const MapStyleSwitcher = dynamic(() => import("@/components/map/map-style-switch
     ssr: false,
 });
 
-export default function NewFieldPage() {
+function NewFieldPageContent() {
     const t = useTranslations("createField");
-    const params = useParams();
+    const searchParams = useSearchParams();
     const router = useRouter();
-    const farmId = params.id as string;
+    const farmId = searchParams.get("farmId") || "";
 
     const [name, setName] = useState("");
     const [cropType, setCropType] = useState("");
@@ -72,6 +72,10 @@ export default function NewFieldPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!farmId) {
+            toast.error("缺少农场 ID");
+            return;
+        }
         if (!name.trim()) {
             toast.error(t("nameRequired"));
             return;
@@ -101,7 +105,7 @@ export default function NewFieldPage() {
                 group_id: cdfinanceGroupId.trim() || undefined,
             });
             toast.success(`Land parcel "${land.land_name || land.land_id}" created (${land.area_ha != null ? formatAreaMu(land.area_ha) : "?"})`);
-            router.push(`/farms/${farmId}/fields/${land.land_id}`);
+            router.push(`/farms/fields/detail?farmId=${encodeURIComponent(farmId)}&fieldId=${encodeURIComponent(land.land_id)}`);
         } catch (err: any) {
             toast.error(err.detail || t("createField"));
         } finally {
@@ -119,7 +123,7 @@ export default function NewFieldPage() {
             {/* Back button + Style switcher + Search - top left */}
             <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
                 <Link
-                    href={`/farms/${farmId}`}
+                    href={`/farms/detail?farmId=${encodeURIComponent(farmId)}`}
                     className={cn("inline-flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3", MAP_CHROME)}
                 >
                     <ArrowLeft className="h-4 w-4" />
@@ -236,5 +240,13 @@ export default function NewFieldPage() {
             </div>
 
         </div>
+    );
+}
+
+export default function NewFieldPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen" />}>
+            <NewFieldPageContent />
+        </Suspense>
     );
 }

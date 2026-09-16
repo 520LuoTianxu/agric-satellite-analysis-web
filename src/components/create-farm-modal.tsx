@@ -58,7 +58,7 @@ export function CreateFarmModal({ children, onCreated }: CreateFarmModalProps) {
             resetForm();
             setOpen(false);
             onCreated?.();
-            router.push(`/farms/${farm.id}`);
+            router.push(`/farms/detail?farmId=${encodeURIComponent(farm.id)}`);
         } catch (err: any) {
             toast.error(err.detail || t("failedCreate"));
         } finally {

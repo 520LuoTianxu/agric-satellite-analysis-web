@@ -4,9 +4,10 @@
     "private": true,
     "scripts": {
         "dev": "next dev",
+        "prebuild": "node scripts/prepare-static.js",
         "build": "npm run lint && npm run type-check && next build",
-        "postbuild": "node scripts/prepare-standalone.js",
-        "start": "next start",
+        "postbuild": "node scripts/prepare-static-output.js",
+        "start": "python -m http.server 3000 --directory out",
         "lint": "next lint --max-warnings 0",
         "type-check": "tsc --noEmit"
     },

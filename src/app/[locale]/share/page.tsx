@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
-import { useParams } from "next/navigation";
+import React, { Suspense, useEffect, useState, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { shareApi, getApiBase, getPhotoUrl, INDEX_CONFIG, ALL_INDEX_TYPES } from "@/lib/api";
 import type { ShareReport, ShareStatPoint, Alert, ScoutingObservation, IndexType, RasterLayer } from "@/lib/api";
@@ -99,9 +99,9 @@ function toAgriHeatIndex(idx: ShareIndexType): AgriHeatIndex {
 
 /* ── Page Component ────────────────────────────────────────── */
 
-export default function ShareReportPage() {
-    const params = useParams();
-    const token = params.token as string;
+function ShareReportPageContent() {
+    const searchParams = useSearchParams();
+    const token = searchParams.get("token") || "";
     const t = useTranslations("shareReport");
     const tCommon = useTranslations("common");
 
@@ -111,7 +111,11 @@ export default function ShareReportPage() {
     const [activeIndex, setActiveIndex] = useState<ShareIndexType>("NDVI");
 
     useEffect(() => {
-        if (!token) return;
+        if (!token) {
+            setError("not_found");
+            setLoading(false);
+            return;
+        }
         shareApi
             .getReport(token)
             .then((r) => {
@@ -793,4 +797,12 @@ function getAllCoords(geom: GeoJSON.Geometry): number[][] {
     if (geom.type === "Polygon") return (geom.coordinates as number[][][]).flat();
     if (geom.type === "MultiPolygon") return (geom.coordinates as number[][][][]).flat(2);
     return [];
+}
+
+export default function ShareReportPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-surface-2" />}>
+            <ShareReportPageContent />
+        </Suspense>
+    );
 }

@@ -52,10 +52,12 @@ function padAdcode(level: OverviewLevel, code: string | null | undefined): strin
 
 function geoJsonUrl(level: OverviewLevel, adcode: string | null): string {
     // Aliyun DataV: https://geo.datav.aliyun.com/areas_v3/bound/{adcode}_full.json
-    // country→100000 (provinces), province/city adcode→cities/counties. Served via local cache/proxy.
+    // country→100000 (provinces), province/city adcode→cities/counties.
     const code = level === "country" || !adcode ? "100000" : adcode;
-    // 统一经缓存代理加载，全国边界未预置时也可从上游获取。
-    return `/api/geo/${code}`;
+    const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
+    // 静态构建无法运行 Next API 路由；全国边界走随站点发布的缓存，其余行政区直接请求支持 CORS 的 DataV 服务。
+    if (code === "100000") return `${basePath}/geo/${code}_full.json`;
+    return `https://geo.datav.aliyun.com/areas_v3/bound/${code}_full.json`;
 }
 
 function pct(n: number, total: number): number {

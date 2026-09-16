@@ -115,7 +115,7 @@ export default function FarmsListPage() {
                 <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {farms.map((farm) => (
-                            <Link key={farm.id} href={`/farms/${farm.id}`} className="group">
+                            <Link key={farm.id} href={`/farms/detail?farmId=${encodeURIComponent(farm.id)}`} className="group">
                                 <Card className="h-full hover:border-primary/30 hover:shadow-md transition-all">
                                     <CardContent className="p-5">
                                         <div className="flex items-start justify-between">

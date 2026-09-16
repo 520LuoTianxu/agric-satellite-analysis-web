@@ -13,6 +13,12 @@
 
 import { routing } from "@/i18n/routing";
 
+/** Optional URL prefix used when Nginx mounts the static site below a path. */
+const BASE_PATH_NAME = (process.env.NEXT_PUBLIC_BASE_PATH || "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+export const BASE_PATH = BASE_PATH_NAME ? `/${BASE_PATH_NAME}` : "";
+
 /** No trailing slash: everything below concatenates paths onto this. */
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(
     /\/+$/,
@@ -30,6 +36,11 @@ export const DISCORD_URL = "https://discord.gg/KM9qxpEmsU";
  * everywhere it appears.
  */
 export const SAME_AS = [REPO_URL, UPSTREAM_REPO_URL];
+
+export function withBasePath(path: string): string {
+    const cleanPath = path.startsWith("/") ? path : `/${path}`;
+    return `${BASE_PATH}${cleanPath}`;
+}
 
 /** Locale to Open Graph locale. Keys must match i18n/routing.ts. */
 export const OG_LOCALE: Record<string, string> = {

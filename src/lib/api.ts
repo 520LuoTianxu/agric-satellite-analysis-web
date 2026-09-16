@@ -7,21 +7,26 @@
 
 /**
  * Resolve API base URL.
- * In the browser, prefer same-origin `/v1` (Next rewrite → INTERNAL_API_URL) when
- * NEXT_PUBLIC_API_URL points at localhost:8000 — avoids ERR_CONNECTION_REFUSED
- * when the API port is not published on the host.
+ * In a static deployment, use the same-origin `/v1` path and let Nginx proxy it
+ * to the backend service; this keeps browser requests on the frontend origin.
  */
 export function getApiBase(): string {
-    const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
+    const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
+    const defaultApi = basePath ? `${basePath}/v1` : "/v1";
+    const raw = process.env.NEXT_PUBLIC_API_URL || defaultApi;
     if (typeof window !== "undefined") {
-        if (raw.startsWith("/")) return raw.replace(/\/$/, "") || "/v1";
+        if (raw.startsWith("/")) {
+            // 子路径部署时，兼容平台仍填默认 /v1 的情况，避免请求落到域名根路径。
+            const normalized = raw.replace(/\/$/, "");
+            return normalized === "/v1" && basePath ? defaultApi : normalized || defaultApi;
+        }
         try {
             const u = new URL(raw);
             if (
                 (u.hostname === "localhost" || u.hostname === "127.0.0.1") &&
                 (raw.includes(":8000"))
             ) {
-                return "/v1";
+                return defaultApi;
             }
         } catch {
             /* keep raw */
