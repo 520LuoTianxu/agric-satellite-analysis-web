@@ -30,6 +30,12 @@ mkdir -p "$RELEASE_DIR"
 if [ -d "$STAGING_DIR/out" ]; then
     # 平台通常会保留 out/ 目录层级。
     STATIC_DIR="$STAGING_DIR/out"
+elif [ -d "$STAGING_DIR/.next/standalone/out" ]; then
+    # 兼容平台将 out/ 打包到旧的 .next/standalone 目录中的情况。
+    STATIC_DIR="$STAGING_DIR/.next/standalone/out"
+elif [ -d "$STAGING_DIR/.next/standalone" ] && [ -f "$STAGING_DIR/.next/standalone/index.html" ]; then
+    # 兼容当前构建脚本为旧平台 target 镜像出的静态目录。
+    STATIC_DIR="$STAGING_DIR/.next/standalone"
 elif [ -f "$STAGING_DIR/index.html" ]; then
     # 兼容平台直接打包 out/ 内容的情况。
     STATIC_DIR="$STAGING_DIR"

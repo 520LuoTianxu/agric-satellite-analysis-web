@@ -32,7 +32,7 @@ export NEXT_PUBLIC_SITE_URL=https://joint-venture-test.cdfinance.com.cn/agric-sa
 rm -rf node_modules && rm -rf .next && rm -rf out && npm install && npm run build
 ```
 
-平台 Node 版本使用 `.nvmrc` 中的 Node 20，出包路径填写 `out/`；服务器发布目录可使用 `/data/mwbase/agric-satellite-analysis-web`，再执行仓库中的 `deploy.sh`。`NEXT_PUBLIC_BASE_PATH` 和 `NEXT_PUBLIC_API_URL` 都是在构建时写入前端的配置。
+平台 Node 版本使用 `.nvmrc` 中的 Node 20，推荐出包路径填写 `out/`。如果平台固定使用旧配置 `target=.next/standalone` 也可以，构建后的 `postbuild` 会把静态文件同步到该目录，`deploy.sh` 会自动识别。服务器发布目录可使用 `/data/mwbase/agric-satellite-analysis-web`，再执行仓库中的 `deploy.sh`。`NEXT_PUBLIC_BASE_PATH` 和 `NEXT_PUBLIC_API_URL` 都是在构建时写入前端的配置。
 
 ## Docker Compose 集成
 
