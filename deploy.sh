@@ -40,11 +40,17 @@ if [ -f "$STAGING_DIR/server.js" ]; then
     [ -d "$STAGING_DIR/public" ] && cp -R "$STAGING_DIR/public" "$RELEASE_DIR/"
     [ -d "$STAGING_DIR/.next" ] && cp -R "$STAGING_DIR/.next" "$RELEASE_DIR/"
 elif [ -f "$STAGING_DIR/.next/standalone/server.js" ]; then
-    # 构建包包含完整仓库产物，需要把 standalone 和静态资源合并到运行目录。
+    # 构建包保留了 .next/standalone 目录层级，先整体复制以保留其中的静态资源。
     cp -R "$STAGING_DIR/.next/standalone/." "$RELEASE_DIR/"
+
+    # 某些打包方式会把 public 放在 standalone 同级目录，需要补充到运行目录。
     [ -d "$STAGING_DIR/public" ] && cp -R "$STAGING_DIR/public" "$RELEASE_DIR/"
-    mkdir -p "$RELEASE_DIR/.next"
-    cp -R "$STAGING_DIR/.next/static" "$RELEASE_DIR/.next/"
+
+    # 完整仓库打包时静态目录在 standalone 同级，只有这种情况才需要单独复制。
+    if [ -d "$STAGING_DIR/.next/static" ]; then
+        mkdir -p "$RELEASE_DIR/.next"
+        cp -R "$STAGING_DIR/.next/static" "$RELEASE_DIR/.next/"
+    fi
 else
     echo "ERROR: server.js or .next/standalone/server.js not found in package" >&2
     exit 1
