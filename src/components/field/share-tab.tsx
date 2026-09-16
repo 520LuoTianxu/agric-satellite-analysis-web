@@ -94,7 +94,9 @@ export default function ShareTab({ landId }: ShareTabProps) {
         if (typeof window === "undefined") return "";
         const prefix =
             locale === routing.defaultLocale ? "" : `/${locale}`;
-        return `${window.location.origin}${prefix}/share/${token}`;
+        const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
+        // 静态站点使用查询参数承载分享 token，避免为未知 token 生成无限动态页面。
+        return `${window.location.origin}${basePath}${prefix}/share?token=${encodeURIComponent(token)}`;
     };
 
     const handleCopy = async (token: string) => {

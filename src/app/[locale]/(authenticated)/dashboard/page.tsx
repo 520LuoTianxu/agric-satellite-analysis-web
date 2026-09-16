@@ -341,7 +341,7 @@ function FarmRow({
 
     return (
         <Link
-            href={`/farms/${farm.id}`}
+            href={`/farms/detail?farmId=${encodeURIComponent(farm.id)}`}
             className="flex items-center justify-between gap-3 rounded-lg border p-4 hover:border-primary/30 hover:shadow-md transition-all"
         >
             <div className="flex min-w-0 items-center gap-3">

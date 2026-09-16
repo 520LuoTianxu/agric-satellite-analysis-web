@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useParams } from "next/navigation";
+import React, { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
 import dynamic from "next/dynamic";
 import maplibregl from "maplibre-gl";
@@ -225,13 +225,13 @@ function clampPanelWidthPx(px: number): number {
 
 /* ── Page ──────────────────────────────────────────────────── */
 
-export default function FieldDetailPage() {
+function FieldDetailPageContent() {
     const t = useTranslations("fieldDetail");
     const confirm = useConfirm();
-    const params = useParams();
+    const searchParams = useSearchParams();
     const router = useRouter();
-    const farmId = params.id as string;
-    const landId = params.fieldId as string;
+    const farmId = searchParams.get("farmId") || "";
+    const landId = searchParams.get("fieldId") || "";
 
     const [land, setLand] = useState<LandParcel | null>(null);
     const [loading, setLoading] = useState(true);
@@ -392,6 +392,12 @@ export default function FieldDetailPage() {
 
 
     const loadField = useCallback(async () => {
+        if (!farmId || !landId) {
+            toast.error(t("fieldNotFound"));
+            router.push("/farms");
+            return;
+        }
+
         try {
             const f = await landsApi.get(landId);
             setLand(f);
@@ -402,7 +408,7 @@ export default function FieldDetailPage() {
             setEditGeom(f.boundary_geojson || f.geom);
         } catch {
             toast.error(t("fieldNotFound"));
-            router.push(`/farms/${farmId}`);
+            router.push(`/farms/detail?farmId=${encodeURIComponent(farmId)}`);
         } finally {
             setLoading(false);
         }
@@ -790,7 +796,7 @@ export default function FieldDetailPage() {
         try {
             await landsApi.delete(landId);
             toast.success(t("fieldDeleted"));
-            router.push(`/farms/${farmId}`);
+            router.push(`/farms/detail?farmId=${encodeURIComponent(farmId)}`);
         } catch (err: any) {
             toast.error(err.detail || t("failedDelete"));
         }
@@ -832,7 +838,7 @@ export default function FieldDetailPage() {
             {/* Top-left: Back + Style Switcher + Search */}
             <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
                 <Link
-                    href={`/farms/${farmId}`}
+                    href={`/farms/detail?farmId=${encodeURIComponent(farmId)}`}
                     className={cn("inline-flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3", MAP_CHROME)}
                 >
                     <ArrowLeft className="h-4 w-4" />
@@ -1311,4 +1317,12 @@ function getAllCoords(geom: GeoJSON.Geometry): number[][] {
     if (geom.type === "Polygon") return (geom.coordinates as number[][][]).flat();
     if (geom.type === "MultiPolygon") return (geom.coordinates as number[][][][]).flat(2);
     return [];
+}
+
+export default function FieldDetailPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen" />}>
+            <FieldDetailPageContent />
+        </Suspense>
+    );
 }

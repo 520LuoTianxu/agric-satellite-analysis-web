@@ -10,6 +10,7 @@ out/
 dist/
 build/
 *.tsbuildinfo
+public/CHANGELOG.md
 
 # Local tooling
 .DS_Store

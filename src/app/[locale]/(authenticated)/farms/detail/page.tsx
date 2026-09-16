@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import React, { Suspense, useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
 import { farmsApi, landsApi } from "@/lib/api";
 import type { Farm, LandParcel } from "@/lib/api";
@@ -32,13 +32,13 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { useTranslations } from "next-intl";
 
 
-export default function FarmDetailPage() {
+function FarmDetailPageContent() {
     const tCreate = useTranslations("createFarm");
     const tFarms = useTranslations("farmsPage");
     const tCommon = useTranslations("common");
-    const params = useParams();
+    const searchParams = useSearchParams();
     const router = useRouter();
-    const farmId = params.id as string;
+    const farmId = searchParams.get("farmId") || "";
 
     const [farm, setFarm] = useState<Farm | null>(null);
     const [lands, setLands] = useState<LandParcel[]>([]);
@@ -57,6 +57,12 @@ export default function FarmDetailPage() {
     const confirm = useConfirm();
 
     const loadData = useCallback(async () => {
+        if (!farmId) {
+            toast.error(tFarms("farmNotFound"));
+            router.push("/farms");
+            return;
+        }
+
         try {
             const f = await farmsApi.get(farmId);
             setFarm(f);
@@ -270,7 +276,7 @@ export default function FarmDetailPage() {
                             </label>
                         </Button>
                         <Button asChild>
-                            <Link href={`/farms/${farmId}/fields/new`}>
+                            <Link href={`/farms/fields/new?farmId=${encodeURIComponent(farmId)}`}>
                                 <Plus className="h-4 w-4 mr-2" />
                                 Draw Field
                             </Link>
@@ -294,7 +300,7 @@ export default function FarmDetailPage() {
                                     </label>
                                 </Button>
                                 <Button asChild>
-                                    <Link href={`/farms/${farmId}/fields/new`}>
+                                    <Link href={`/farms/fields/new?farmId=${encodeURIComponent(farmId)}`}>
                                         <Plus className="h-4 w-4 mr-2" /> Draw Field
                                     </Link>
                                 </Button>
@@ -310,7 +316,7 @@ export default function FarmDetailPage() {
                             >
                                 <CardContent className="flex items-center justify-between p-4">
                                     <Link
-                                        href={`/farms/${farmId}/fields/${land.land_id}`}
+                                        href={`/farms/fields/detail?farmId=${encodeURIComponent(farmId)}&fieldId=${encodeURIComponent(land.land_id)}`}
                                         className="flex-1 flex items-center gap-3"
                                     >
                                         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-subtle">
@@ -336,7 +342,7 @@ export default function FarmDetailPage() {
                                         >
                                             <Trash2 className="h-4 w-4" />
                                         </Button>
-                                        <Link href={`/farms/${farmId}/fields/${land.land_id}`}>
+                                        <Link href={`/farms/fields/detail?farmId=${encodeURIComponent(farmId)}&fieldId=${encodeURIComponent(land.land_id)}`}>
                                             <ChevronRight className="h-4 w-4 text-muted-foreground" />
                                         </Link>
                                     </div>
@@ -347,5 +353,13 @@ export default function FarmDetailPage() {
                 )}
             </div>
         </div>
+    );
+}
+
+export default function FarmDetailPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen" />}>
+            <FarmDetailPageContent />
+        </Suspense>
     );
 }

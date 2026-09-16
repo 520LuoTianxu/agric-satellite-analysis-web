@@ -7,21 +7,29 @@
 
 /**
  * Resolve API base URL.
- * In the browser, prefer same-origin `/v1` (Next rewrite → INTERNAL_API_URL) when
- * NEXT_PUBLIC_API_URL points at localhost:8000 — avoids ERR_CONNECTION_REFUSED
- * when the API port is not published on the host.
+ * In a static deployment, use the same-origin `/satellite-api` gateway and let
+ * Nginx proxy it to the FastAPI `/v1` routes; this keeps browser requests on
+ * the frontend origin and gives every frontend API call one stable prefix.
  */
 export function getApiBase(): string {
-    const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
+    const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
+    const defaultApi = "/satellite-api";
+    const raw = process.env.NEXT_PUBLIC_API_URL || defaultApi;
     if (typeof window !== "undefined") {
-        if (raw.startsWith("/")) return raw.replace(/\/$/, "") || "/v1";
+        if (raw.startsWith("/")) {
+            // 兼容旧构建参数 /v1 和 /{frontend-prefix}/v1，统一切换到新的 API 网关前缀。
+            const normalized = raw.replace(/\/$/, "");
+            const legacyPaths = new Set(["/v1", basePath ? `${basePath}/v1` : ""]);
+            legacyPaths.delete("");
+            return legacyPaths.has(normalized) ? defaultApi : normalized || defaultApi;
+        }
         try {
             const u = new URL(raw);
             if (
                 (u.hostname === "localhost" || u.hostname === "127.0.0.1") &&
                 (raw.includes(":8000"))
             ) {
-                return "/v1";
+                return defaultApi;
             }
         } catch {
             /* keep raw */

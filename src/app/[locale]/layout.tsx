@@ -6,7 +6,7 @@ import { ToastProvider } from "@/components/toast-provider";
 import { MapAbortSuppressor } from "@/components/map/abort-suppressor";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
-import { OG_LOCALE, SITE_NAME, SITE_URL, localeUrl } from "@/lib/site";
+import { OG_LOCALE, SITE_NAME, SITE_URL, localeUrl, withBasePath } from "@/lib/site";
 import { hasLocale } from "next-intl";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
@@ -94,10 +94,10 @@ export async function generateMetadata({
         },
         icons: {
             icon: [
-                { url: "/favicon.ico", sizes: "any" },
-                { url: "/icon-32.png", type: "image/png", sizes: "32x32" },
+                { url: withBasePath("/favicon.ico"), sizes: "any" },
+                { url: withBasePath("/icon-32.png"), type: "image/png", sizes: "32x32" },
             ],
-            apple: "/apple-icon.png",
+            apple: withBasePath("/apple-icon.png"),
         },
     };
 }
