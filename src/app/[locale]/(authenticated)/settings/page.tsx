@@ -3,11 +3,11 @@
 import { useEffect } from "react";
 import { useRouter } from "@/i18n/navigation";
 
-/** Settings nav removed; redirect to dashboard. */
+/** Settings nav removed; redirect to national overview. */
 export default function SettingsPage() {
     const router = useRouter();
     useEffect(() => {
-        router.replace("/dashboard");
+        router.replace("/overview");
     }, [router]);
     return null;
 }

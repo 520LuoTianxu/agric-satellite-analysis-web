@@ -20,10 +20,11 @@
   "nav": {
     "dashboard": "Panel",
     "farms": "Fincas",
+    "projects": "Proyectos",
     "alerts": "Alertas",
     "settings": "Configuración",
     "changelog": "Cambios",
-    "overview": "Panorama China"
+    "overview": "Nacional"
   },
   "sidebar": {
     "workspaces": "Espacios de trabajo",

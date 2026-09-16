@@ -167,7 +167,7 @@ export function LandingPage({ isAuthenticated = true }: { isAuthenticated?: bool
     const tc = useTranslations("common");
     const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
     // 进入应用时带上反向代理前缀，确保子路径部署不会跳回域名根路径。
-    const openApp = () => { window.location.href = `${basePath}/dashboard`; };
+    const openApp = () => { window.location.href = `${basePath}/overview`; };
 
     const NAV = [
         { href: "#how-it-works", label: t("navHow") },
@@ -251,7 +251,7 @@ export function LandingPage({ isAuthenticated = true }: { isAuthenticated?: bool
                         ))}
                         <Button size="sm" asChild>
                             {isAuthenticated ? (
-                                <Link href="/dashboard">{tc("dashboard")}</Link>
+                                <Link href="/overview">{tc("dashboard")}</Link>
                             ) : (
                                 <button onClick={openApp}>{tc("signIn")}</button>
                             )}
@@ -310,7 +310,7 @@ export function LandingPage({ isAuthenticated = true }: { isAuthenticated?: bool
                             </Button>
                             <Button variant="outline" size="lg" className="border-strong bg-background/60" asChild>
                                 {isAuthenticated ? (
-                                    <Link href="/dashboard">{t("demoCta")}</Link>
+                                    <Link href="/overview">{t("demoCta")}</Link>
                                 ) : (
                                     <button onClick={openApp}>{t("demoCta")}</button>
                                 )}

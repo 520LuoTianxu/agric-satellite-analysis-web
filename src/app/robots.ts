@@ -12,7 +12,7 @@ import { SITE_URL } from "@/lib/site";
  * boundaries, and a search result would hand it to everyone.
  */
 export default function robots(): MetadataRoute.Robots {
-    const disallow = ["/api/", "/dashboard", "/farms", "/alerts", "/settings", "/changelog", "/share"];
+    const disallow = ["/api/", "/dashboard", "/overview", "/farms", "/alerts", "/settings", "/changelog", "/share"];
 
     return {
         rules: [
