@@ -1409,6 +1409,16 @@ export interface AgriLandScenesSummary {
 }
 
 export const agriApi = {
+    overviewDaily: (opts: { level?: OverviewLevel; code?: string; name?: string; as_of?: string } = {}) => {
+        const params = new URLSearchParams();
+        for (const [key, value] of Object.entries(opts)) if (value) params.set(key, value);
+        return apiFetch<OverviewDaily>(`/agri/overview/daily?${params}`);
+    },
+    overviewHistory: (opts: { level?: OverviewLevel; code?: string; name?: string; from?: string; to?: string } = {}) => {
+        const params = new URLSearchParams();
+        for (const [key, value] of Object.entries(opts)) if (value) params.set(key, value);
+        return apiFetch<{ items: OverviewHistoryItem[] }>(`/agri/overview/history?${params}`);
+    },
     overviewStats: (opts: {
         level?: OverviewLevel;
         code?: string;
@@ -1466,6 +1476,8 @@ export const agriApi = {
         from?: string;
         to?: string;
         crop?: string;
+        daily?: boolean;
+        as_of?: string;
     } = {}) => {
         const params = new URLSearchParams();
         if (opts.level) params.set("level", opts.level);
@@ -1474,6 +1486,8 @@ export const agriApi = {
         if (opts.from) params.set("from", opts.from);
         if (opts.to) params.set("to", opts.to);
         if (opts.crop) params.set("crop", opts.crop);
+        if (opts.daily) params.set("daily", "true");
+        if (opts.as_of) params.set("as_of", opts.as_of);
         return apiDownload(`/agri/overview/export/stats.csv?${params}`, "overview-stats.csv");
     },
     overviewExportWeakParcelsCsv: async (opts: {
@@ -1631,6 +1645,11 @@ export interface OverviewStats {
         weak_ndvi_lt: number;
         drought_source?: "pixels" | "scene_avg" | "cache";
         cache_hit?: boolean;
+        cache_updated_at?: string;
+        snapshot?: boolean;
+        as_of_date?: string;
+        data_status?: "complete" | "partial";
+        freshness?: Record<"s1" | "s2", { today: number; carried: number; unknown: number; oldest: string | null; latest: string | null }>;
         pixels_parcels?: number;
         pixels_classified?: number;
     };
@@ -1657,6 +1676,35 @@ export interface OverviewStats {
     };
     weak_growth: { parcel_count: number; area_mu: number };
     children: OverviewChild[];
+}
+
+export interface OverviewDaily {
+    stats: OverviewStats | null;
+    today: string;
+    schedule: { enabled: boolean; time: string; timezone: string };
+    run: {
+        run_id: string;
+        as_of_date: string;
+        status: "running" | "completed" | "partial";
+        phase: "dispatching" | "downloading" | "waiting_results" | "finished";
+        lands_checked?: number;
+        group_count?: number;
+        job_count?: number;
+        pending_jobs?: number;
+        failed_jobs?: number;
+        results_pending?: number;
+        error?: string | null;
+    } | null;
+}
+
+export interface OverviewHistoryItem {
+    as_of_date: string;
+    parcel_count: number;
+    drought_alert: number;
+    flood_alert: number;
+    drought_unknown: number;
+    flood_unknown: number;
+    data_status: "complete" | "partial";
 }
 
 export interface OverviewRegions {
