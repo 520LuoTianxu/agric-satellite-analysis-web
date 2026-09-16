@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
-    Tractor,
+    FolderKanban,
     Map,
     Plus,
     ChevronRight,
@@ -129,7 +129,7 @@ export default function DashboardPage() {
                 number in a row of neutral ones is what makes it read first. */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 <StatCard
-                    icon={<Tractor className="h-5 w-5 text-primary" />}
+                    icon={<FolderKanban className="h-5 w-5 text-primary" />}
                     label={t("farms")}
                     value={farms.length}
                 />
@@ -166,7 +166,7 @@ export default function DashboardPage() {
                         <CardContent className="flex-1">
                             {farms.length === 0 ? (
                                 <div className="rounded-lg border-2 border-dashed p-12 text-center">
-                                    <Tractor className="mx-auto h-12 w-12 text-muted-foreground/40" />
+                                    <FolderKanban className="mx-auto h-12 w-12 text-muted-foreground/40" />
                                     <p className="mt-4 text-sm font-medium">{t("noFarmsYet")}</p>
                                     <p className="mt-1 text-sm text-muted-foreground">
                                         {t("createFirstFarm")}
@@ -345,7 +345,7 @@ function FarmRow({
             className="flex items-center justify-between gap-3 rounded-lg border p-4 hover:border-primary/30 hover:shadow-md transition-all"
         >
             <div className="flex min-w-0 items-center gap-3">
-                <IconWell><Tractor className="h-5 w-5 text-primary" /></IconWell>
+                <IconWell><FolderKanban className="h-5 w-5 text-primary" /></IconWell>
                 <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{farm.name}</p>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">

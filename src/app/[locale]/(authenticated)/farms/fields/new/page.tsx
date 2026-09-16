@@ -37,6 +37,7 @@ const MapStyleSwitcher = dynamic(() => import("@/components/map/map-style-switch
 
 function NewFieldPageContent() {
     const t = useTranslations("createField");
+    const tFarms = useTranslations("farmsPage");
     const searchParams = useSearchParams();
     const router = useRouter();
     const farmId = searchParams.get("farmId") || "";
@@ -73,7 +74,7 @@ function NewFieldPageContent() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!farmId) {
-            toast.error("缺少农场 ID");
+            toast.error(tFarms("missingId"));
             return;
         }
         if (!name.trim()) {

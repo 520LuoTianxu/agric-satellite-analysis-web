@@ -1,5 +1,3 @@
-/** @type {import('next').NextConfig} */
-
 const createNextIntlPlugin = require("next-intl/plugin");
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -16,9 +14,12 @@ const BASE_PATH_NAME = (configuredBasePath ?? ciDefaultBasePath)
     .replace(/^\/+|\/+$/g, "");
 const BASE_PATH = BASE_PATH_NAME ? `/${BASE_PATH_NAME}` : "";
 
+const JOINT_VENTURE_PROXY =
+    process.env.JOINT_VENTURE_PROXY || "https://joint-venture-test.cdfinance.com.cn";
+
+/** @type {import('next').NextConfig} */
 const nextConfig = {
     // 静态发布由 Nginx 直接读取 out/，API 由 Nginx 单独代理到后端服务。
-    output: "export",
     trailingSlash: true,
     basePath: BASE_PATH,
     // 将自动推导出的前缀注入浏览器代码，保证 API、分享链接和地图资源也使用同一前缀。
@@ -26,5 +27,22 @@ const nextConfig = {
         NEXT_PUBLIC_BASE_PATH: BASE_PATH,
     },
 };
+
+if (process.env.NODE_ENV === "production") {
+    nextConfig.output = "export";
+} else {
+    // 静态导出没有 rewrite。本地 next dev 把 /bapi、/agric-api 转到乡合网关，登录才能打到同源接口。
+    nextConfig.rewrites = async () => [
+        { source: "/bapi/:path*", destination: `${JOINT_VENTURE_PROXY}/bapi/:path*` },
+        { source: "/agric-api/:path*", destination: `${JOINT_VENTURE_PROXY}/agric-api/:path*` },
+        { source: "/admin-api/:path*", destination: `${JOINT_VENTURE_PROXY}/admin-api/:path*` },
+        // next-intl as-needed：开发时把无前缀路径转到默认语言，生产由 prepare-static-output 复制 out/zh。
+        { source: "/", destination: "/zh" },
+        {
+            source: "/:path((?!en|es|zh|_next|satellite-api|bapi|agric-api|admin-api).*)",
+            destination: "/zh/:path",
+        },
+    ];
+}
 
 module.exports = withNextIntl(nextConfig);

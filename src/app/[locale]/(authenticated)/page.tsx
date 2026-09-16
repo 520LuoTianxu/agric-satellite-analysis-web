@@ -3,8 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "@/i18n/navigation";
 
-/** Settings nav removed; redirect to the first top-level menu. */
-export default function SettingsPage() {
+export default function HomeRedirectPage() {
     const router = useRouter();
     useEffect(() => {
         router.replace("/overview");

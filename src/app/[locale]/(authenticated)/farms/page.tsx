@@ -5,7 +5,7 @@ import { Link } from "@/i18n/navigation";
 import { farmsApi } from "@/lib/api";
 import type { Farm } from "@/lib/api";
 import {
-    Tractor,
+    FolderKanban,
     Plus,
     ChevronRight,
     MapPin,
@@ -84,7 +84,7 @@ export default function FarmsListPage() {
                     type="search"
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search farms by name…"
+                    placeholder={t("searchPlaceholder")}
                     className="w-full rounded-md border bg-background py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                 />
             </div>
@@ -98,7 +98,7 @@ export default function FarmsListPage() {
             ) : farms.length === 0 ? (
                 <Card className="border-2 border-dashed p-16 text-center">
                     <CardContent className="p-0">
-                        <Tractor className="mx-auto h-12 w-12 text-muted-foreground/40" />
+                        <FolderKanban className="mx-auto h-12 w-12 text-muted-foreground/40" />
                         <p className="mt-4 text-base font-medium">{t("noFarmsTitle")}</p>
                         <p className="mt-2 text-sm text-muted-foreground">
                             {t("noFarmsDesc")}
@@ -120,7 +120,7 @@ export default function FarmsListPage() {
                                     <CardContent className="p-5">
                                         <div className="flex items-start justify-between">
                                             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-subtle group-hover:bg-primary-subtle transition-colors">
-                                                <Tractor className="h-5 w-5 text-primary" />
+                                                <FolderKanban className="h-5 w-5 text-primary" />
                                             </div>
                                             <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-primary transition-colors mt-1" />
                                         </div>

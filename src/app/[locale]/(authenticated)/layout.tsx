@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { AppShell } from "./app-shell";
+import { AuthGuard } from "@/components/auth-guard";
 
-/* App shell is public after agric-satellite-analysis login/orgs removal.
-   Independent auth will be added later. robots stay noindex for app paths. */
 export const metadata: Metadata = {
     robots: { index: false, follow: false, nocache: true },
 };
@@ -13,6 +12,9 @@ export default async function AuthenticatedLayout({
     children: React.ReactNode;
     params: { locale: string };
 }) {
-    // No session gate — agric-satellite-analysis NextAuth login removed.
-    return <AppShell>{children}</AppShell>;
+    return (
+        <AuthGuard>
+            <AppShell>{children}</AppShell>
+        </AuthGuard>
+    );
 }
