@@ -231,7 +231,13 @@ function FieldDetailPageContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const farmId = searchParams.get("farmId") || "";
+    const groupId = searchParams.get("groupId") || "";
     const landId = searchParams.get("fieldId") || "";
+    const backHref = groupId
+        ? `/farms/detail?groupId=${encodeURIComponent(groupId)}`
+        : farmId
+            ? `/farms/detail?farmId=${encodeURIComponent(farmId)}`
+            : "/farms";
 
     const [land, setLand] = useState<LandParcel | null>(null);
     const [loading, setLoading] = useState(true);
@@ -392,7 +398,7 @@ function FieldDetailPageContent() {
 
 
     const loadField = useCallback(async () => {
-        if (!farmId || !landId) {
+        if (!landId) {
             toast.error(t("fieldNotFound"));
             router.push("/farms");
             return;
@@ -408,11 +414,11 @@ function FieldDetailPageContent() {
             setEditGeom(f.boundary_geojson || f.geom);
         } catch {
             toast.error(t("fieldNotFound"));
-            router.push(`/farms/detail?farmId=${encodeURIComponent(farmId)}`);
+            router.push(backHref);
         } finally {
             setLoading(false);
         }
-    }, [landId, farmId, router, t]);
+    }, [landId, backHref, router, t]);
 
     useEffect(() => {
         loadField();
@@ -796,7 +802,7 @@ function FieldDetailPageContent() {
         try {
             await landsApi.delete(landId);
             toast.success(t("fieldDeleted"));
-            router.push(`/farms/detail?farmId=${encodeURIComponent(farmId)}`);
+            router.push(backHref);
         } catch (err: any) {
             toast.error(err.detail || t("failedDelete"));
         }
@@ -838,7 +844,7 @@ function FieldDetailPageContent() {
             {/* Top-left: Back + Style Switcher + Search */}
             <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
                 <Link
-                    href={`/farms/detail?farmId=${encodeURIComponent(farmId)}`}
+                    href={backHref as "/farms"}
                     className={cn("inline-flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3", MAP_CHROME)}
                 >
                     <ArrowLeft className="h-4 w-4" />

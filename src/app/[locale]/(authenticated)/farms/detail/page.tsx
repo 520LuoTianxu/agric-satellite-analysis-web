@@ -1,356 +1,292 @@
 "use client";
 
-import React, { Suspense, useEffect, useState, useCallback } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
-import { farmsApi, landsApi } from "@/lib/api";
-import type { Farm, LandParcel } from "@/lib/api";
-import { formatAreaMu } from "@/lib/area";
+import { landsApi } from "@/lib/api";
+import {
+    getPlantingGroup,
+    getPlantingTypeDict,
+    listAllCropLands,
+    formatMu,
+    groupStatusLabel,
+    signStatusLabel,
+    plantingTypeLabel,
+    type AgricGroup,
+    type AgricLand,
+} from "@/lib/agric";
+import { landPathToPolygon } from "@/lib/land-path";
 import { toast } from "sonner";
 import {
     ArrowLeft,
-    ChevronRight,
-    Edit2,
-    Loader2,
-    Map,
+    Map as MapIcon,
     MapPin,
-    Plus,
-    Save,
-    Trash2,
-    Upload,
-    X,
+    Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { useConfirm } from "@/components/confirm-dialog";
+import { MAP_CHROME } from "@/lib/design-tokens";
 import { useTranslations } from "next-intl";
+import type { ProjectMapLand } from "@/components/project/project-lands-map";
 
+const ProjectLandsMap = dynamic(() => import("@/components/project/project-lands-map"), {
+    ssr: false,
+    loading: () => <Skeleton className="h-full w-full rounded-none" />,
+});
+
+interface DisplayLand {
+    landId: string;
+    landName: string;
+    areaText: string;
+    cropText: string;
+    cropStatusName?: string;
+    geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
+    hasBoundary: boolean;
+    hasRemoteSensing: boolean;
+}
+
+function cropTextOf(land: AgricLand): string {
+    return [land.cropName, land.varietyName].filter(Boolean).join(" · ");
+}
 
 function FarmDetailPageContent() {
+    const t = useTranslations("farmsPage");
     const tCreate = useTranslations("createFarm");
-    const tFarms = useTranslations("farmsPage");
-    const tCommon = useTranslations("common");
     const searchParams = useSearchParams();
     const router = useRouter();
-    const farmId = searchParams.get("farmId") || "";
+    const groupId = searchParams.get("groupId") || "";
 
-    const [farm, setFarm] = useState<Farm | null>(null);
-    const [lands, setLands] = useState<LandParcel[]>([]);
+    const [group, setGroup] = useState<AgricGroup | null>(null);
+    const [lands, setLands] = useState<DisplayLand[]>([]);
     const [loading, setLoading] = useState(true);
-
-    // Edit mode
-    const [editing, setEditing] = useState(false);
-    const [editName, setEditName] = useState("");
-    const [editCountry, setEditCountry] = useState("");
-    const [editRegion, setEditRegion] = useState("");
-    const [editTimezone, setEditTimezone] = useState("");
-    const [saving, setSaving] = useState(false);
-
-    // Import
-    const [importing, setImporting] = useState(false);
-    const confirm = useConfirm();
+    const [selectedLandId, setSelectedLandId] = useState<string | null>(null);
+    const [landQuery, setLandQuery] = useState("");
+    const [plantingLabels, setPlantingLabels] = useState<Record<string, string>>({});
 
     const loadData = useCallback(async () => {
-        if (!farmId) {
-            toast.error(tFarms("farmNotFound"));
+        if (!groupId) {
+            toast.error(t("missingId"));
             router.push("/farms");
             return;
         }
 
+        setLoading(true);
         try {
-            const f = await farmsApi.get(farmId);
-            setFarm(f);
-            setEditName(f.name);
-            setEditCountry(f.country || "");
-            setEditRegion(f.region || "");
-            setEditTimezone(f.timezone || "");
-        } catch {
-            toast.error(tFarms("farmNotFound"));
+            const [groupResult, agricLands, typeDict, satelliteRes] = await Promise.all([
+                getPlantingGroup(groupId).catch(() => null),
+                listAllCropLands(groupId),
+                getPlantingTypeDict().catch(() => ({ options: [], labelByValue: {}, categoriesByType: {} })),
+                landsApi.list({ group_id: groupId, limit: 500 }).catch(() => ({ items: [], total: 0, limit: 500, offset: 0 })),
+            ]);
+            setGroup(groupResult || { groupId, groupName: t("title") });
+            setPlantingLabels(typeDict.labelByValue);
+
+            const satelliteById = new Map(
+                satelliteRes.items.map((item) => [String(item.land_id), item]),
+            );
+
+            setLands(agricLands.map((land) => {
+                const landId = String(land.landId);
+                const satellite = satelliteById.get(landId);
+                const agricGeom = landPathToPolygon(land.wgsLandPath || land.landPath);
+                const satelliteGeom = satellite?.boundary_geojson as GeoJSON.Polygon | GeoJSON.MultiPolygon | undefined;
+                const geometry = agricGeom || satelliteGeom || null;
+                return {
+                    landId,
+                    landName: land.landName || landId,
+                    areaText: formatMu(land.landArea),
+                    cropText: cropTextOf(land),
+                    cropStatusName: land.cropStatusName,
+                    geometry,
+                    hasBoundary: Boolean(geometry),
+                    hasRemoteSensing: Boolean(satellite),
+                };
+            }));
+        } catch (err: any) {
+            console.error(err);
+            toast.error(err?.message || t("farmNotFound"));
             router.push("/farms");
-            return;
+        } finally {
+            setLoading(false);
         }
-
-        try {
-            const landsRes = await farmsApi.lands(farmId, 200, 0);
-            setLands(landsRes.items);
-        } catch (err) {
-            console.error("Failed to load land parcels:", err);
-        }
-
-        setLoading(false);
-    }, [farmId, router, tFarms]);
+    }, [groupId, router, t]);
 
     useEffect(() => {
         loadData();
     }, [loadData]);
 
-    const handleSave = async () => {
-        if (!editName.trim()) return;
-        setSaving(true);
-        try {
-            const updated = await farmsApi.update(farmId, {
-                name: editName.trim(),
-                country: editCountry.trim() || undefined,
-                region: editRegion.trim() || undefined,
-                timezone: editTimezone.trim() || undefined,
-            });
-            setFarm(updated);
-            setEditing(false);
-            toast.success(tFarms("farmUpdated"));
-        } catch (err: any) {
-            toast.error(err.detail || tFarms("failedUpdate"));
-        } finally {
-            setSaving(false);
-        }
-    };
+    const filteredLands = useMemo(() => {
+        const q = landQuery.trim().toLowerCase();
+        if (!q) return lands;
+        return lands.filter((land) =>
+            land.landName.toLowerCase().includes(q) || land.cropText.toLowerCase().includes(q),
+        );
+    }, [landQuery, lands]);
 
-    const handleDelete = async () => {
-        const ok = await confirm({
-            title: tFarms("deleteFarm"),
-            description: tFarms("deleteFarmConfirm"),
-            confirmLabel: tCommon("delete"),
-            variant: "destructive",
-        });
-        if (!ok) return;
-        try {
-            await farmsApi.delete(farmId);
-            toast.success(tFarms("farmDeleted"));
-            router.push("/farms");
-        } catch (err: any) {
-            toast.error(err.detail || tFarms("failedDelete"));
-        }
-    };
+    const mapLands: ProjectMapLand[] = useMemo(
+        () => lands.map((land) => ({
+            landId: land.landId,
+            landName: land.landName,
+            areaText: land.areaText,
+            cropText: land.cropText,
+            geometry: land.geometry,
+        })),
+        [lands],
+    );
 
-    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setImporting(true);
-        try {
-            const result = await landsApi.import(farmId, file);
-            toast.success(`Imported ${result.imported} field(s)`);
-            if (result.errors.length > 0) {
-                toast.warning(`${result.errors.length} error(s) during import`);
-            }
-            await loadData();
-        } catch (err: any) {
-            toast.error(err.detail || "Import failed");
-        } finally {
-            setImporting(false);
-            e.target.value = "";
-        }
-    };
+    const openLandDetail = useCallback((landId: string) => {
+        const href = `/farms/fields/detail?groupId=${encodeURIComponent(groupId)}&fieldId=${encodeURIComponent(landId)}`;
+        window.location.assign(href);
+    }, [groupId]);
 
-    const handleDeleteLand = async (landId: string, landName: string) => {
-        const ok = await confirm({
-            title: tFarms("deleteField"),
-            description: tFarms("deleteFieldConfirm", { name: landName }),
-            confirmLabel: tCommon("delete"),
-            variant: "destructive",
-        });
-        if (!ok) return;
-        try {
-            await landsApi.delete(landId);
-            toast.success(tFarms("fieldDeleted"));
-            setLands((prev) => prev.filter((land) => land.land_id !== landId));
-        } catch (err: any) {
-            toast.error(err.detail || tFarms("failedDeleteField"));
+    const handleSelectLand = useCallback((landId: string) => {
+        const current = lands.find((land) => land.landId === landId);
+        setSelectedLandId(landId);
+        if (current && !current.hasBoundary) {
+            toast.info(t("landUnmarked"));
         }
-    };
+    }, [lands, t]);
 
     if (loading) {
         return (
-            <div className="p-6 lg:p-8 max-w-6xl mx-auto">
-                <Skeleton className="h-4 w-32 mb-4" />
-                <Card>
-                    <CardHeader>
-                        <Skeleton className="h-6 w-48" />
-                        <Skeleton className="h-4 w-32" />
-                    </CardHeader>
-                </Card>
-                <Skeleton className="h-5 w-24" />
-                <div className="space-y-2">
-                    {[1, 2, 3].map((i) => (
-                        <Skeleton key={i} className="h-[72px] w-full rounded-lg" />
-                    ))}
-                </div>
+            <div className="fixed inset-x-0 top-14 bottom-0 overflow-hidden">
+                <Skeleton className="h-full w-full rounded-none" />
             </div>
         );
     }
 
-    if (!farm) return null;
+    if (!group) return null;
+
+    const area = group.effectiveArea ?? group.groupArea;
+    const markedCount = lands.filter((land) => land.hasBoundary).length;
 
     return (
-        <div className="p-6 lg:p-8 max-w-6xl mx-auto">
-            {/* Back link */}
-            <Link
-                href="/farms"
-                className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
-            >
-                <ArrowLeft className="h-4 w-4" />
-                {tCreate("backToFarms")}
-            </Link>
+        <div className="fixed inset-x-0 top-14 bottom-0 overflow-hidden">
+            <div className="absolute inset-0">
+                <ProjectLandsMap
+                    lands={mapLands}
+                    selectedLandId={selectedLandId}
+                    groupId={groupId}
+                    onSelect={handleSelectLand}
+                    onViewDetail={openLandDetail}
+                />
+            </div>
 
-            {/* Farm Header */}
-            <Card className="mb-6">
-                {editing ? (
-                    <CardContent className="pt-6">
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="farm-name">{tCreate("farmName")}</Label>
-                                <Input
-                                    id="farm-name"
-                                    value={editName}
-                                    onChange={(e) => setEditName(e.target.value)}
-                                />
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="farm-country">{tCreate("country")}</Label>
-                                    <Input id="farm-country" value={editCountry} onChange={(e) => setEditCountry(e.target.value)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="farm-region">{tCreate("region")}</Label>
-                                    <Input id="farm-region" value={editRegion} onChange={(e) => setEditRegion(e.target.value)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="farm-timezone">{tCreate("timezone")}</Label>
-                                    <Input id="farm-timezone" value={editTimezone} onChange={(e) => setEditTimezone(e.target.value)} />
-                                </div>
-                            </div>
-                            <Separator />
-                            <div className="flex gap-2">
-                                <Button onClick={handleSave} disabled={saving}>
-                                    {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                                    Save
-                                </Button>
-                                <Button variant="outline" onClick={() => setEditing(false)}>
-                                    <X className="h-4 w-4 mr-2" /> Cancel
-                                </Button>
-                            </div>
-                        </div>
-                    </CardContent>
-                ) : (
-                    <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                        <div>
-                            <CardTitle>{farm.name}</CardTitle>
-                            {(farm.region || farm.country) && (
-                                <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-                                    <MapPin className="h-4 w-4" />
-                                    {[farm.region, farm.country].filter(Boolean).join(", ")}
-                                </p>
-                            )}
-                            {farm.timezone && (
-                                <p className="mt-0.5 text-xs text-muted-foreground">Timezone: {farm.timezone}</p>
-                            )}
-                        </div>
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                                <Edit2 className="h-4 w-4 mr-2" /> Edit
-                            </Button>
-                            <Button variant="destructive" size="sm" onClick={handleDelete}>
-                                <Trash2 className="h-4 w-4 mr-2" /> Delete
-                            </Button>
-                        </div>
-                    </CardHeader>
-                )}
-            </Card>
-
-            {/* Fields Section */}
-            <div>
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold">
-                        Land parcels ({lands.length})
-                    </h2>
-                    <div className="flex gap-2">
-                        <Button variant="outline" asChild>
-                            <label className="cursor-pointer">
-                                {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                                Import GeoJSON
-                                <input type="file" accept=".json,.geojson" className="hidden" onChange={handleImport} />
-                            </label>
-                        </Button>
-                        <Button asChild>
-                            <Link href={`/farms/fields/new?farmId=${encodeURIComponent(farmId)}`}>
-                                <Plus className="h-4 w-4 mr-2" />
-                                Draw Field
-                            </Link>
-                        </Button>
+            <div className={cn("absolute top-4 left-4 z-20 flex max-w-[min(36rem,calc(100%-2rem))] items-start gap-2")}>
+                <Link
+                    href="/farms"
+                    className={cn("inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3", MAP_CHROME)}
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    {tCreate("backToFarms")}
+                </Link>
+                <div className={cn("min-w-0 rounded-lg px-4 py-2.5", MAP_CHROME)}>
+                    <p className="truncate text-sm font-semibold">{group.groupName || groupId}</p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                        <span>{t("landCountArea", { count: Number(group.groupNum) || lands.length, area: formatMu(area) })}</span>
+                        <span>{t("markedCount", { count: markedCount })}</span>
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                        <Badge variant="secondary">{groupStatusLabel(group.status)}</Badge>
+                        {group.signStatus != null && group.signStatus !== "" && (
+                            <Badge variant="outline">{signStatusLabel(group)}</Badge>
+                        )}
+                        {group.plantingType != null && group.plantingType !== "" && (
+                            <Badge variant="outline">{plantingTypeLabel(group.plantingType, plantingLabels)}</Badge>
+                        )}
+                        {group.businessCategory && (
+                            <Badge variant="outline">{group.businessCategory}</Badge>
+                        )}
                     </div>
                 </div>
+            </div>
 
-                {lands.length === 0 ? (
-                    <Card className="border-2 border-dashed">
-                        <CardContent className="p-12 text-center">
-                            <Map className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                            <p className="mt-4 text-sm font-medium">{tFarms("noFieldsTitle")}</p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                                {tFarms("noFieldsDesc")}
-                            </p>
-                            <div className="mt-4 flex justify-center gap-3">
-                                <Button variant="outline" asChild>
-                                    <label className="cursor-pointer">
-                                        <Upload className="h-4 w-4 mr-2" /> Import GeoJSON
-                                        <input type="file" accept=".json,.geojson" className="hidden" onChange={handleImport} />
-                                    </label>
-                                </Button>
-                                <Button asChild>
-                                    <Link href={`/farms/fields/new?farmId=${encodeURIComponent(farmId)}`}>
-                                        <Plus className="h-4 w-4 mr-2" /> Draw Field
-                                    </Link>
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <div className="space-y-2">
-                        {lands.map((land) => (
-                            <Card
-                                key={land.land_id}
-                                className={cn("hover:border-primary/30 transition-colors")}
-                            >
-                                <CardContent className="flex items-center justify-between p-4">
-                                    <Link
-                                        href={`/farms/fields/detail?farmId=${encodeURIComponent(farmId)}&fieldId=${encodeURIComponent(land.land_id)}`}
-                                        className="flex-1 flex items-center gap-3"
+            <div className={cn(
+                "absolute z-20 flex flex-col overflow-hidden rounded-lg",
+                "bottom-4 left-4 right-4 h-48",
+                "sm:bottom-auto sm:left-auto sm:top-4 sm:right-4 sm:h-[calc(100%-2rem)] sm:w-[min(20rem,calc(100%-2rem))]",
+                MAP_CHROME,
+            )}>
+                <div className="border-b px-3 py-3">
+                    <p className="text-sm font-semibold">{t("landsTitle", { count: lands.length })}</p>
+                    <div className="relative mt-2">
+                        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            className="h-8 pl-8"
+                            value={landQuery}
+                            onChange={(e) => setLandQuery(e.target.value)}
+                            placeholder={t("searchLands")}
+                        />
+                    </div>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                    {filteredLands.length === 0 ? (
+                        <div className="px-2 py-10 text-center">
+                            <MapIcon className="mx-auto h-8 w-8 text-muted-foreground/40" />
+                            <p className="mt-3 text-sm font-medium">{t("noFieldsTitle")}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{t("noProjectLandsDesc")}</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-1">
+                            {filteredLands.map((land) => {
+                                const active = land.landId === selectedLandId;
+                                return (
+                                    <div
+                                        key={land.landId}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => handleSelectLand(land.landId)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === "Enter" || event.key === " ") {
+                                                event.preventDefault();
+                                                handleSelectLand(land.landId);
+                                            }
+                                        }}
+                                        className={cn(
+                                            "flex w-full cursor-pointer items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
+                                            active ? "bg-primary-subtle" : "hover:bg-accent",
+                                        )}
                                     >
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-subtle">
-                                            <Map className="h-5 w-5 text-primary" />
+                                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle">
+                                            <MapPin className="h-4 w-4 text-primary" />
                                         </div>
-                                        <div>
-                                            <p className="text-sm font-medium">{land.land_name || land.land_id}</p>
-                                            <div className="flex items-center gap-1.5 mt-0.5">
-                                                <span className="text-xs text-muted-foreground">
-                                                    {formatAreaMu(land.area_ha)}
-                                                </span>
-                                                {land.crop_type && <Badge variant="secondary">{land.crop_type}</Badge>}
-                                                {land.season && <Badge variant="outline">{land.season}</Badge>}
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-sm font-medium">{land.landName}</p>
+                                            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                                                {[land.areaText, land.cropText, land.cropStatusName].filter(Boolean).join(" · ")}
+                                            </p>
+                                            <div className="mt-1 flex flex-wrap gap-1">
+                                                {!land.hasBoundary && (
+                                                    <Badge variant="outline">{t("unmarked")}</Badge>
+                                                )}
+                                                {land.hasRemoteSensing && (
+                                                    <Badge variant="secondary">{t("hasRemoteSensing")}</Badge>
+                                                )}
                                             </div>
                                         </div>
-                                    </Link>
-                                    <div className="flex items-center gap-2">
                                         <Button
                                             variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                            onClick={() => handleDeleteLand(land.land_id, land.land_name || land.land_id)}
+                                            size="sm"
+                                            className="h-7 shrink-0 px-2 text-xs"
+                                            asChild
                                         >
-                                            <Trash2 className="h-4 w-4" />
+                                            <Link
+                                                href={`/farms/fields/detail?groupId=${encodeURIComponent(groupId)}&fieldId=${encodeURIComponent(land.landId)}`}
+                                                onClick={(event) => event.stopPropagation()}
+                                            >
+                                                {t("viewDetail")}
+                                            </Link>
                                         </Button>
-                                        <Link href={`/farms/fields/detail?farmId=${encodeURIComponent(farmId)}&fieldId=${encodeURIComponent(land.land_id)}`}>
-                                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                        </Link>
                                     </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                )}
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

@@ -2,24 +2,22 @@
 
 import React, { useEffect, useState } from "react";
 import { Link } from "@/i18n/navigation";
-import { farmsApi, alertsApi } from "@/lib/api";
-import type { Farm, Alert, LandParcel } from "@/lib/api";
+import { alertsApi } from "@/lib/api";
+import type { Alert } from "@/lib/api";
+import { listPlantingGroups, formatMu, type AgricGroup } from "@/lib/agric";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
     FolderKanban,
     Map,
-    Plus,
     ChevronRight,
     Bell,
     CheckCircle2,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { CreateFarmModal } from "@/components/create-farm-modal";
 import { AlertRow } from "@/components/alert-row";
 import { cn } from "@/lib/utils";
-import { formatAreaMu } from "@/lib/area";
 
 /** How many alert rows the panel shows before deferring to the alerts page. */
 const ALERT_PREVIEW = 4;
@@ -29,16 +27,11 @@ const ALERT_PREVIEW = 4;
  *  of dead space inside the card. */
 const FARM_PREVIEW = 4;
 
-/** Field count and total area per farm, so a row carries its own numbers. */
-interface FarmStats {
-    fieldCount: number;
-    areaHa: number;
-}
-
 export default function DashboardPage() {
     const t = useTranslations("dashboard");
-    const [farms, setFarms] = useState<Farm[]>([]);
-    const [farmStats, setFarmStats] = useState<Record<string, FarmStats>>({});
+    const [groups, setGroups] = useState<AgricGroup[]>([]);
+    const [groupTotal, setGroupTotal] = useState(0);
+    const [fieldTotal, setFieldTotal] = useState(0);
     const [openAlerts, setOpenAlerts] = useState<Alert[]>([]);
     const [openAlertTotal, setOpenAlertTotal] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -49,39 +42,16 @@ export default function DashboardPage() {
         (async () => {
             setLoading(true);
             try {
-                const [farmRes, alertRes] = await Promise.all([
-                    farmsApi.list(10, 0),
+                const [groupRes, alertRes] = await Promise.all([
+                    listPlantingGroups({ pageNum: 1, pageSize: 10 }),
                     alertsApi.list({ status: "open", limit: 10 }),
                 ]);
                 if (cancelled) return;
-                setFarms(farmRes.items);
+                setGroups(groupRes.rows);
+                setGroupTotal(groupRes.total);
+                setFieldTotal(groupRes.rows.reduce((sum, group) => sum + (Number(group.groupNum) || 0), 0));
                 setOpenAlerts(alertRes.items);
-                // The list is capped at 10 rows; the metric must count them all.
                 setOpenAlertTotal(alertRes.total);
-
-                // One request per farm, for the count and the hectares each
-                // row carries. The alert rows below get their field and farm
-                // names from the API now, so nothing else needs this.
-                const perFarm = await Promise.all(
-                    farmRes.items.map(async (f) => {
-                        try {
-                            const r = await farmsApi.lands(f.id, 200, 0);
-                            return { farm: f, total: r.total, items: r.items };
-                        } catch {
-                            return { farm: f, total: 0, items: [] as LandParcel[] };
-                        }
-                    }),
-                );
-                if (cancelled) return;
-
-                const stats: Record<string, FarmStats> = {};
-                for (const { farm, total, items } of perFarm) {
-                    stats[farm.id] = {
-                        fieldCount: total,
-                        areaHa: items.reduce((sum, f) => sum + (f.area_ha ?? 0), 0),
-                    };
-                }
-                setFarmStats(stats);
             } catch (err) {
                 console.error("Dashboard load failed:", err);
             } finally {
@@ -131,12 +101,12 @@ export default function DashboardPage() {
                 <StatCard
                     icon={<FolderKanban className="h-5 w-5 text-primary" />}
                     label={t("farms")}
-                    value={farms.length}
+                    value={groupTotal}
                 />
                 <StatCard
                     icon={<Map className="h-5 w-5 text-primary" />}
                     label={t("fields")}
-                    value={Object.values(farmStats).reduce((s, x) => s + x.fieldCount, 0)}
+                    value={fieldTotal}
                     sublabel={t("acrossAllFarms")}
                 />
                 <StatCard
@@ -157,39 +127,32 @@ export default function DashboardPage() {
                     <Card className="flex flex-col lg:flex-1">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0">
                             <CardTitle>{t("yourFarms")}</CardTitle>
-                            <CreateFarmModal>
-                                <Button variant="link" className="h-auto p-0">
-                                    <Plus className="h-4 w-4" /> {t("newFarm")}
-                                </Button>
-                            </CreateFarmModal>
+                            <Button variant="link" className="h-auto p-0" asChild>
+                                <Link href="/farms">{t("viewAllFarms")}</Link>
+                            </Button>
                         </CardHeader>
                         <CardContent className="flex-1">
-                            {farms.length === 0 ? (
+                            {groups.length === 0 ? (
                                 <div className="rounded-lg border-2 border-dashed p-12 text-center">
                                     <FolderKanban className="mx-auto h-12 w-12 text-muted-foreground/40" />
                                     <p className="mt-4 text-sm font-medium">{t("noFarmsYet")}</p>
                                     <p className="mt-1 text-sm text-muted-foreground">
-                                        {t("createFirstFarm")}
+                                        {t("noGroupsYet")}
                                     </p>
-                                    <CreateFarmModal>
-                                        <Button className="mt-4">
-                                            <Plus className="h-4 w-4" />
-                                            {t("createFarm")}
-                                        </Button>
-                                    </CreateFarmModal>
+                                    <Button className="mt-4" asChild>
+                                        <Link href="/farms">{t("viewAllFarms")}</Link>
+                                    </Button>
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-2">
-                                    {farms.slice(0, FARM_PREVIEW).map((farm) => (
-                                        <FarmRow
-                                            key={farm.id}
-                                            farm={farm}
-                                            stats={farmStats[farm.id]}
-                                            noLocationLabel={t("noLocation")}
+                                    {groups.slice(0, FARM_PREVIEW).map((group) => (
+                                        <GroupRow
+                                            key={String(group.groupId)}
+                                            group={group}
                                             fieldCountLabel={(count) => t("fieldCount", { count })}
                                         />
                                     ))}
-                                    {farms.length > FARM_PREVIEW && (
+                                    {groups.length > FARM_PREVIEW && (
                                         <Link
                                             href="/farms"
                                             className="mt-1 inline-flex items-center gap-1 text-[13px] font-medium text-primary hover:text-primary/80"
@@ -211,18 +174,16 @@ export default function DashboardPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <CreateFarmModal>
-                                    <button
-                                        type="button"
-                                        className="flex items-center gap-3 rounded-lg border p-4 hover:border-primary/30 hover:bg-primary-subtle transition-colors text-left w-full"
-                                    >
-                                        <IconWell><Plus className="h-5 w-5 text-primary" /></IconWell>
-                                        <div>
-                                            <p className="text-sm font-medium">{t("createFarm")}</p>
-                                            <p className="mt-0.5 text-[11px] text-muted-foreground">{t("addFarmDesc")}</p>
-                                        </div>
-                                    </button>
-                                </CreateFarmModal>
+                                <Link
+                                    href="/farms"
+                                    className="flex items-center gap-3 rounded-lg border p-4 hover:border-primary/30 hover:bg-primary-subtle transition-colors text-left w-full"
+                                >
+                                    <IconWell><FolderKanban className="h-5 w-5 text-primary" /></IconWell>
+                                    <div>
+                                        <p className="text-sm font-medium">{t("viewAllFarms")}</p>
+                                        <p className="mt-0.5 text-[11px] text-muted-foreground">{t("browseGroupsDesc")}</p>
+                                    </div>
+                                </Link>
                             </div>
                         </CardContent>
                     </Card>
@@ -324,44 +285,32 @@ function StatCard({
     );
 }
 
-/** A farm row that shows only a name wastes the row: it carries its
- *  region, its field count and its area, measured values in mono. */
-function FarmRow({
-    farm,
-    stats,
-    noLocationLabel,
+function GroupRow({
+    group,
     fieldCountLabel,
 }: {
-    farm: Farm;
-    stats?: FarmStats;
-    noLocationLabel: string;
+    group: AgricGroup;
     fieldCountLabel: (count: number) => string;
 }) {
-    const location = [farm.region, farm.country].filter(Boolean).join(", ");
+    const groupId = String(group.groupId);
+    const fieldCount = Number(group.groupNum) || 0;
+    const areaText = formatMu(group.effectiveArea ?? group.groupArea);
 
     return (
         <Link
-            href={`/farms/detail?farmId=${encodeURIComponent(farm.id)}`}
+            href={`/farms/detail?groupId=${encodeURIComponent(groupId)}`}
             className="flex items-center justify-between gap-3 rounded-lg border p-4 hover:border-primary/30 hover:shadow-md transition-all"
         >
             <div className="flex min-w-0 items-center gap-3">
                 <IconWell><FolderKanban className="h-5 w-5 text-primary" /></IconWell>
                 <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{farm.name}</p>
+                    <p className="truncate text-sm font-medium">{group.groupName || groupId}</p>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {location || noLocationLabel}
-                        {stats && (
+                        {fieldCountLabel(fieldCount)}
+                        {areaText !== "—" && (
                             <>
                                 {" · "}
-                                {fieldCountLabel(stats.fieldCount)}
-                                {stats.areaHa > 0 && (
-                                    <>
-                                        {" · "}
-                                        <span className="font-mono tabular-nums">
-                                            {formatAreaMu(stats.areaHa)}
-                                        </span>
-                                    </>
-                                )}
+                                <span className="font-mono tabular-nums">{areaText}</span>
                             </>
                         )}
                     </p>

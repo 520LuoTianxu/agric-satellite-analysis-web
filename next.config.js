@@ -31,11 +31,12 @@ const nextConfig = {
 if (process.env.NODE_ENV === "production") {
     nextConfig.output = "export";
 } else {
-    // 静态导出没有 rewrite。本地 next dev 把 /bapi、/agric-api 转到乡合网关，登录才能打到同源接口。
+    // 静态导出没有 rewrite。本地 next dev 把乡合登录接口和卫星分析 API 转到测试网关。
     nextConfig.rewrites = async () => [
         { source: "/bapi/:path*", destination: `${JOINT_VENTURE_PROXY}/bapi/:path*` },
         { source: "/agric-api/:path*", destination: `${JOINT_VENTURE_PROXY}/agric-api/:path*` },
         { source: "/admin-api/:path*", destination: `${JOINT_VENTURE_PROXY}/admin-api/:path*` },
+        { source: "/satellite-api/:path*", destination: `${JOINT_VENTURE_PROXY}/satellite-api/:path*` },
         // next-intl as-needed：开发时把无前缀路径转到默认语言，生产由 prepare-static-output 复制 out/zh。
         { source: "/", destination: "/zh" },
         {
