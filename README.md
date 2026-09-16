@@ -23,11 +23,11 @@ python scripts/check-i18n-keys.py
 
 ## 静态部署
 
-本项目使用 Next.js 静态导出，构建产物为 `out/`，不需要启动 Node 服务。部署到子路径时，必须在构建前设置路径前缀，并让 Nginx 将同路径下的 `/v1/` 请求转发到后端：
+本项目使用 Next.js 静态导出，构建产物为 `out/`，不需要启动 Node 服务。部署到子路径时，必须在构建前设置路径前缀，并让 Nginx 将统一的 `/satellite-api/` 请求转发到后端的 `/v1/` 接口：
 
 ```bash
 export NEXT_PUBLIC_BASE_PATH=/agric-satellite-analysis-web
-export NEXT_PUBLIC_API_URL=/agric-satellite-analysis-web/v1
+export NEXT_PUBLIC_API_URL=/satellite-api
 export NEXT_PUBLIC_SITE_URL=https://joint-venture-test.cdfinance.com.cn/agric-satellite-analysis-web
 rm -rf node_modules && rm -rf .next && rm -rf out && npm install && npm run build
 ```

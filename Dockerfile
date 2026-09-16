@@ -11,7 +11,7 @@ FROM base AS builder
 WORKDIR /app
 
 # NEXT_PUBLIC_* vars must be present at build time (inlined by Next.js)
-ARG NEXT_PUBLIC_API_URL=/v1
+ARG NEXT_PUBLIC_API_URL=/satellite-api
 ARG NEXT_PUBLIC_BASE_PATH=
 ARG NEXT_PUBLIC_TITILER_URL=http://localhost:8080
 ARG NEXT_PUBLIC_PROTOMAPS_URL=http://localhost:9000/openfarm/basemap

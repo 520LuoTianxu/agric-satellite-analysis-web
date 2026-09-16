@@ -7,18 +7,21 @@
 
 /**
  * Resolve API base URL.
- * In a static deployment, use the same-origin `/v1` path and let Nginx proxy it
- * to the backend service; this keeps browser requests on the frontend origin.
+ * In a static deployment, use the same-origin `/satellite-api` gateway and let
+ * Nginx proxy it to the FastAPI `/v1` routes; this keeps browser requests on
+ * the frontend origin and gives every frontend API call one stable prefix.
  */
 export function getApiBase(): string {
     const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
-    const defaultApi = basePath ? `${basePath}/v1` : "/v1";
+    const defaultApi = "/satellite-api";
     const raw = process.env.NEXT_PUBLIC_API_URL || defaultApi;
     if (typeof window !== "undefined") {
         if (raw.startsWith("/")) {
-            // 子路径部署时，兼容平台仍填默认 /v1 的情况，避免请求落到域名根路径。
+            // 兼容旧构建参数 /v1 和 /{frontend-prefix}/v1，统一切换到新的 API 网关前缀。
             const normalized = raw.replace(/\/$/, "");
-            return normalized === "/v1" && basePath ? defaultApi : normalized || defaultApi;
+            const legacyPaths = new Set(["/v1", basePath ? `${basePath}/v1` : ""]);
+            legacyPaths.delete("");
+            return legacyPaths.has(normalized) ? defaultApi : normalized || defaultApi;
         }
         try {
             const u = new URL(raw);
