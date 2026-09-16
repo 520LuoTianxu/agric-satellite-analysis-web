@@ -5,6 +5,7 @@
     "scripts": {
         "dev": "next dev",
         "build": "npm run lint && npm run type-check && next build",
+        "postbuild": "node scripts/prepare-standalone.js",
         "start": "next start",
         "lint": "next lint --max-warnings 0",
         "type-check": "tsc --noEmit"
