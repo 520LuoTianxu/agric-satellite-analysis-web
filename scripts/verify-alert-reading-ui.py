@@ -22,16 +22,23 @@ errors = []
 
 
 def install(context, user="alice", base="38"):
+    account_id = 209 if user == "alice" else 210
     login = {
-        "agricToken": f"qa-{user}", "villageToken": "qa-village",
         "certifiedExternalSystems": [{"systemType": 2, "systemId": base}],
-        "accountRoleList": [{"accountRoleId": 1, "shopName": "预警验收租户", "mainAccountFlag": 1}],
+        # 第一项账号与当前选中角色不同，验证个人已读固定取第一项 accountId。
+        "accountRoleList": [
+            {"accountRoleId": 1, "accountId": account_id, "shopName": "预警验收租户"},
+            {"accountRoleId": 2, "accountId": 999, "shopName": "当前角色", "mainAccountFlag": 1},
+        ],
     }
+    # Alice 没有农业 token，Bob 的 token 无效；两人都应正常访问预警。
+    if user == "bob":
+        login["agricToken"] = "expired-invalid-token"
     context.add_init_script(
         f"if (location.origin === {json.dumps(BASE.rstrip('/'))}) {{"
         f"localStorage.setItem('jointLoginData',JSON.stringify({json.dumps(login)}));"
-        "localStorage.setItem('activeAccountRoleId','1');"
-        "localStorage.setItem('agric:remote-sensing-guide:v3:1','seen');"
+        "localStorage.setItem('activeAccountRoleId','2');"
+        "localStorage.setItem('agric:remote-sensing-guide:v3:2','seen');"
         "localStorage.setItem('theme','light');"
         "}"
     )
@@ -42,7 +49,8 @@ def install(context, user="alice", base="38"):
         url = urlparse(request.url)
         path = url.path.rstrip("/")
         if "/satellite-api/alerts" in path:
-            assert request.headers.get("authorization") == f"Bearer qa-{user}"
+            assert "authorization" not in request.headers
+            assert request.headers.get("x-account-id") == str(account_id)
             assert request.headers.get("hr-base-id") == base
             seen = reads.setdefault((user, base), set())
             total = counts[base]
@@ -141,4 +149,4 @@ with sync_playwright() as playwright:
         separate.close()
     assert not errors, errors
     browser.close()
-print(f"PASS: 单条/跨页全部已读、刷新保持、不同用户/基地、失败保持未读、0/1/99/100 边界、移动端。截图：{OUTPUT}")
+print(f"PASS: 无农业 token/无效 token、首项 accountId、单条/跨页全部已读、刷新保持、不同用户/基地、失败保持未读、0/1/99/100 边界、移动端。截图：{OUTPUT}")

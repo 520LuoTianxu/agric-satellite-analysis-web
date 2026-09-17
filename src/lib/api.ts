@@ -987,21 +987,21 @@ export const projectsApi = {
         ),
 };
 
-/** 预警单独接入农业登录；用户 ID 由后端验证 token 获取，不接受浏览器指定。 */
+/** 预警使用联合登录的基地和账号 ID，后端无需解析或校验农业 token。 */
 async function alertFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
     const session = getAlertSession();
-    if (!session) throw new ApiError(401, "缺少有效登录或租户基地，请重新登录");
+    if (!session) throw new ApiError(400, "缺少有效的租户基地或账号 ID，请检查联合登录数据");
     const result = await apiFetch<T>(path, {
         ...opts,
         headers: {
             ...opts.headers,
-            Authorization: `Bearer ${session.token}`,
             "Hr-Base-Id": session.baseId,
+            "X-Account-Id": session.accountId,
         },
     });
     // 只在服务端写入成功后刷新角标，失败不能让页面误以为已读。
     if (opts.method && opts.method !== "GET") {
-        void mutateCache(["alert-summary", session.baseId, session.token]).catch(() => undefined);
+        void mutateCache(["alert-summary", session.baseId, session.accountId]).catch(() => undefined);
     }
     return result;
 }
