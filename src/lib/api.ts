@@ -784,13 +784,47 @@ export interface AssessmentGenerateBody {
     hr_base_id?: string | number;
 }
 
+async function readPdfResponse(res: Response, errorMessage: string): Promise<Uint8Array> {
+    if (!res.ok) {
+        let detail = res.statusText;
+        try {
+            detail = (await res.text()) || detail;
+        } catch {
+            /* ignore response parsing failure */
+        }
+        throw new ApiError(res.status, detail || errorMessage);
+    }
+
+    const data = new Uint8Array(await res.arrayBuffer());
+    // API 错误页或 OSS 鉴权页也可能返回 200，先校验 PDF 文件头再交给 pdf.js。
+    const header = new TextDecoder().decode(data.subarray(0, 5));
+    if (header !== "%PDF-") {
+        throw new Error(errorMessage + ": response is not a PDF");
+    }
+    return data;
+}
+
 export const assessmentApi = {
     latestReportMeta: () => apiFetch<NdviJob>("/assessment-reports/latest/meta"),
     /** 前端自行渲染 PDF，兼容只保存了 PDF 的历史报告。 */
     latestPdf: async (landId: string, signal?: AbortSignal) => {
         const res = await fetch(`${getApiBase()}/lands/${encodeURIComponent(landId)}/assessment-report/latest`, { signal });
-        if (!res.ok) throw new ApiError(res.status, "Report preview failed");
-        return new Uint8Array(await res.arrayBuffer());
+        return readPdfResponse(res, "Report preview failed");
+    },
+    /** 优先从报告元数据中的 OSS 地址读取；支持普通公开 URL 和已签名 GET URL。 */
+    latestPdfFromUrl: async (url: string, signal?: AbortSignal) => {
+        const target = typeof window !== "undefined"
+            ? new URL(url, window.location.origin)
+            : new URL(url);
+        if (target.protocol !== "http:" && target.protocol !== "https:") {
+            throw new Error("Report preview URL must use HTTP(S)");
+        }
+        // OSS 直链不需要携带当前站点 Cookie，避免跨域请求触发不必要的凭证限制。
+        const res = await fetch(target.toString(), {
+            signal,
+            credentials: "omit",
+        });
+        return readPdfResponse(res, "OSS report preview failed");
     },
     generate: (landId: string, body?: AssessmentGenerateBody) =>
         apiFetch<NdviJob>(`/lands/${landId}/assessment-report`, {

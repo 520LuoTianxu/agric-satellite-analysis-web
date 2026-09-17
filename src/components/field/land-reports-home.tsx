@@ -115,7 +115,7 @@ export default function LandReportsHome() {
                             <div><h2 className="font-semibold">{land.land_name || land.land_id}</h2><p className="text-xs text-muted-foreground">{land.group_name}</p></div>
                             <Button variant="outline" size="sm" asChild><Link href={`/farms/fields/detail?fieldId=${encodeURIComponent(land.land_id)}&farmId=${encodeURIComponent(land.farm_id || "")}&groupId=${encodeURIComponent(land.group_id || "")}`}>{t("viewLand")}</Link></Button>
                         </div>
-                        <LandReportTab key={land.land_id} landId={land.land_id} cropType={land.crop_type} showSeasonGrowth={false}
+                        <LandReportTab key={land.land_id} landId={land.land_id} groupId={land.group_id} cropType={land.crop_type}
                             onCropBound={key => setLand(previous => previous ? { ...previous, crop_type: key } : previous)} />
                     </div>
                 ) : <div className="p-12 text-center text-sm text-muted-foreground">{t("selectHint")}</div>}

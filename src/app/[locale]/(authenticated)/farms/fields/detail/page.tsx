@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import React, { Suspense, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
 import dynamic from "next/dynamic";
@@ -19,6 +19,7 @@ import {
     Layers,
     Loader2,
     Save,
+    Search,
     X,
     Bell,
     ClipboardList,
@@ -60,16 +61,19 @@ const NdviTab = dynamic(() => import("@/components/field/ndvi-tab"), {
     ),
 });
 
-const LocationSearch = dynamic(() => import("@/components/map/location-search"), {
-    ssr: false,
-});
-
 const MapStyleSwitcher = dynamic(() => import("@/components/map/map-style-switcher"), {
     ssr: false,
 });
 
 /** Satellite codes as stored by the pipeline, expanded for the reader. */
 const SATELLITE_LABELS: Record<string, string> = { S2: "Sentinel-2 L2A" };
+
+const DETAIL_PROJECT_LANDS_SOURCE = "detail-project-lands";
+const DETAIL_PROJECT_LANDS_FILL = "detail-project-lands-fill";
+const DETAIL_PROJECT_LANDS_LINE = "detail-project-lands-line";
+const DETAIL_PROJECT_LAND_SELECTED_SOURCE = "detail-project-land-selected";
+const DETAIL_PROJECT_LAND_SELECTED_FILL = "detail-project-land-selected-fill";
+const DETAIL_PROJECT_LAND_SELECTED_LINE = "detail-project-land-selected-line";
 
 const NdviLegend = dynamic(() => import("@/components/field/ndvi-legend"), {
     ssr: false,
@@ -130,6 +134,17 @@ const SoilTab = dynamic(() => import("@/components/field/soil-tab"), {
     loading: () => (
         <div className="flex items-center justify-center py-8">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+    ),
+});
+
+// 生育期长势独立成页签并按需加载，避免和选地报告、土壤页重复展示大表单。
+const SeasonGrowthReportTab = dynamic(() => import("@/components/field/season-growth-report-tab"), {
+    ssr: false,
+    loading: () => (
+        <div className="p-4 space-y-3">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-24 w-full" />
         </div>
     ),
 });
@@ -209,6 +224,24 @@ function computeGeomBounds(geom: GeoJSON.Geometry): [number, number, number, num
     return [minLng, minLat, maxLng, maxLat];
 }
 
+function projectLandFeatureCollection(
+    lands: LandParcel[],
+    selectedLandId: string,
+    showAll: boolean,
+): GeoJSON.FeatureCollection {
+    return {
+        type: "FeatureCollection",
+        // 当前地块使用更醒目的独立边界图层，查看全部模式才绘制其他地块供直接点击切换。
+        features: lands
+            .filter((item) => showAll && item.land_id !== selectedLandId && item.boundary_geojson)
+            .map((item) => ({
+                type: "Feature",
+                properties: { landId: item.land_id },
+                geometry: item.boundary_geojson,
+            })),
+    };
+}
+
 const PANEL_WIDTH_STORAGE_KEY = "openfarm.fieldPanelWidthPx";
 const PANEL_WIDTH_DEFAULT_PX = 400; // 为图表和双列信息保留阅读宽度
 const PANEL_WIDTH_MIN_PX = 288; // 18rem
@@ -225,6 +258,11 @@ function clampPanelWidthPx(px: number): number {
 
 function FieldDetailPageContent() {
     const t = useTranslations("fieldDetail");
+    const seasonGrowthT = useTranslations("seasonGrowthReport");
+    // 兼容旧版静态消息产物：新短标题缺失时，回退到已存在的报告标题，避免显示翻译键名。
+    const seasonGrowthTabLabel = t.has("tabSeasonGrowth")
+        ? t("tabSeasonGrowth")
+        : seasonGrowthT("title");
     const searchParams = useSearchParams();
     const router = useRouter();
     const farmId = searchParams.get("farmId") || "";
@@ -284,6 +322,28 @@ function FieldDetailPageContent() {
 
     // Available index types (only indices with computed layers)
     const [availableTypes, setAvailableTypes] = useState<IndexType[]>([]);
+    const [projectLands, setProjectLands] = useState<LandParcel[]>([]);
+    const [projectLandsLoading, setProjectLandsLoading] = useState(false);
+    const [showAllProjectLands, setShowAllProjectLands] = useState(false);
+    const [projectLandQuery, setProjectLandQuery] = useState("");
+    const [projectLandListOpen, setProjectLandListOpen] = useState(false);
+    const [pendingProjectLandId, setPendingProjectLandId] = useState<string | null>(null);
+
+    const pendingProjectLand = pendingProjectLandId
+        ? projectLands.find((item) => item.land_id === pendingProjectLandId) ?? null
+        : null;
+
+    const filteredProjectLands = useMemo(() => {
+        const query = projectLandQuery.trim().toLocaleLowerCase();
+        if (!query) return projectLands;
+
+        // 只按当前项目地块的名称和编号筛选，避免搜索框再次触发地图位置检索。
+        return projectLands.filter((item) =>
+            [item.land_name, item.land_id].some((value) =>
+                String(value ?? "").toLocaleLowerCase().includes(query),
+            ),
+        );
+    }, [projectLandQuery, projectLands]);
 
     // Keyboard shortcut: toggle sidebar with Cmd/Ctrl + .
     useEffect(() => {
@@ -381,7 +441,8 @@ function FieldDetailPageContent() {
         if (!landId) return;
         monitoringApi.layerTypes(landId).then((types) => {
             const upper = new Set(types.map((t) => t.toUpperCase() as IndexType));
-            const sorted = ALL_INDEX_TYPES.filter((t) => upper.has(t));
+            // 地图快捷切换只保留 NDVI 等当前需要的入口，EVI 仍可随任务计算但不在此处展示点击项。
+            const sorted = ALL_INDEX_TYPES.filter((t) => t !== "EVI" && upper.has(t));
             setAvailableTypes(sorted);
         }).catch(() => { });
     }, [landId]);
@@ -412,6 +473,13 @@ function FieldDetailPageContent() {
             return;
         }
 
+        setLoading(true);
+        setMapInstance(null);
+        setProjectLands([]);
+        setIndexLayer(null);
+        setAgriHeatmap(null);
+        setAvailableTypes([]);
+        setActiveIndexType("NDVI");
         try {
             const f = await landsApi.get(landId);
             setLand(f);
@@ -431,6 +499,89 @@ function FieldDetailPageContent() {
     useEffect(() => {
         loadField();
     }, [loadField]);
+
+    useEffect(() => {
+        if (!land || land.land_id !== landId) return;
+
+        const scopeGroupId = groupId || land.group_id;
+        const scopeFarmId = farmId || land.farm_id;
+        let cancelled = false;
+        setProjectLandsLoading(true);
+
+        // 优先按项目 group_id 查询；没有项目组 ID 时再按 farm_id 查询，避免把其他项目地块混入地图。
+        const loadProjectLands = async () => {
+            if (!scopeFarmId && !scopeGroupId) {
+                setProjectLands([land]);
+                setProjectLandsLoading(false);
+                return;
+            }
+
+            try {
+                const scope = scopeGroupId
+                    ? { group_id: scopeGroupId }
+                    : { farm_id: scopeFarmId || undefined };
+                const pageSize = 200;
+                const items: LandParcel[] = [];
+                let offset = 0;
+                let total = 0;
+
+                // 分页拉取完整项目地块，确保地图和选择框不只显示第一页。
+                do {
+                    const result = await landsApi.list({ ...scope, limit: pageSize, offset });
+                    items.push(...result.items);
+                    total = result.total;
+                    if (!result.items.length) break;
+                    offset += result.items.length;
+                } while (items.length < total);
+
+                if (cancelled) return;
+                const byId = new Map<string, LandParcel>();
+                byId.set(land.land_id, land);
+                items.forEach((item) => byId.set(item.land_id, item));
+                setProjectLands(Array.from(byId.values()));
+            } catch {
+                if (!cancelled) setProjectLands([land]);
+            } finally {
+                if (!cancelled) setProjectLandsLoading(false);
+            }
+        };
+
+        void loadProjectLands();
+        return () => {
+            cancelled = true;
+        };
+    }, [land, landId, farmId, groupId]);
+
+    const switchToLand = useCallback((nextLandId: string) => {
+        if (!nextLandId || nextLandId === landId) return;
+        const nextLand = projectLands.find((item) => item.land_id === nextLandId);
+        const nextFarmId = nextLand?.farm_id || land?.farm_id || farmId;
+        const nextGroupId = nextLand?.group_id || land?.group_id || groupId;
+        const params = new URLSearchParams({ fieldId: nextLandId });
+        if (nextFarmId) params.set("farmId", nextFarmId);
+        if (nextGroupId) params.set("groupId", nextGroupId);
+
+        // 切换完成后收起搜索结果，避免新地块页面仍保留旧的下拉状态。
+        setPendingProjectLandId(null);
+        setProjectLandListOpen(false);
+        setProjectLandQuery("");
+
+        // 复用同一详情页路由切换地块，侧边栏所有报告、土壤和气象数据会随 land_id 重新加载。
+        router.push(`/farms/fields/detail?${params.toString()}`);
+    }, [farmId, groupId, land, landId, projectLands, router]);
+
+    const confirmProjectLandSwitch = useCallback(() => {
+        if (!pendingProjectLandId) return;
+
+        const nextLandId = pendingProjectLandId;
+        // 地图点击先只产生待切换状态，确认后才改变路由，避免用户误触后侧边栏突然切换。
+        setPendingProjectLandId(null);
+        switchToLand(nextLandId);
+    }, [pendingProjectLandId, switchToLand]);
+
+    const cancelProjectLandSwitch = useCallback(() => {
+        setPendingProjectLandId(null);
+    }, []);
 
     const clearAgriHeatmapLayers = useCallback((map: maplibregl.Map) => {
         // Cancel any in-flight canvas.toBlob → ImageSource apply
@@ -593,16 +744,88 @@ function FieldDetailPageContent() {
     // When agri 色斑图 is active: field fill opacity 0; continuous image film sits above fill, below outline.
     const setupMapLayers = useCallback((map: maplibregl.Map) => {
         const f = landRef.current;
-        if (!f?.boundary_geojson) return;
+        const projectFeatures = projectLandFeatureCollection(
+            projectLands,
+            f?.land_id || "",
+            showAllProjectLands,
+        );
+        const selectedProjectFeatures = projectLandFeatureCollection(
+            pendingProjectLand ? [pendingProjectLand] : [],
+            f?.land_id || "",
+            Boolean(pendingProjectLand),
+        );
+        if (!f?.boundary_geojson && !projectFeatures.features.length && !selectedProjectFeatures.features.length) return;
 
         const hm = agriHeatmapRef.current;
         // Remove existing layers/source first to avoid stale state / wrong z-order
         try {
             clearAgriHeatmapLayers(map);
         } catch { /* ignore */ }
+        if (map.getLayer(DETAIL_PROJECT_LANDS_LINE)) map.removeLayer(DETAIL_PROJECT_LANDS_LINE);
+        if (map.getLayer(DETAIL_PROJECT_LANDS_FILL)) map.removeLayer(DETAIL_PROJECT_LANDS_FILL);
+        if (map.getSource(DETAIL_PROJECT_LANDS_SOURCE)) map.removeSource(DETAIL_PROJECT_LANDS_SOURCE);
+        if (map.getLayer(DETAIL_PROJECT_LAND_SELECTED_LINE)) map.removeLayer(DETAIL_PROJECT_LAND_SELECTED_LINE);
+        if (map.getLayer(DETAIL_PROJECT_LAND_SELECTED_FILL)) map.removeLayer(DETAIL_PROJECT_LAND_SELECTED_FILL);
+        if (map.getSource(DETAIL_PROJECT_LAND_SELECTED_SOURCE)) map.removeSource(DETAIL_PROJECT_LAND_SELECTED_SOURCE);
         if (map.getLayer("field-outline")) map.removeLayer("field-outline");
         if (map.getLayer("field-fill")) map.removeLayer("field-fill");
         if (map.getSource("field-polygon")) map.removeSource("field-polygon");
+
+        if (projectFeatures.features.length) {
+            map.addSource(DETAIL_PROJECT_LANDS_SOURCE, {
+                type: "geojson",
+                data: projectFeatures,
+            });
+            map.addLayer({
+                id: DETAIL_PROJECT_LANDS_FILL,
+                type: "fill",
+                source: DETAIL_PROJECT_LANDS_SOURCE,
+                paint: {
+                    "fill-color": tokenColor("--map-field-stroke"),
+                    "fill-opacity": 0.08,
+                },
+            });
+            map.addLayer({
+                id: DETAIL_PROJECT_LANDS_LINE,
+                type: "line",
+                source: DETAIL_PROJECT_LANDS_SOURCE,
+                paint: {
+                    "line-color": tokenColor("--muted-foreground"),
+                    "line-width": 1.5,
+                    "line-opacity": 0.85,
+                    "line-dasharray": [2, 1.5],
+                },
+            });
+        }
+
+        if (selectedProjectFeatures.features.length) {
+            map.addSource(DETAIL_PROJECT_LAND_SELECTED_SOURCE, {
+                type: "geojson",
+                data: selectedProjectFeatures,
+            });
+            // 待确认地块单独使用醒目的高亮边界，让用户知道点击后可以确认切换，但不改变当前侧边栏。
+            map.addLayer({
+                id: DETAIL_PROJECT_LAND_SELECTED_FILL,
+                type: "fill",
+                source: DETAIL_PROJECT_LAND_SELECTED_SOURCE,
+                paint: {
+                    "fill-color": tokenColor("--primary"),
+                    "fill-opacity": 0.14,
+                },
+            });
+            map.addLayer({
+                id: DETAIL_PROJECT_LAND_SELECTED_LINE,
+                type: "line",
+                source: DETAIL_PROJECT_LAND_SELECTED_SOURCE,
+                paint: {
+                    "line-color": tokenColor("--primary"),
+                    "line-width": 3,
+                    "line-opacity": 1,
+                },
+            });
+        }
+
+        if (!f?.boundary_geojson) return;
 
         map.addSource("field-polygon", {
             type: "geojson",
@@ -639,7 +862,7 @@ function FieldDetailPageContent() {
             const landGeom = f.boundary_geojson as GeoJSON.Polygon | GeoJSON.MultiPolygon;
             applyAgriHeatmapToMap(map, hm, landGeom, "field-outline");
         }
-    }, [applyAgriHeatmapToMap, clearAgriHeatmapLayers]);
+    }, [applyAgriHeatmapToMap, clearAgriHeatmapLayers, pendingProjectLand, projectLands, showAllProjectLands]);
 
     // 地块应位于可见地图中，右侧分析面板占用的区域不参与居中计算。
     const fitFieldInView = useCallback((map: maplibregl.Map) => {
@@ -661,6 +884,47 @@ function FieldDetailPageContent() {
             duration: 0,
         });
     }, [land, sidebarOpen, panelWidthPx]);
+
+    const fitProjectLandsInView = useCallback((map: maplibregl.Map) => {
+        const bounds = new maplibregl.LngLatBounds();
+        let hasCoordinates = false;
+        projectLands.forEach((item) => {
+            if (!item.boundary_geojson) return;
+            getAllCoords(item.boundary_geojson).forEach(([lng, lat]) => {
+                bounds.extend([lng, lat]);
+                hasCoordinates = true;
+            });
+        });
+        if (!hasCoordinates) return;
+
+        const width = map.getContainer().clientWidth;
+        const height = map.getContainer().clientHeight;
+        const mobile = window.matchMedia("(max-width: 639px)").matches;
+        map.fitBounds(bounds, {
+            padding: {
+                top: 80,
+                bottom: sidebarOpen && mobile ? Math.round(height * 0.52) + 28 : 48,
+                left: 56,
+                right: sidebarOpen && !mobile ? Math.min(panelWidthPx + 48, Math.round(width * 0.65)) : 40,
+            },
+            maxZoom: 16,
+            duration: 0,
+        });
+    }, [panelWidthPx, projectLands, sidebarOpen]);
+
+    const toggleProjectLandsView = useCallback(() => {
+        const nextShowAll = !showAllProjectLands;
+        setPendingProjectLandId(null);
+        setShowAllProjectLands(nextShowAll);
+        if (!mapInstance) return;
+
+        // 切换显示范围时同步调整视野；侧边栏不参与该状态变化，所以仍保留当前地块数据。
+        if (nextShowAll) {
+            fitProjectLandsInView(mapInstance);
+        } else {
+            fitFieldInView(mapInstance);
+        }
+    }, [fitFieldInView, fitProjectLandsInView, mapInstance, showAllProjectLands]);
 
     // Callback from BaseMap when ready
     const handleMapReady = useCallback(
@@ -689,13 +953,34 @@ function FieldDetailPageContent() {
         return () => observer.disconnect();
     }, [land, mapInstance, setupMapLayers, fitFieldInView]);
 
-    // Location search
-    const handleLocationSelect = useCallback(
-        (lngLat: [number, number]) => {
-            mapInstance?.flyTo({ center: lngLat, zoom: 16, duration: 1500 });
-        },
-        [mapInstance],
-    );
+    useEffect(() => {
+        const map = mapInstance;
+        if (!map || !showAllProjectLands || !map.getLayer(DETAIL_PROJECT_LANDS_FILL)) return;
+
+        const onClick = (event: maplibregl.MapMouseEvent) => {
+            const features = map.queryRenderedFeatures(event.point, {
+                layers: [DETAIL_PROJECT_LANDS_FILL],
+            });
+            const nextLandId = String(features[0]?.properties?.landId ?? "");
+            if (nextLandId) setPendingProjectLandId(nextLandId);
+        };
+        const onEnter = () => {
+            map.getCanvas().style.cursor = "pointer";
+        };
+        const onLeave = () => {
+            map.getCanvas().style.cursor = "";
+        };
+
+        // 地图上的其他项目地块先进入待确认状态，确认后再复用详情路由切换，避免误触导致侧边栏突然变化。
+        map.on("click", DETAIL_PROJECT_LANDS_FILL, onClick);
+        map.on("mouseenter", DETAIL_PROJECT_LANDS_FILL, onEnter);
+        map.on("mouseleave", DETAIL_PROJECT_LANDS_FILL, onLeave);
+        return () => {
+            map.off("click", DETAIL_PROJECT_LANDS_FILL, onClick);
+            map.off("mouseenter", DETAIL_PROJECT_LANDS_FILL, onEnter);
+            map.off("mouseleave", DETAIL_PROJECT_LANDS_FILL, onLeave);
+        };
+    }, [mapInstance, showAllProjectLands, setupMapLayers]);
 
     // Map style change - poll isStyleLoaded() to re-add layers reliably
     const handleStyleChange = useCallback(
@@ -833,18 +1118,157 @@ function FieldDetailPageContent() {
                 )}
             </div>
 
-            {/* Top-left: Back + Style Switcher + Search */}
-            <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
-                <Link
-                    href={backHref as "/farms"}
-                    className={cn("inline-flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3", MAP_CHROME)}
-                >
-                    <ArrowLeft className="h-4 w-4" />
-                    {t("backToFarm")}
-                </Link>
-                <MapStyleSwitcher currentStyle={mapStyle} onStyleChange={handleStyleChange} />
-                <LocationSearch onSelect={handleLocationSelect} />
+            {/* Top-left: Back + Style Switcher + project land search */}
+            <div className="absolute top-4 left-4 z-20 flex flex-col items-start gap-2">
+                <div className="flex items-center gap-2">
+                    <Link
+                        href={backHref as "/farms"}
+                        className={cn("inline-flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3", MAP_CHROME)}
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                        {t("backToFarm")}
+                    </Link>
+                    <MapStyleSwitcher currentStyle={mapStyle} onStyleChange={handleStyleChange} />
+                    <div
+                        className="relative"
+                        onBlur={(event) => {
+                            const nextFocused = event.relatedTarget as Node | null;
+                            if (!nextFocused || !event.currentTarget.contains(nextFocused)) {
+                                setProjectLandListOpen(false);
+                            }
+                        }}
+                    >
+                        <div className={cn("relative flex h-10 w-72 max-w-[calc(100vw-2rem)] items-center rounded-lg", MAP_CHROME)}>
+                            <Search className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                value={projectLandQuery}
+                                onChange={(event) => {
+                                    setProjectLandQuery(event.target.value);
+                                    setProjectLandListOpen(true);
+                                }}
+                                onFocus={() => setProjectLandListOpen(true)}
+                                placeholder={t("searchProjectLand")}
+                                aria-label={t("searchProjectLand")}
+                                aria-expanded={projectLandListOpen}
+                                className="h-10 border-0 bg-transparent pl-9 pr-9 text-[13px] shadow-none focus-visible:ring-0"
+                            />
+                            {projectLandQuery && (
+                                <button
+                                    type="button"
+                                    className="absolute right-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-3 hover:text-foreground"
+                                    aria-label={t("clearSearch")}
+                                    onClick={() => {
+                                        setProjectLandQuery("");
+                                        setProjectLandListOpen(false);
+                                    }}
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            )}
+                        </div>
+
+                        {projectLandListOpen && projectLandsLoading && (
+                            <div className={cn("absolute left-0 top-[calc(100%+0.5rem)] z-30 rounded-xl px-3 py-2 text-xs text-muted-foreground", MAP_CHROME)}>
+                                {t("projectLandsLoading")}
+                            </div>
+                        )}
+
+                        {projectLandListOpen && !projectLandsLoading && projectLands.length > 0 && (
+                            <div className={cn("absolute left-0 top-[calc(100%+0.5rem)] z-30 w-72 max-w-[calc(100vw-2rem)] rounded-xl p-2", MAP_CHROME)}>
+                                <p className="px-2 pb-1 text-xs font-medium text-foreground">
+                                    {t("projectLandSelect")} · {projectLands.length}
+                                </p>
+                                <div className="max-h-52 space-y-1 overflow-y-auto pr-1">
+                                    {filteredProjectLands.length > 0 ? filteredProjectLands.map((item) => {
+                                        const selected = item.land_id === landId;
+                                        return (
+                                            <button
+                                                key={item.land_id}
+                                                type="button"
+                                                onClick={() => switchToLand(item.land_id)}
+                                                aria-current={selected ? "page" : undefined}
+                                                className={cn(
+                                                    "w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                                    selected
+                                                        ? "bg-primary text-primary-foreground"
+                                                        : "text-foreground hover:bg-surface-3",
+                                                )}
+                                            >
+                                                <span className="block truncate font-medium">
+                                                    {item.land_name?.trim() || item.land_id}
+                                                </span>
+                                                {item.land_name?.trim() && (
+                                                    <span className="block truncate text-[10px] opacity-75">
+                                                        {item.land_id}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    }) : (
+                                        <p className="px-2 py-3 text-xs text-muted-foreground">
+                                            {t("projectLandNoMatch")}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn("h-10 gap-1.5 px-3 text-[13px]", MAP_CHROME)}
+                        onClick={toggleProjectLandsView}
+                        disabled={!mapInstance || projectLandsLoading || projectLands.length < 2}
+                        aria-label={t(showAllProjectLands ? "showSelectedProjectLand" : "showAllProjectLands")}
+                        title={t(showAllProjectLands ? "showSelectedProjectLand" : "showAllProjectLands")}
+                    >
+                        <Layers className="h-4 w-4" />
+                        <span>{t(showAllProjectLands ? "showSelectedProjectLand" : "showAllProjectLands")}</span>
+                    </Button>
+                </div>
+
             </div>
+
+            {pendingProjectLand && (
+                <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2">
+                    <div
+                        className={cn(
+                            "pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-lg px-3 py-2 shadow-lg",
+                            MAP_CHROME,
+                        )}
+                        role="status"
+                        aria-live="polite"
+                    >
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-primary ring-4 ring-primary/15" />
+                        <div className="min-w-0">
+                            <p className="max-w-44 truncate text-xs font-medium text-foreground">
+                                {pendingProjectLand.land_name?.trim() || pendingProjectLand.land_id}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                                {t("projectLandSwitchHint")}
+                            </p>
+                        </div>
+                        <Button
+                            type="button"
+                            size="sm"
+                            className="h-7 shrink-0 px-2.5 text-xs"
+                            onClick={confirmProjectLandSwitch}
+                        >
+                            {t("switchToProjectLand")}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 shrink-0 px-1.5 text-xs text-muted-foreground"
+                            onClick={cancelProjectLandSwitch}
+                        >
+                            {t("cancelProjectLandSwitch")}
+                        </Button>
+                    </div>
+                </div>
+            )}
 
             {/* Index / agri 色斑 Legend - bottom-left */}
             {(agriHeatmap || indexLayer) && (
@@ -1039,6 +1463,13 @@ function FieldDetailPageContent() {
                             >
                                 {t("tabSoil")}
                             </TabsTrigger>
+                            <TabsTrigger
+                                value="season-growth"
+                                variant="underline"
+                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                            >
+                                {seasonGrowthTabLabel}
+                            </TabsTrigger>
                             </TabsList>
                             {/* 编辑收纳到页签栏右上角，避免操作按钮挤占报告内容区域。 */}
                             <Button
@@ -1155,6 +1586,7 @@ function FieldDetailPageContent() {
                                             <LandReportTab
                                                 key={landId}
                                                 landId={landId}
+                                                groupId={land.group_id}
                                                 cropType={land.crop_type}
                                                 onCropBound={(key) => {
                                                     setLand((prev) => (prev ? { ...prev, crop_type: key } : prev));
@@ -1196,7 +1628,11 @@ function FieldDetailPageContent() {
                                     </TabsContent>
 
                                     <TabsContent value="soil" className="mt-0 p-3">
-                                        <SoilTab landId={landId} mapInstance={mapInstance} activeTab={activeTab} />
+                                        <SoilTab landId={landId} groupId={land.group_id} mapInstance={mapInstance} activeTab={activeTab} />
+                                    </TabsContent>
+
+                                    <TabsContent value="season-growth" className="mt-0">
+                                        <SeasonGrowthReportTab landId={landId} groupId={land.group_id} />
                                     </TabsContent>
 
                                     <TabsContent value="share" className="mt-0">
