@@ -121,6 +121,7 @@ with sync_playwright() as p:
     expect(page.get_by_text("地图展示 3 块", exact=True)).to_be_visible()
     expect(page.get_by_label("项目地块列表").get_by_role("button", name=re.compile("东区 .* 号地块"))).to_have_count(3)
     page.get_by_role("button", name="重置筛选", exact=True).click()
+    page.get_by_role("button", name="展开筛选", exact=True).click()
     page.get_by_label("按作物筛选", exact=True).select_option("玉米")
     expect(statistics.get_by_role("button", name=re.compile("有效监测覆盖率"))).to_contain_text("100.0%")
     page.get_by_label("按风险等级筛选", exact=True).select_option("low")

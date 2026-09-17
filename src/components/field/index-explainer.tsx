@@ -9,7 +9,7 @@ export function IndexExplainer({ index }: { index: string }) {
     const guide = REMOTE_SENSING_GUIDE[key];
 
     return (
-        <section aria-label={`${key.toUpperCase()} 白话说明`} className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs leading-relaxed">
+        <section data-tour="growth-index" aria-label={`${key.toUpperCase()} 白话说明`} className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs leading-relaxed">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-semibold text-foreground">{guide.title}</h3>
                 <AgriIndexGlossary initialKey={key} />

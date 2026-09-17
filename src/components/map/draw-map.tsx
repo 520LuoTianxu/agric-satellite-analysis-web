@@ -88,7 +88,7 @@ export default function DrawMap({
 
         map.addControl(new maplibregl.NavigationControl(), "top-left");
 
-        // My Location button - custom control below nav controls
+        // 自定义定位控件沿用浏览器定位能力，并用明确的定位 SVG 提升地图操作识别度。
         const geolocateCtrl = {
             _container: null as HTMLDivElement | null,
             _marker: null as maplibregl.Marker | null,
@@ -97,8 +97,10 @@ export default function DrawMap({
                 container.className = "maplibregl-ctrl maplibregl-ctrl-group";
                 const btn = document.createElement("button");
                 btn.type = "button";
-                btn.title = "My location";
-                btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>';
+                const locationLabel = t("myLocation");
+                btn.title = locationLabel;
+                btn.setAttribute("aria-label", locationLabel);
+                btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>';
                 btn.addEventListener("click", (e) => {
                     e.stopPropagation();
                     if (!navigator.geolocation) return;

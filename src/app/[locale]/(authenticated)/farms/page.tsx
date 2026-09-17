@@ -321,6 +321,8 @@ export default function FarmsListPage() {
                                 <Link
                                     key={groupId}
                                     href={`/farms/detail?groupId=${encodeURIComponent(groupId)}`}
+                                    data-tour="project-card"
+                                    data-tour-href={`/farms/detail?groupId=${encodeURIComponent(groupId)}`}
                                     className="group min-w-0"
                                 >
                                     <Card className="h-full transition-all hover:border-primary/30 hover:shadow-sm">

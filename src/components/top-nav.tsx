@@ -12,7 +12,6 @@ import { RemoteSensingOnboarding } from "@/components/remote-sensing-onboarding"
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-    { href: "/" as const, labelKey: "landReports" as const },
     { href: "/overview" as const, labelKey: "overview" as const },
     { href: "/farms" as const, labelKey: "projectRemoteSensing" as const },
     { href: "/alerts" as const, labelKey: "alerts" as const },
@@ -52,12 +51,13 @@ export function TopNav() {
                     className="order-3 col-span-2 inline-flex max-w-full items-center justify-self-center overflow-x-auto rounded-full bg-muted p-1 md:order-2 md:col-span-1"
                 >
                     {NAV_ITEMS.map((item) => {
-                        const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                        const active = pathname.startsWith(item.href);
                         const showBadge = item.labelKey === "alerts" && openAlertCount > 0;
                         return (
                             <Link
                                 key={item.href}
                                 href={item.href}
+                                data-tour={item.href === "/farms" ? "nav-farms" : undefined}
                                 className={cn(
                                     "relative shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:text-sm",
                                     active
