@@ -76,7 +76,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Eye, EyeOff, RefreshCw, History, MoreHorizontal, Check, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { reverseDescScenesPage } from "@/lib/agri-scenes-page";
-import { AgriIndexGlossary } from "@/components/field/agri-index-glossary";
+import { IndexExplainer } from "@/components/field/index-explainer";
+import { REMOTE_SENSING_GUIDE } from "@/lib/remote-sensing-guide";
 import { toast } from "sonner";
 import { haToMu } from "@/lib/area";
 import type { DayGradeShare } from "@/components/charts/ndvi-grade-shares-chart";
@@ -117,70 +118,70 @@ const SERIES_META: Record<
         sensor: "S2",
         avgKey: "ndvi_avg",
         chartKey: "ndvi_avg",
-        hint: "植被长势 · 色斑图",
+        hint: REMOTE_SENSING_GUIDE.ndvi.summary,
     },
     evi: {
         label: "EVI（光学）",
         sensor: "S2",
         avgKey: "evi_avg",
         chartKey: "evi_avg",
-        hint: "增强植被指数",
+        hint: REMOTE_SENSING_GUIDE.evi.summary,
     },
     ndmi: {
         label: "NDMI",
         sensor: "S2",
         avgKey: "ndmi_avg",
         chartKey: "ndmi_avg",
-        hint: "水分指数",
+        hint: REMOTE_SENSING_GUIDE.ndmi.summary,
     },
     ndre: {
         label: "NDRE",
         sensor: "S2",
         avgKey: "ndre_avg",
         chartKey: "ndre_avg",
-        hint: "红边指数",
+        hint: REMOTE_SENSING_GUIDE.ndre.summary,
     },
     mndwi: {
         label: "MNDWI",
         sensor: "S2",
         avgKey: "mndwi_avg",
         chartKey: "mndwi_avg",
-        hint: "水体指数",
+        hint: REMOTE_SENSING_GUIDE.mndwi.summary,
     },
     cire: {
         label: "CIRE",
         sensor: "S2",
         avgKey: "cire_avg",
         chartKey: "cire_avg",
-        hint: "叶绿素红边",
+        hint: REMOTE_SENSING_GUIDE.cire.summary,
     },
     vv: {
         label: "VV（雷达）",
         sensor: "S1",
         avgKey: "vv_avg",
         chartKey: "vv_avg",
-        hint: "Sentinel-1 同极化 · 色斑图",
+        hint: REMOTE_SENSING_GUIDE.vv.summary,
     },
     vh: {
         label: "VH（雷达）",
         sensor: "S1",
         avgKey: "vh_avg",
         chartKey: "vh_avg",
-        hint: "Sentinel-1 交叉极化 · 色斑图",
+        hint: REMOTE_SENSING_GUIDE.vh.summary,
     },
     drought: {
         label: "干旱",
         sensor: "S2",
         avgKey: null,
         chartKey: "ndvi_avg",
-        hint: "生育季 6–9 月 · 官方晴空或去云良好 · (NDDI 偏高或同月百分位) 且 (NDMI 干或 NDVI 偏低)",
+        hint: REMOTE_SENSING_GUIDE.drought.summary,
     },
     flood: {
         label: "洪涝",
         sensor: "S1",
         avgKey: null,
         chartKey: "vv_avg",
-        hint: "S1 分轨道 VV 基线：VV≤−17 dB 且下降≥3 dB 且 VH/差分辅助；近阈值为关注。春灌积水可能不是灾害洪涝",
+        hint: REMOTE_SENSING_GUIDE.flood.summary,
     },
 };
 
@@ -1404,10 +1405,6 @@ export default function AgriTimeseriesPanel({
                     <div className="min-w-0 space-y-1">
                         <CardTitle className="flex flex-wrap items-center gap-1.5 text-xs font-semibold tracking-tight">
                             <span>{t("title")}</span>
-                            <AgriIndexGlossary
-                                initialKey={series}
-                                triggerClassName="h-6 ml-0.5 font-normal"
-                            />
                         </CardTitle>
                         <p className="text-[11px] leading-snug text-muted-foreground">
                             {t("subtitle", {
@@ -1446,6 +1443,7 @@ export default function AgriTimeseriesPanel({
                 </div>
             </CardHeader>
             <CardContent className="p-3 space-y-3">
+                <IndexExplainer index={series} />
                 <Dialog open={refreshDateOpen} onOpenChange={setRefreshDateOpen}>
                     <DialogContent className="sm:max-w-lg">
                         <DialogHeader>
@@ -1795,7 +1793,7 @@ export default function AgriTimeseriesPanel({
                                         )}
                                     </div>
                                     <p className="text-[10px] text-muted-foreground leading-snug">
-                                        分档按像元 NDVI：{NDVI_DAY_GRADE_RULE_ZH}；圆环中心为地块面积（亩）。
+                                        把地块分成小格后，按每格的 NDVI 分组：{NDVI_DAY_GRADE_RULE_ZH}。绿色表示植被相对较密，红色表示较稀；苗期、成熟或收割后偏低也可能正常。圆环中心是地块面积（亩）。
                                     </p>
                                     <NdviGradeSharesChart
                                         variant="donut"

@@ -16,6 +16,7 @@ import {
     INDEX_CONFIG,
     ALL_INDEX_TYPES,
 } from "@/lib/api";
+import { IndexExplainer } from "@/components/field/index-explainer";
 import { toast } from "sonner";
 import {
     PlayCircle,
@@ -699,7 +700,8 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
                         </Button>
                     </div>
                 </CardHeader>
-                <CardContent className="px-3 pb-3 pt-0">
+                <CardContent className="px-3 pb-3 pt-0 space-y-3">
+                    <IndexExplainer index={activeIndex} />
                     <NdviChart
                         stats={stats}
                         selectedDate={selectedDate}

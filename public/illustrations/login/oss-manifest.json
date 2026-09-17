@@ -1,0 +1,10 @@
+{
+  "bucket": "agric-dev",
+  "endpoint": "https://oss-cn-beijing.aliyuncs.com",
+  "prefix": "web/illustrations/login/",
+  "base_url": "https://agric-dev.oss-cn-beijing.aliyuncs.com/web/illustrations/login/",
+  "files": {
+    "satellite-fields-20260916.png": "https://agric-dev.oss-cn-beijing.aliyuncs.com/web/illustrations/login/satellite-fields-20260916.png",
+    "satellite-seedling-20260916.png": "https://agric-dev.oss-cn-beijing.aliyuncs.com/web/illustrations/login/satellite-seedling-20260916.png"
+  }
+}

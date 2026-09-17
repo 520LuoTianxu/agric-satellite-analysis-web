@@ -16,7 +16,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         if (!hydrated || session) return;
         const search = typeof window !== "undefined" ? window.location.search : "";
         const target = `${pathname}${search}`;
-        const redirect = pathname && pathname !== "/login" ? target : "/overview";
+        const redirect = pathname && pathname !== "/login" ? target : "/";
         router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
     }, [hydrated, session, pathname, router]);
 

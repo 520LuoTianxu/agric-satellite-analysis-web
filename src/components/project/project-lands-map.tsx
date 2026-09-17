@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import maplibregl from "maplibre-gl";
+import { useTranslations } from "next-intl";
+import { useTheme } from "next-themes";
 import { tokenColor } from "@/lib/design-tokens";
 import { boundsFromGeometries } from "@/lib/land-path";
+import { RISK_TOKENS, type ProjectLand } from "@/lib/project-monitoring";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const BaseMap = dynamic(() => import("@/components/map/base-map"), {
@@ -12,213 +15,143 @@ const BaseMap = dynamic(() => import("@/components/map/base-map"), {
     loading: () => <Skeleton className="h-full w-full rounded-none" />,
 });
 
-export interface ProjectMapLand {
-    landId: string;
-    landName: string;
-    areaText: string;
-    cropText: string;
-    geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
-}
-
 interface ProjectLandsMapProps {
-    lands: ProjectMapLand[];
+    lands: ProjectLand[];
     selectedLandId: string | null;
-    groupId: string;
     onSelect: (landId: string) => void;
-    onViewDetail: (landId: string) => void;
+    fitVersion: number;
 }
 
-const SOURCE_ID = "project-lands";
-const FILL_ID = "project-lands-fill";
-const LINE_ID = "project-lands-line";
-const SELECTED_FILL_ID = "project-lands-selected-fill";
-const SELECTED_LINE_ID = "project-lands-selected-line";
+const SOURCE = "project-lands";
+const FILL = "project-lands-fill";
+const LINE = "project-lands-line";
+const UNKNOWN_LINE = "project-lands-unknown-line";
+const SELECTED_LINE = "project-lands-selected-line";
 
-function toFeatureCollection(lands: ProjectMapLand[]): GeoJSON.FeatureCollection {
+function featureCollection(lands: ProjectLand[]): GeoJSON.FeatureCollection {
+    const colors = Object.fromEntries(Object.entries(RISK_TOKENS).map(([risk, token]) => [risk, tokenColor(token)]));
     return {
         type: "FeatureCollection",
-        features: lands
-            .filter((land) => land.geometry)
-            .map((land) => ({
-                type: "Feature",
-                properties: {
-                    landId: land.landId,
-                    landName: land.landName,
-                    areaText: land.areaText,
-                    cropText: land.cropText,
-                },
-                geometry: land.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon,
-            })),
+        features: lands.filter((land) => land.geometry).map((land) => ({
+            type: "Feature",
+            properties: { landId: land.landId, risk: land.riskLevel, color: colors[land.riskLevel] },
+            geometry: land.geometry!,
+        })),
     };
 }
 
 function ensureLayers(map: maplibregl.Map) {
-    if (map.getSource(SOURCE_ID)) return;
-
-    map.addSource(SOURCE_ID, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-    });
-
-    const fill = tokenColor("--primary", 0.28);
-    const fillSelected = tokenColor("--primary", 0.5);
-    const line = tokenColor("--primary");
-
-    map.addLayer({
-        id: FILL_ID,
-        type: "fill",
-        source: SOURCE_ID,
-        paint: { "fill-color": fill, "fill-opacity": 1 },
-    });
-    map.addLayer({
-        id: LINE_ID,
-        type: "line",
-        source: SOURCE_ID,
-        paint: { "line-color": line, "line-width": 1.6 },
-    });
-    map.addLayer({
-        id: SELECTED_FILL_ID,
-        type: "fill",
-        source: SOURCE_ID,
+    if (map.getSource(SOURCE)) return;
+    map.addSource(SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    map.addLayer({ id: FILL, type: "fill", source: SOURCE,
+        paint: { "fill-color": ["get", "color"], "fill-opacity": 0.22 } });
+    map.addLayer({ id: LINE, type: "line", source: SOURCE,
+        filter: ["!=", ["get", "risk"], "unknown"],
+        paint: { "line-color": ["get", "color"], "line-width": 2 } });
+    map.addLayer({ id: UNKNOWN_LINE, type: "line", source: SOURCE,
+        filter: ["==", ["get", "risk"], "unknown"],
+        paint: { "line-color": ["get", "color"], "line-width": 2, "line-dasharray": [2, 2] } });
+    // 选中状态只加外描边，保留风险填色与边界，避免严重地块选中后失去红色含义。
+    map.addLayer({ id: SELECTED_LINE, type: "line", source: SOURCE,
         filter: ["==", ["get", "landId"], ""],
-        paint: { "fill-color": fillSelected, "fill-opacity": 1 },
-    });
-    map.addLayer({
-        id: SELECTED_LINE_ID,
-        type: "line",
-        source: SOURCE_ID,
-        filter: ["==", ["get", "landId"], ""],
-        paint: { "line-color": "#fff", "line-width": 2.4 },
-    });
+        paint: { "line-color": tokenColor("--foreground"), "line-width": 2, "line-gap-width": 5 } });
 }
 
-export default function ProjectLandsMap({
-    lands,
-    selectedLandId,
-    groupId,
-    onSelect,
-    onViewDetail,
-}: ProjectLandsMapProps) {
+export default function ProjectLandsMap({ lands, selectedLandId, onSelect, fitVersion }: ProjectLandsMapProps) {
+    const t = useTranslations("projectMonitoring");
+    const { resolvedTheme } = useTheme();
+    const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const popupRef = useRef<maplibregl.Popup | null>(null);
     const landsRef = useRef(lands);
+    const selectedRef = useRef(selectedLandId);
     const onSelectRef = useRef(onSelect);
-    const onViewDetailRef = useRef(onViewDetail);
-    const fittedKeyRef = useRef("");
+    const translationRef = useRef(t);
+    const landById = useMemo(() => new Map(lands.map((land) => [land.landId, land])), [lands]);
+    const landByIdRef = useRef(landById);
+    useEffect(() => { landsRef.current = lands; landByIdRef.current = landById; }, [lands, landById]);
+    useEffect(() => { selectedRef.current = selectedLandId; }, [selectedLandId]);
+    useEffect(() => { onSelectRef.current = onSelect; translationRef.current = t; }, [onSelect, t]);
 
-    useEffect(() => { landsRef.current = lands; }, [lands]);
-    useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
-    useEffect(() => { onViewDetailRef.current = onViewDetail; }, [onViewDetail]);
-
-    const showPopup = useCallback((land: ProjectMapLand, lngLat: maplibregl.LngLatLike) => {
-        const map = mapRef.current;
-        if (!map) return;
-        if (!popupRef.current) {
-            popupRef.current = new maplibregl.Popup({
-                closeButton: true,
-                closeOnClick: false,
-                maxWidth: "260px",
-                offset: 8,
-            });
-        }
-        const root = document.createElement("div");
-        root.className = "space-y-1.5 p-0.5";
-        const title = document.createElement("p");
-        title.className = "text-sm font-semibold text-foreground";
-        title.textContent = land.landName;
-        const meta = document.createElement("p");
-        meta.className = "text-xs text-muted-foreground";
-        meta.textContent = [land.areaText, land.cropText].filter(Boolean).join(" · ");
-        const button = document.createElement("a");
-        button.href = `/farms/fields/detail/?groupId=${encodeURIComponent(groupId)}&fieldId=${encodeURIComponent(land.landId)}`;
-        button.className = "mt-1 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground";
-        button.textContent = "查看地块详情";
-        root.append(title, meta, button);
-        popupRef.current.setLngLat(lngLat).setDOMContent(root).addTo(map);
-    }, [groupId]);
-
-    const handleMapReady = useCallback((map: maplibregl.Map) => {
-        mapRef.current = map;
-        ensureLayers(map);
-        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-        source?.setData(toFeatureCollection(landsRef.current));
-        const bounds = boundsFromGeometries(landsRef.current.map((land) => land.geometry));
-        if (bounds) {
-            map.fitBounds(bounds, { padding: 56, maxZoom: 16, duration: 0 });
-            fittedKeyRef.current = landsRef.current.map((land) => land.landId).join(",");
-        }
-
-        const onEnter = () => { map.getCanvas().style.cursor = "pointer"; };
-        const onLeave = () => { map.getCanvas().style.cursor = ""; };
-        const onClick = (event: maplibregl.MapLayerMouseEvent) => {
-            const landId = String(event.features?.[0]?.properties?.landId || "");
-            if (!landId) return;
-            onSelectRef.current(landId);
-            const land = landsRef.current.find((item) => item.landId === landId);
-            if (land) showPopup(land, event.lngLat);
-        };
-
-        map.on("mouseenter", FILL_ID, onEnter);
-        map.on("mouseleave", FILL_ID, onLeave);
-        map.on("click", FILL_ID, onClick);
-    }, [showPopup]);
-
-    useEffect(() => {
-        const map = mapRef.current;
-        if (!map?.getSource(SOURCE_ID)) return;
-        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource;
-        source.setData(toFeatureCollection(lands));
-
-        const key = lands.map((land) => land.landId).join(",");
-        if (key && key !== fittedKeyRef.current) {
-            const bounds = boundsFromGeometries(lands.map((land) => land.geometry));
-            if (bounds) {
-                map.fitBounds(bounds, { padding: 56, maxZoom: 16, duration: 700 });
-                fittedKeyRef.current = key;
-            }
-        }
-    }, [lands]);
-
-    useEffect(() => {
-        const map = mapRef.current;
-        if (!map?.getLayer(SELECTED_FILL_ID)) return;
-        const filter: maplibregl.FilterSpecification = selectedLandId
-            ? ["==", ["get", "landId"], selectedLandId]
-            : ["==", ["get", "landId"], ""];
-        map.setFilter(SELECTED_FILL_ID, filter);
-        map.setFilter(SELECTED_LINE_ID, filter);
-
-        if (!selectedLandId) {
-            popupRef.current?.remove();
-            return;
-        }
-        const land = lands.find((item) => item.landId === selectedLandId);
-        if (!land?.geometry) {
-            popupRef.current?.remove();
-            return;
-        }
-        const bounds = boundsFromGeometries([land.geometry]);
+    const fitLands = useCallback((map: maplibregl.Map, items: ProjectLand[], selected = false) => {
+        if (!containerRef.current?.clientWidth || !containerRef.current.clientHeight) return;
+        const bounds = boundsFromGeometries(items.map((land) => land.geometry));
         if (!bounds) return;
-        map.fitBounds(bounds, { padding: 80, maxZoom: 17, duration: 500 });
-        const center: [number, number] = [
-            (bounds[0][0] + bounds[1][0]) / 2,
-            (bounds[0][1] + bounds[1][1]) / 2,
-        ];
-        showPopup(land, center);
-    }, [selectedLandId, lands, showPopup]);
-
-    useEffect(() => () => {
-        popupRef.current?.remove();
-        popupRef.current = null;
-        mapRef.current = null;
+        const wide = window.matchMedia("(min-width: 768px)").matches;
+        map.fitBounds(bounds, {
+            padding: { top: 56, bottom: 72, left: 56, right: selected && wide ? 400 : 56 },
+            maxZoom: selected ? 17 : 16,
+            duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450,
+        });
     }, []);
 
-    return (
-        <BaseMap
-            className="h-full w-full"
-            center={[105.0, 35.0]}
-            zoom={4}
-            onMapReady={handleMapReady}
-        />
-    );
+    const syncMap = useCallback((map: maplibregl.Map) => {
+        ensureLayers(map);
+        (map.getSource(SOURCE) as maplibregl.GeoJSONSource).setData(featureCollection(landsRef.current));
+        map.setFilter(SELECTED_LINE, ["==", ["get", "landId"], selectedRef.current ?? ""]);
+        map.setPaintProperty(SELECTED_LINE, "line-color", tokenColor("--foreground"));
+    }, []);
+
+    const handleReady = useCallback((map: maplibregl.Map) => {
+        mapRef.current = map;
+        syncMap(map);
+        const selected = landsRef.current.find((land) => land.landId === selectedRef.current);
+        fitLands(map, selected ? [selected] : landsRef.current, Boolean(selected));
+        popupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: true, offset: 12, maxWidth: "280px" });
+        map.on("mousemove", FILL, (event) => {
+            map.getCanvas().style.cursor = "pointer";
+            const land = landByIdRef.current.get(String(event.features?.[0]?.properties?.landId ?? ""));
+            if (!land) return;
+            const translate = translationRef.current;
+            const root = document.createElement("div");
+            root.className = "space-y-1 p-2 text-xs";
+            const name = document.createElement("p");
+            name.className = "font-semibold";
+            name.textContent = land.landName;
+            const metadata = document.createElement("p");
+            metadata.textContent = [land.cropText, land.areaMu === null ? "—" : translate("areaValue", { value: land.areaMu.toFixed(2) })].filter(Boolean).join(" · ");
+            const status = document.createElement("p");
+            status.textContent = translate("risk." + land.riskLevel) + " · " + translate("data." + land.dataStatus);
+            const date = document.createElement("p");
+            date.textContent = translate("observedAt", { date: land.monitoring?.observation?.date ?? "—" });
+            root.append(name, metadata, status, date);
+            popupRef.current?.setLngLat(event.lngLat).setDOMContent(root).addTo(map);
+        });
+        map.on("mouseleave", FILL, () => {
+            map.getCanvas().style.cursor = "";
+            popupRef.current?.remove();
+        });
+        map.on("click", FILL, (event) => {
+            const id = String(event.features?.[0]?.properties?.landId ?? "");
+            if (id) onSelectRef.current(id);
+            popupRef.current?.remove();
+        });
+        map.on("style.load", () => syncMap(map));
+    }, [fitLands, syncMap]);
+
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map?.getSource(SOURCE)) return;
+        syncMap(map);
+        popupRef.current?.remove();
+        const selected = selectedLandId ? landById.get(selectedLandId) : null;
+        fitLands(map, selected ? [selected] : lands, Boolean(selected));
+    }, [lands, landById, selectedLandId, fitVersion, fitLands, syncMap, resolvedTheme]);
+
+    useEffect(() => {
+        const element = containerRef.current;
+        if (!element) return;
+        // 移动端切换地图/列表、侧栏改变尺寸后同步画布，避免地块位置偏移。
+        const observer = new ResizeObserver(() => {
+            const map = mapRef.current;
+            if (!map || !element.clientWidth || !element.clientHeight) return;
+            map.resize();
+            const selected = landsRef.current.find((land) => land.landId === selectedRef.current);
+            fitLands(map, selected ? [selected] : landsRef.current, Boolean(selected));
+        });
+        observer.observe(element);
+        return () => { observer.disconnect(); popupRef.current?.remove(); };
+    }, [fitLands]);
+
+    return <div ref={containerRef} className="h-full w-full"><BaseMap center={[105, 35]} zoom={4} onMapReady={handleReady} /></div>;
 }

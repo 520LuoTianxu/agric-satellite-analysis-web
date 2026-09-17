@@ -13,12 +13,14 @@ import {
     type OverviewChild,
     type OverviewLevel,
     type OverviewStats,
+    type OverviewDaily,
 } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { DROUGHT_CLASS_STYLE, FLOOD_CLASS_STYLE } from "@/lib/agri-heatmap";
+import { OverviewHistory } from "@/components/overview-history";
 
 /** China approximate bounds [west, south, east, north]. */
 const CHINA_BOUNDS: [[number, number], [number, number]] = [
@@ -70,6 +72,10 @@ function isoDate(d: Date): string {
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
+}
+
+function chinaToday(): string {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
 function daysAgo(n: number): { from: string; to: string } {
@@ -176,6 +182,10 @@ export default function OverviewPage() {
     const [crop, setCrop] = useState("");
     const [crops, setCrops] = useState<CropOption[]>([]);
     const [metric, setMetric] = useState<MapMetric>("drought");
+    const [viewMode, setViewMode] = useState<"daily" | "history" | "analysis">("daily");
+    const [today, setToday] = useState(chinaToday);
+    const [snapshotDay, setSnapshotDay] = useState(chinaToday);
+    const [daily, setDaily] = useState<OverviewDaily | null>(null);
 
     const [stats, setStats] = useState<OverviewStats | null>(null);
     const [loading, setLoading] = useState(true);
@@ -266,7 +276,17 @@ export default function OverviewPage() {
             const request = ++statsRequestRef.current;
             setLoading(true);
             setError(null);
+            setStats(null);
             try {
+                if (viewMode !== "analysis") {
+                    const result = await agriApi.overviewDaily({ level: d.level, code: d.code, name: d.name, as_of: viewMode === "history" ? snapshotDay : undefined });
+                    if (request !== statsRequestRef.current) return;
+                    setDaily(result);
+                    setToday(result.today);
+                    setStats(result.stats);
+                    return;
+                }
+                setDaily(null);
                 const res = await agriApi.overviewStats({
                     level: d.level,
                     code: d.code,
@@ -285,13 +305,20 @@ export default function OverviewPage() {
                 if (request === statsRequestRef.current) setLoading(false);
             }
         },
-        [t],
+        [t, viewMode, snapshotDay],
     );
 
     useEffect(() => {
         void loadStats(drill, fromDate, toDate, crop);
         return () => { statsRequestRef.current += 1; };
     }, [drill, fromDate, toDate, crop, loadStats]);
+
+    useEffect(() => {
+        if (viewMode !== "daily") return;
+        // 定时下载发生在服务端；页面轮询只读取已保存快照和进度，开着页面也能看到批次完成。
+        const timer = window.setInterval(() => void loadStats(drill, fromDate, toDate, crop), 60_000);
+        return () => window.clearInterval(timer);
+    }, [viewMode, drill, fromDate, toDate, crop, loadStats]);
 
     const [exporting, setExporting] = useState(false);
     const runExport = useCallback(
@@ -305,6 +332,8 @@ export default function OverviewPage() {
                     from: fromDate,
                     to: toDate,
                     crop: crop || undefined,
+                    daily: viewMode !== "analysis",
+                    as_of: viewMode !== "analysis" ? stats?.filters.as_of_date : undefined,
                 };
                 if (kind === "stats") await agriApi.overviewExportStatsCsv(opts);
                 else await agriApi.overviewExportWeakParcelsCsv(opts);
@@ -318,7 +347,7 @@ export default function OverviewPage() {
                 setExporting(false);
             }
         },
-        [drill, fromDate, toDate, crop, t],
+        [drill, fromDate, toDate, crop, t, viewMode, stats],
     );
 
 
@@ -655,7 +684,7 @@ export default function OverviewPage() {
         const prop = metricProp(metric);
         const high = metricHighColor(metric);
         try {
-            map.setPaintProperty("overview-fill", "fill-color", fillColorExpr(prop, high) as never);
+            map.setPaintProperty("overview-fill", "fill-color", stats ? fillColorExpr(prop, high) as never : "#9ca3af");
             map.setPaintProperty("overview-fill", "fill-opacity", 0.55);
         } catch {
             /* ignore */
@@ -681,10 +710,20 @@ export default function OverviewPage() {
         <div className="flex h-[calc(100dvh-4rem)] min-h-0 min-w-0 flex-1 flex-col gap-3 p-3 lg:h-dvh lg:p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <h1 className="text-base font-semibold tracking-tight lg:text-lg">{t("title")}</h1>
+                <div className="flex gap-1">{(["daily", "history", "analysis"] as const).map((mode) => <Button key={mode} size="sm" className="h-7 text-xs" variant={viewMode === mode ? "default" : "outline"} onClick={() => setViewMode(mode)}>{t(`${mode}View`)}</Button>)}</div>
             </div>
 
+            {viewMode !== "analysis" && <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card/40 px-2 py-1 text-xs">
+                {viewMode === "history" && <><label htmlFor="overview-snapshot">{t("snapshotDate")}</label><Input id="overview-snapshot" type="date" className="h-7 w-[135px] text-xs" value={snapshotDay} max={today} onChange={(event) => { if (event.target.value) setSnapshotDay(event.target.value); }} /></>}
+                <span>{t("snapshotDate")}: {stats?.filters.as_of_date ?? "—"}</span>
+                {viewMode === "daily" && stats?.filters.as_of_date && stats.filters.as_of_date !== today && <span className="text-amber-600">{t("showingPrevious")}</span>}
+                {daily && <span className="text-muted-foreground">{t(daily.schedule.enabled ? "dailySchedule" : "dailyScheduleDisabled")}</span>}
+                {daily?.run?.status === "running" && <span role="status" className="text-primary">{t(`phase_${daily.run.phase}`)}{daily.run.pending_jobs != null ? ` · ${daily.run.pending_jobs} ${t("pendingJobs")}` : ""}</span>}
+                {(daily?.run?.status === "partial" || stats?.filters.data_status === "partial") && <span role="status" className="text-amber-600">{t("partialSnapshot")}</span>}
+            </div>}
+
             {/* Toolbar: date + crop (compact) */}
-            <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-card/40 px-2 py-1">
+            {viewMode === "analysis" && <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-card/40 px-2 py-1">
                 <Input
                     id="overview-from"
                     type="date"
@@ -744,7 +783,7 @@ export default function OverviewPage() {
                         </option>
                     ))}
                 </select>
-            </div>
+            </div>}
 
             {/* Breadcrumb */}
             <nav className="flex flex-wrap items-center gap-0.5 text-xs">
@@ -827,12 +866,12 @@ export default function OverviewPage() {
                                 size="sm"
                                 variant="outline"
                                 className="h-8 px-2 text-xs"
-                                disabled={exporting || loading}
+                                disabled={exporting || loading || !stats}
                                 onClick={() => void runExport("stats")}
                             >
                                 <Download className="h-3 w-3" />
                             </Button>
-                            <Button
+                            {viewMode === "analysis" && <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
@@ -842,7 +881,7 @@ export default function OverviewPage() {
                             >
                                 <Download className="mr-0.5 h-3 w-3" />
                                 <span className="sr-only sm:not-sr-only">{t("exportWeak")}</span>
-                            </Button>
+                            </Button>}
                         </div>
                     </div>
 
@@ -875,7 +914,9 @@ export default function OverviewPage() {
                         </Card>
                     )}
 
-                    <Card>
+                    {!loading && !error && !stats && <Card><CardContent className="px-3 py-2 text-muted-foreground">{t("noSnapshots")}</CardContent></Card>}
+                    {viewMode !== "analysis" && <OverviewHistory level={drill.level} code={drill.code} name={drill.name} to={today} selected={stats?.filters.as_of_date} onSelect={(day) => { setSnapshotDay(day); setViewMode("history"); }} />}
+                    {stats && <><Card>
                         <CardHeader className="px-2 py-1.5">
                             <CardTitle className="text-xs font-medium">{stats?.region.name ?? t("title")}</CardTitle>
                         </CardHeader>
@@ -898,6 +939,19 @@ export default function OverviewPage() {
                             )}
                         </CardContent>
                     </Card>
+
+                    {stats.filters.freshness && <Card>
+                        <CardHeader className="px-2 py-1.5"><CardTitle className="text-xs font-medium">{t("observationCoverage")}</CardTitle></CardHeader>
+                        <CardContent className="space-y-2 px-2 pb-2 text-[11px]">
+                            {(["s2", "s1"] as const).map((sensor) => { const coverage = stats.filters.freshness![sensor]; return <div key={sensor}>
+                                <p className="font-medium">{sensor === "s2" ? `Sentinel-2 · ${t("drought")}` : `Sentinel-1 · ${t("flood")}`}</p>
+                                <p>{t("coverageCounts", { today: coverage.today, carried: coverage.carried, unknown: coverage.unknown })}</p>
+                                <p className="text-muted-foreground">{t("observationDates")}: {coverage.oldest ?? "—"} → {coverage.latest ?? "—"}</p>
+                            </div>; })}
+                            <p className="text-muted-foreground">{t("coverageHint")}</p>
+                            {stats.filters.cache_updated_at && <p className="text-muted-foreground">{t("snapshotSaved")}: {new Date(stats.filters.cache_updated_at).toLocaleString(locale, { timeZone: "Asia/Shanghai" })}</p>}
+                        </CardContent>
+                    </Card>}
 
                     <Card>
                         <CardHeader className="px-2 py-1.5">
@@ -1012,7 +1066,7 @@ export default function OverviewPage() {
                                 />
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card></>}
                 </div>
             </div>
         </div>
