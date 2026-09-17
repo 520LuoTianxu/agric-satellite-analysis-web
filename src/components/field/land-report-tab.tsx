@@ -5,46 +5,45 @@ import {
     assessmentApi,
     landsApi,
     jobsApi,
-    seasonGrowthApi,
-    soilApi,
     ApiError,
     type AssessmentDimensionKey,
     type AssessmentScorecard,
     type NdviJob,
 } from "@/lib/api";
+import { resolveCdfinanceCredentials } from "@/lib/auth/cdfinance";
 import CropSelect from "@/components/field/crop-select";
 import LandScorecardRadar from "@/components/charts/land-scorecard-radar";
-import dynamic from "next/dynamic";
-import { Link } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import {
     CheckCircle2,
     Download,
     FileText,
     Hexagon,
     Loader2,
-    Paperclip,
     RefreshCw,
     AlertTriangle,
-    Sprout,
-    X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
 interface LandReportTabProps {
     landId: string;
+    groupId?: string | number | null;
     cropType?: string | null;
     onCropBound?: (cropKey: string) => void;
     onReportReady?: () => void;
-    showSeasonGrowth?: boolean;
 }
-
-const AssessmentPdfPreview = dynamic(() => import("./assessment-pdf-preview"), { ssr: false });
 
 type ScorecardState = "loading" | "empty" | "legacy" | "ready";
 
@@ -112,7 +111,7 @@ function isCropRequiredError(err: any): boolean {
     return false;
 }
 
-export default function LandReportTab({ landId, cropType, onCropBound, onReportReady, showSeasonGrowth = true }: LandReportTabProps) {
+export default function LandReportTab({ landId, groupId, cropType, onCropBound, onReportReady }: LandReportTabProps) {
     const t = useTranslations("landReportTab");
     const [latest, setLatest] = useState<NdviJob | null>(null);
     const [loading, setLoading] = useState(true);
@@ -124,33 +123,8 @@ export default function LandReportTab({ landId, cropType, onCropBound, onReportR
     const [dateFrom, setDateFrom] = useState<string>("");
     const [scorecard, setScorecard] = useState<AssessmentScorecard | null>(null);
     const [scorecardState, setScorecardState] = useState<ScorecardState>("loading");
+    const [generationSettingsOpen, setGenerationSettingsOpen] = useState(false);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-    // ── Season growth report ──────────────────────────────────────────
-    const ts = useTranslations("seasonGrowthReport");
-    const [sgLatest, setSgLatest] = useState<NdviJob | null>(null);
-    const [sgLoading, setSgLoading] = useState(true);
-    const [sgGenerating, setSgGenerating] = useState(false);
-    const [sgDownloading, setSgDownloading] = useState(false);
-    const [sgStart, setSgStart] = useState(() => {
-        const y = new Date().getFullYear();
-        return `${y}-06-01`;
-    });
-    const [sgEnd, setSgEnd] = useState(() => {
-        const y = new Date().getFullYear();
-        return `${y}-09-30`;
-    });
-    const [sgCrop, setSgCrop] = useState("");
-    const [sgLabel, setSgLabel] = useState("");
-    const [sgFiles, setSgFiles] = useState<File[]>([]);
-    const [sgUploading, setSgUploading] = useState(false);
-    const sgPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const sgFileRef = useRef<HTMLInputElement>(null);
-
-    // Shared cdfinance credentials for assessment + season-growth generate
-    const [cdfinanceToken, setCdfinanceToken] = useState("");
-    const [cdfinanceGroupId, setCdfinanceGroupId] = useState("");
-    const [cdfinanceHrBaseId, setCdfinanceHrBaseId] = useState("");
 
     useEffect(() => {
         const next = isUsableCrop(cropType) ? String(cropType).trim() : "";
@@ -182,133 +156,13 @@ export default function LandReportTab({ landId, cropType, onCropBound, onReportR
         }
     }, [landId]);
 
-    const refreshSgMeta = useCallback(async () => {
-        try {
-            const job = await seasonGrowthApi.latestMeta(landId);
-            setSgLatest(job);
-            return job;
-        } catch {
-            setSgLatest(null);
-            return null;
-        } finally {
-            setSgLoading(false);
-        }
-    }, [landId]);
-
     useEffect(() => {
         refreshMeta();
         refreshScorecard();
-        if (showSeasonGrowth) refreshSgMeta();
         return () => {
             if (pollRef.current) clearInterval(pollRef.current);
-            if (sgPollRef.current) clearInterval(sgPollRef.current);
         };
-    }, [refreshMeta, refreshScorecard, refreshSgMeta, showSeasonGrowth]);
-
-    const stopSgPoll = () => {
-        if (sgPollRef.current) {
-            clearInterval(sgPollRef.current);
-            sgPollRef.current = null;
-        }
-    };
-
-    const startSgPoll = (jobId: string) => {
-        stopSgPoll();
-        sgPollRef.current = setInterval(async () => {
-            try {
-                const job = await jobsApi.get(jobId);
-                setSgLatest(job);
-                if (job.status === "succeeded") {
-                    stopSgPoll();
-                    setSgGenerating(false);
-                    toast.success(ts("generateDone"));
-                } else if (job.status === "failed") {
-                    stopSgPoll();
-                    setSgGenerating(false);
-                    toast.error(job.error || ts("generateFailed"));
-                }
-            } catch {
-                /* keep polling */
-            }
-        }, 2000);
-    };
-
-    const handleSgGenerate = async () => {
-        if (!sgStart || !sgEnd) {
-            toast.error(ts("datesRequired"));
-            return;
-        }
-        setSgGenerating(true);
-        try {
-            let material_keys: string[] = [];
-            if (sgFiles.length) {
-                setSgUploading(true);
-                for (const f of sgFiles) {
-                    const up = await seasonGrowthApi.uploadMaterial(landId, f);
-                    if (up.key) material_keys.push(up.key);
-                }
-                setSgUploading(false);
-            }
-            const crops = sgCrop.trim() ? [sgCrop.trim()] : [];
-            const cdfinanceBody: {
-                cdfinance_token?: string;
-                group_id?: string;
-                hr_base_id?: string;
-            } = {};
-            if (cdfinanceToken.trim()) {
-                cdfinanceBody.cdfinance_token = cdfinanceToken.trim();
-            }
-            if (cdfinanceGroupId.trim()) {
-                cdfinanceBody.group_id = cdfinanceGroupId.trim();
-            }
-            if (cdfinanceHrBaseId.trim()) {
-                cdfinanceBody.hr_base_id = cdfinanceHrBaseId.trim();
-            }
-            const job = await seasonGrowthApi.generate(landId, {
-                start_date: sgStart,
-                end_date: sgEnd,
-                crops,
-                label: sgLabel.trim() || undefined,
-                material_keys,
-                pull_data: true,
-                ...cdfinanceBody,
-            });
-            setSgLatest(job);
-            if (job.status === "succeeded") {
-                setSgGenerating(false);
-                toast.success(ts("generateDone"));
-                return;
-            }
-            if (job.status === "failed") {
-                setSgGenerating(false);
-                toast.error(job.error || ts("generateFailed"));
-                return;
-            }
-            toast.message(ts("generateStarted"));
-            startSgPoll(job.id);
-        } catch (e: any) {
-            setSgGenerating(false);
-            setSgUploading(false);
-            toast.error(e?.detail?.message || e?.message || ts("generateFailed"));
-        }
-    };
-
-    const handleSgDownload = async () => {
-        setSgDownloading(true);
-        try {
-            await seasonGrowthApi.downloadLatest(landId);
-        } catch (e: any) {
-            toast.error(e?.message || ts("downloadFailed"));
-        } finally {
-            setSgDownloading(false);
-        }
-    };
-
-    const sgProgress = sgLatest?.progress_json || {};
-    const sgOneLiner = sgProgress.one_liner as string | undefined;
-    const sgHasPdf = sgLatest?.status === "succeeded" && Boolean(sgProgress.object_key);
-    const sgInFlight =
-        sgGenerating || sgLatest?.status === "pending" || sgLatest?.status === "running";
+    }, [refreshMeta, refreshScorecard]);
 
     const assessmentJobId = latest?.id;
     const assessmentJobStatus = latest?.status;
@@ -354,29 +208,16 @@ export default function LandReportTab({ landId, cropType, onCropBound, onReportR
                 group_id?: string;
                 hr_base_id?: string;
             } = { pull_data: true };
+            const credentials = resolveCdfinanceCredentials(groupId);
             if (cropKey) body.crop_type = cropKey;
             if (dateFrom.trim()) {
                 body.date_from = dateFrom.trim();
             } else {
                 body.years = years;
             }
-            if (cdfinanceToken.trim()) {
-                body.cdfinance_token = cdfinanceToken.trim();
-            }
-            if (cdfinanceGroupId.trim()) {
-                body.group_id = cdfinanceGroupId.trim();
-            }
-            if (cdfinanceHrBaseId.trim()) {
-                body.hr_base_id = cdfinanceHrBaseId.trim();
-            }
-            // Soft prompt when no token and no cached site admission
-            if (!body.cdfinance_token) {
-                try {
-                    await soilApi.getSiteAdmission(landId);
-                } catch {
-                    toast.message(t("siteAdmissionMissingHint"));
-                }
-            }
+            if (credentials.token) body.cdfinance_token = credentials.token;
+            if (credentials.groupId) body.group_id = credentials.groupId;
+            if (credentials.hrBaseId) body.hr_base_id = credentials.hrBaseId;
             const job = await assessmentApi.generate(landId, body);
             if (cropKey) {
                 setBoundCrop(cropKey);
@@ -416,6 +257,8 @@ export default function LandReportTab({ landId, cropType, onCropBound, onReportR
             toast.error(t("cropRequired"));
             return;
         }
+        // 参数确认后再关闭弹窗，避免用户因作物未填写而丢失当前配置。
+        setGenerationSettingsOpen(false);
         await runGenerate(cropKey);
     };
 
@@ -458,6 +301,44 @@ export default function LandReportTab({ landId, cropType, onCropBound, onReportR
     const inFlight =
         generating || latest?.status === "pending" || latest?.status === "running";
     const needsCrop = !isUsableCrop(boundCrop);
+    const reportActions = (
+        <div className="rounded-lg border bg-card p-3 space-y-2">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                {t("reportActionsHint")}
+            </p>
+            <div className="flex flex-wrap gap-2">
+                <Button
+                    type="button"
+                    size="sm"
+                    variant={hasPdf ? "outline" : "default"}
+                    onClick={() => setGenerationSettingsOpen(true)}
+                    disabled={inFlight}
+                >
+                    {inFlight ? (
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                    ) : (
+                        <RefreshCw className="h-4 w-4 mr-1.5" />
+                    )}
+                    {inFlight ? t("generating") : t("pullAndGenerate")}
+                </Button>
+                <Button
+                    type="button"
+                    size="sm"
+                    // 已有可下载报告时，下载是当前主操作；生成按钮降级为次要操作，减少误触重新拉取。
+                    variant={hasPdf ? "default" : "outline"}
+                    onClick={handleDownload}
+                    disabled={!hasPdf || downloading}
+                >
+                    {downloading ? (
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                    ) : (
+                        <Download className="h-4 w-4 mr-1.5" />
+                    )}
+                    {t("download")}
+                </Button>
+            </div>
+        </div>
+    );
 
     return (
         <div className="p-4 space-y-4">
@@ -479,8 +360,14 @@ export default function LandReportTab({ landId, cropType, onCropBound, onReportR
                 </div>
             ) : (
                 <>
-                    <details open={!hasPdf} className="space-y-3">
-                        <summary className="cursor-pointer text-xs font-medium">{t("generationSettings")}</summary>
+                    {reportActions}
+
+                    <Dialog open={generationSettingsOpen} onOpenChange={setGenerationSettingsOpen}>
+                        <DialogContent className="sm:max-w-lg">
+                            <DialogHeader>
+                                <DialogTitle>{t("generationSettings")}</DialogTitle>
+                                <DialogDescription>{t("generationSettingsDialogHint")}</DialogDescription>
+                            </DialogHeader>
                     <div
                         className={`rounded-lg border p-3 space-y-3 ${
                             needsCrop
@@ -553,81 +440,29 @@ export default function LandReportTab({ landId, cropType, onCropBound, onReportR
                         )}
                     </div>
 
-                    <div className="rounded-lg border border-border bg-card p-3 space-y-2">
-                        <p className="text-xs font-medium">{t("cdfinancePanelTitle")}</p>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed">
-                            {t("cdfinancePanelHint")}
-                        </p>
-                        <label className="text-xs space-y-1 block">
-                            <span className="text-muted-foreground">{t("cdfinanceGroupId")}</span>
-                            <Input
-                                className="h-9"
-                                value={cdfinanceGroupId}
-                                placeholder={t("cdfinanceGroupPlaceholder")}
-                                onChange={(e) => setCdfinanceGroupId(e.target.value)}
-                                autoComplete="off"
-                            />
-                        </label>
-                        <label className="text-xs space-y-1 block">
-                            <span className="text-muted-foreground">{t("cdfinanceToken")}</span>
-                            <Input
-                                className="h-9 font-mono text-[11px]"
-                                type="password"
-                                value={cdfinanceToken}
-                                placeholder={t("cdfinanceTokenPlaceholder")}
-                                onChange={(e) => setCdfinanceToken(e.target.value)}
-                                autoComplete="off"
-                            />
-                        </label>
-                        <label className="text-xs space-y-1 block">
-                            <span className="text-muted-foreground">{t("cdfinanceHrBaseId")}</span>
-                            <Input
-                                className="h-9"
-                                value={cdfinanceHrBaseId}
-                                placeholder={t("cdfinanceHrBaseIdPlaceholder")}
-                                onChange={(e) => setCdfinanceHrBaseId(e.target.value)}
-                                autoComplete="off"
-                            />
-                        </label>
-                    </div>
-
-                    </details>
-                    <div className="flex flex-wrap gap-2">
-                        <Button
-                            size="sm"
-                            onClick={handleGenerate}
-                            disabled={inFlight || (!isUsableCrop(pickCrop) && !isUsableCrop(boundCrop))}
-                        >
-                            {inFlight ? (
-                                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                            ) : (
-                                <RefreshCw className="h-4 w-4 mr-1.5" />
-                            )}
-                            {inFlight
-                                ? t("generating")
-                                : needsCrop
-                                  ? t("bindAndGenerate")
-                                  : t("pullAndGenerate")}
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleDownload}
-                            disabled={!hasPdf || downloading}
-                        >
-                            {downloading ? (
-                                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                            ) : (
-                                <Download className="h-4 w-4 mr-1.5" />
-                            )}
-                            {t("download")}
-                        </Button>
-                        {onReportReady && <Button size="sm" variant="outline" asChild>
-                            <Link href={`/?fieldId=${encodeURIComponent(landId)}`}>{t("viewOnHome")}</Link>
-                        </Button>}
-                    </div>
-
-                    {hasPdf && latest && <AssessmentPdfPreview key={latest.id} landId={landId} jobId={latest.id} />}
+                            <DialogFooter>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setGenerationSettingsOpen(false)}
+                                >
+                                    {t("cancelGeneration")}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleGenerate}
+                                    disabled={inFlight}
+                                >
+                                    {inFlight ? (
+                                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                                    ) : (
+                                        <RefreshCw className="h-4 w-4 mr-1.5" />
+                                    )}
+                                    {inFlight ? t("generating") : t("pullAndGenerate")}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
 
                     {scorecardState === "loading" ? (
                         <Skeleton className="h-64 w-full rounded-lg" />
@@ -725,16 +560,18 @@ export default function LandReportTab({ landId, cropType, onCropBound, onReportR
                             </p>
                         </div>
                     ) : (
-                        <div className="rounded-lg border-2 border-dashed p-12 text-center space-y-2">
-                            <Hexagon className="h-12 w-12 mx-auto text-muted-foreground" />
-                            <p className="text-sm font-medium">
-                                {scorecardState === "legacy" ? t("legacyNoScorecard") : t("noScorecard")}
-                            </p>
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                                {scorecardState === "legacy"
-                                    ? t("legacyNoScorecardHint")
-                                    : t("noScorecardHint")}
-                            </p>
+                        <div className="rounded-lg border bg-card shadow-sm p-4 space-y-3">
+                            <div className="rounded-lg border-2 border-dashed p-12 text-center space-y-2">
+                                <Hexagon className="h-12 w-12 mx-auto text-muted-foreground" />
+                                <p className="text-sm font-medium">
+                                    {scorecardState === "legacy" ? t("legacyNoScorecard") : t("noScorecard")}
+                                </p>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    {scorecardState === "legacy"
+                                        ? t("legacyNoScorecardHint")
+                                        : t("noScorecardHint")}
+                                </p>
+                            </div>
                         </div>
                     )}
 
@@ -805,192 +642,6 @@ export default function LandReportTab({ landId, cropType, onCropBound, onReportR
                         <p>{t("noteArea")}</p>
                     </div>
                 </>
-            )}
-
-            {/* ── 生育期长势报告 ─────────────────────────────────────── */}
-            {showSeasonGrowth && (
-            <div className="border-t pt-4 space-y-3">
-                <div className="space-y-1">
-                    <h3 className="text-sm font-semibold flex items-center gap-2">
-                        <Sprout className="h-4 w-4" />
-                        {ts("title")}
-                    </h3>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                        {ts("description")}
-                    </p>
-                </div>
-
-                {sgLoading ? (
-                    <Skeleton className="h-24 w-full" />
-                ) : (
-                    <>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <label className="text-xs space-y-1">
-                                <span className="text-muted-foreground">{ts("startDate")}</span>
-                                <DatePicker value={sgStart} onChange={setSgStart} />
-                            </label>
-                            <label className="text-xs space-y-1">
-                                <span className="text-muted-foreground">{ts("endDate")}</span>
-                                <DatePicker value={sgEnd} onChange={setSgEnd} />
-                            </label>
-                        </div>
-                        <div className="space-y-1">
-                            <span className="text-xs text-muted-foreground">{ts("cropOptional")}</span>
-                            <CropSelect
-                                value={sgCrop}
-                                onChange={setSgCrop}
-                                placeholder={ts("selectCrop")}
-                            />
-                        </div>
-                        <label className="text-xs space-y-1 block">
-                            <span className="text-muted-foreground">{ts("labelOptional")}</span>
-                            <Input
-                                className="h-9"
-                                value={sgLabel}
-                                placeholder={ts("labelPlaceholder")}
-                                onChange={(e) => setSgLabel(e.target.value)}
-                            />
-                        </label>
-                        <div className="text-xs space-y-1.5">
-                            <span className="text-muted-foreground">{ts("materials")}</span>
-                            <input
-                                ref={sgFileRef}
-                                type="file"
-                                multiple
-                                className="hidden"
-                                onChange={(e) =>
-                                    setSgFiles(Array.from(e.target.files || []))
-                                }
-                            />
-                            <div className="flex flex-wrap items-center gap-2">
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-9"
-                                    onClick={() => sgFileRef.current?.click()}
-                                >
-                                    <Paperclip className="mr-1.5 h-4 w-4" />
-                                    {ts("chooseFiles")}
-                                </Button>
-                                {sgFiles.length > 0 && (
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-9 px-2 text-muted-foreground"
-                                        onClick={() => {
-                                            setSgFiles([]);
-                                            if (sgFileRef.current) sgFileRef.current.value = "";
-                                        }}
-                                    >
-                                        <X className="mr-1 h-3.5 w-3.5" />
-                                        {ts("clearFiles")}
-                                    </Button>
-                                )}
-                            </div>
-                            {sgFiles.length > 0 && (
-                                <ul className="space-y-0.5 text-[11px] text-muted-foreground">
-                                    <li>{ts("filesSelected", { count: sgFiles.length })}</li>
-                                    {sgFiles.slice(0, 4).map((f) => (
-                                        <li key={f.name} className="truncate">
-                                            {f.name}
-                                        </li>
-                                    ))}
-                                    {sgFiles.length > 4 && (
-                                        <li>…</li>
-                                    )}
-                                </ul>
-                            )}
-                        </div>
-
-                        <p className="text-[11px] text-muted-foreground leading-relaxed">
-                            {ts("cdfinanceReuseHint")}
-                        </p>
-
-                        <div className="flex flex-wrap gap-2">
-                            <Button
-                                size="sm"
-                                onClick={handleSgGenerate}
-                                disabled={sgInFlight || sgUploading}
-                            >
-                                {sgInFlight || sgUploading ? (
-                                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                                ) : (
-                                    <RefreshCw className="h-4 w-4 mr-1.5" />
-                                )}
-                                {sgUploading
-                                    ? ts("uploading")
-                                    : sgInFlight
-                                      ? ts("generating")
-                                      : ts("generate")}
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={handleSgDownload}
-                                disabled={!sgHasPdf || sgDownloading}
-                            >
-                                {sgDownloading ? (
-                                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                                ) : (
-                                    <Download className="h-4 w-4 mr-1.5" />
-                                )}
-                                {ts("download")}
-                            </Button>
-                        </div>
-
-                        {sgLatest && (
-                            <div className="rounded-lg border bg-card p-3 space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                    <span className="text-xs text-muted-foreground">
-                                        {ts("status")}
-                                    </span>
-                                    <Badge variant="secondary" className="text-xs">
-                                        {sgLatest.status === "succeeded" && (
-                                            <CheckCircle2 className="h-3 w-3 mr-1 text-success" />
-                                        )}
-                                        {sgLatest.status === "failed" && (
-                                            <AlertTriangle className="h-3 w-3 mr-1 text-destructive" />
-                                        )}
-                                        {(sgLatest.status === "pending" ||
-                                            sgLatest.status === "running") && (
-                                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                        )}
-                                        {ts(`status_${sgLatest.status}` as any, {
-                                            default: sgLatest.status,
-                                        })}
-                                    </Badge>
-                                </div>
-                                {sgOneLiner && (
-                                    <p className="text-xs text-muted-foreground leading-relaxed">
-                                        {sgOneLiner}
-                                    </p>
-                                )}
-                                {sgLatest.status === "failed" && sgLatest.error && (
-                                    <p className="text-xs text-destructive">{sgLatest.error}</p>
-                                )}
-                                {sgLatest.finished_at && sgLatest.status === "succeeded" && (
-                                    <p className="text-[11px] text-muted-foreground">
-                                        {ts("generatedAt", {
-                                            time: new Date(sgLatest.finished_at).toLocaleString(),
-                                        })}
-                                    </p>
-                                )}
-                            </div>
-                        )}
-
-                        {!sgLatest && (
-                            <p className="text-xs text-muted-foreground">{ts("empty")}</p>
-                        )}
-
-                        <div className="rounded-md bg-surface-2 p-3 text-[11px] text-muted-foreground leading-relaxed">
-                            <p>{ts("noteFacts")}</p>
-                            <p>{ts("noteLlm")}</p>
-                        </div>
-                    </>
-                )}
-            </div>
             )}
 
         </div>

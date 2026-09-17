@@ -72,7 +72,15 @@ function ReportPage({ pdf, pageNumber }: { pdf: PDFDocumentProxy; pageNumber: nu
     );
 }
 
-export default function AssessmentPdfPreview({ landId, jobId }: { landId: string; jobId: string }) {
+export default function AssessmentPdfPreview({
+    landId,
+    jobId,
+    pdfUrl,
+}: {
+    landId: string;
+    jobId: string;
+    pdfUrl?: string | null;
+}) {
     const t = useTranslations("reportPreview");
     const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
     const [error, setError] = useState(false);
@@ -87,24 +95,50 @@ export default function AssessmentPdfPreview({ landId, jobId }: { landId: string
         void (async () => {
             try {
                 // 渲染器按需加载；worker、中文字体映射随静态站点发布，不依赖外部 CDN。
-                const [renderer, data] = await Promise.all([
-                    import("pdfjs-dist/legacy/build/pdf.mjs"),
-                    assessmentApi.latestPdf(landId, abort.signal),
-                ]);
+                const renderer = await import("pdfjs-dist/legacy/build/pdf.mjs");
                 if (cancelled) return;
                 const assets = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/pdfjs/`;
                 renderer.GlobalWorkerOptions.workerSrc = `${assets}pdf.worker.min.mjs`;
-                task = renderer.getDocument({ data, cMapUrl: `${assets}cmaps/`, cMapPacked: true,
-                    standardFontDataUrl: `${assets}standard_fonts/`, wasmUrl: `${assets}wasm/` });
-                const document = await task.promise;
-                if (!cancelled) setPdf(document);
+                const preferredUrl = pdfUrl?.trim();
+                const sources: Array<() => Promise<Uint8Array>> = [];
+                if (preferredUrl) {
+                    sources.push(() => assessmentApi.latestPdfFromUrl(preferredUrl, abort.signal));
+                }
+                sources.push(() => assessmentApi.latestPdf(landId, abort.signal));
+
+                let lastError: unknown;
+                for (const [index, loadBytes] of sources.entries()) {
+                    try {
+                        const data = await loadBytes();
+                        if (cancelled) return;
+                        task = renderer.getDocument({
+                            data,
+                            cMapUrl: `${assets}cmaps/`,
+                            cMapPacked: true,
+                            standardFontDataUrl: `${assets}standard_fonts/`,
+                            wasmUrl: `${assets}wasm/`,
+                        });
+                        const document = await task.promise;
+                        if (!cancelled) setPdf(document);
+                        return;
+                    } catch (error) {
+                        lastError = error;
+                        void task?.destroy();
+                        task = undefined;
+                        if (index === 0 && preferredUrl && !abort.signal.aborted) {
+                            // OSS 直链可能因 CORS、过期签名或私有桶权限失败，此时回退 API 代理。
+                            console.warn("[assessment-pdf] OSS preview failed; falling back to API proxy", error);
+                        }
+                    }
+                }
+                throw lastError ?? new Error("Report preview failed");
             } catch {
                 if (!cancelled) setError(true);
             }
         })();
         // 切换地块时取消下载并释放 worker，防止旧报告覆盖当前选择。
         return () => { cancelled = true; abort.abort(); void task?.destroy(); };
-    }, [landId, jobId, attempt]);
+    }, [landId, jobId, attempt, pdfUrl]);
 
     return (
         <section aria-label={t("title")} className="space-y-3">

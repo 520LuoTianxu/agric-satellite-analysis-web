@@ -20,6 +20,7 @@ export function ProductTourOverlay({
     title,
     body,
     waiting,
+    unavailable,
     target,
     onNext,
     onPrev,
@@ -29,6 +30,9 @@ export function ProductTourOverlay({
     skipLabel,
     finishLabel,
     waitingLabel,
+    unavailableLabel,
+    retryLabel,
+    onRetry,
 }: {
     open: boolean;
     step: number;
@@ -36,6 +40,7 @@ export function ProductTourOverlay({
     title: string;
     body: string;
     waiting?: boolean;
+    unavailable?: boolean;
     target: HTMLElement | null;
     onNext: () => void;
     onPrev?: () => void;
@@ -45,6 +50,9 @@ export function ProductTourOverlay({
     skipLabel: string;
     finishLabel: string;
     waitingLabel: string;
+    unavailableLabel: string;
+    retryLabel: string;
+    onRetry?: () => void;
 }) {
     const tooltipRef = useRef<HTMLDivElement>(null);
     const [rect, setRect] = useState<DOMRect | null>(null);
@@ -79,7 +87,7 @@ export function ProductTourOverlay({
         if (!open || !tooltipRef.current) return;
         const next = tooltipRef.current.getBoundingClientRect();
         setTooltipSize({ width: next.width, height: next.height });
-    }, [open, title, body, waiting, step]);
+    }, [open, title, body, waiting, unavailable, step]);
 
     useEffect(() => {
         if (!open) return;
@@ -226,7 +234,9 @@ export function ProductTourOverlay({
                             <X className="h-4 w-4" />
                         </button>
                     </div>
-                    <p className="text-sm leading-6 text-primary-foreground/90">{waiting ? waitingLabel : body}</p>
+                    <p aria-live="polite" className="text-sm leading-6 text-primary-foreground/90">
+                        {waiting ? waitingLabel : unavailable ? unavailableLabel : body}
+                    </p>
                     <div className="flex items-center justify-between gap-2 pt-1">
                         <div className="flex items-center gap-2">
                             <button
@@ -239,6 +249,17 @@ export function ProductTourOverlay({
                             <span className="text-xs tabular-nums text-primary-foreground/75">
                                 ({step + 1}/{total})
                             </span>
+                            {unavailable && onRetry ? (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 cursor-pointer px-2 text-xs text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
+                                    onClick={onRetry}
+                                >
+                                    {retryLabel}
+                                </Button>
+                            ) : null}
                             {step > 0 && onPrev ? (
                                 <Button
                                     type="button"

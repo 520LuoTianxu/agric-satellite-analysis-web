@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import { soilApi, jobsApi } from "@/lib/api";
+import { resolveCdfinanceCredentials } from "@/lib/auth/cdfinance";
 import type {
     SoilProfile,
     SoilFieldSummary,
@@ -107,11 +108,12 @@ const PRIORITY_TOKEN_VARS: Record<number, string> = {
 
 interface SoilTabProps {
     landId: string;
+    groupId?: string | number | null;
     mapInstance?: maplibregl.Map | null;
     activeTab?: string;
 }
 
-export default function SoilTab({ landId, mapInstance, activeTab }: SoilTabProps) {
+export default function SoilTab({ landId, groupId, mapInstance, activeTab }: SoilTabProps) {
     const t = useTranslations("soil");
 
     const [profile, setProfile] = useState<SoilProfile | null>(null);
@@ -124,29 +126,24 @@ export default function SoilTab({ landId, mapInstance, activeTab }: SoilTabProps
     const [weatherStress, setWeatherStress] = useState<SoilWeatherStressResponse | null>(null);
     const [samplingZones, setSamplingZones] = useState<SamplingZonesResponse | null>(null);
     const [npk, setNpk] = useState<SoilNpk | null>(null);
-    const [npkToken, setNpkToken] = useState("");
-    const [npkHrBaseId, setNpkHrBaseId] = useState("");
     const [npkLoading, setNpkLoading] = useState(false);
     const [npkForce, setNpkForce] = useState(false);
     const [siteAdmission, setSiteAdmission] = useState<SiteAdmission | null>(null);
-    const [siteGroupId, setSiteGroupId] = useState("");
-    const [siteToken, setSiteToken] = useState("");
-    const [siteHrBaseId, setSiteHrBaseId] = useState("");
     const [siteLoading, setSiteLoading] = useState(false);
     const [siteForce, setSiteForce] = useState(false);
 
     const handleFetchNpk = useCallback(async () => {
-        const token = npkToken.trim();
-        if (!token) {
-            toast.error(t("npkTokenRequired"));
+        const credentials = resolveCdfinanceCredentials(groupId);
+        if (!credentials.token) {
+            toast.error(t("cdfinanceLoginRequired"));
             return;
         }
         setNpkLoading(true);
         try {
             const res = await soilApi.fetchNpk(landId, {
-                token,
+                token: credentials.token,
                 force: npkForce || !!npk,
-                hr_base_id: npkHrBaseId.trim() || undefined,
+                hr_base_id: credentials.hrBaseId || undefined,
             });
             setNpk(res.npk);
             toast.success(res.message || t("npkFetchOk"));
@@ -156,26 +153,23 @@ export default function SoilTab({ landId, mapInstance, activeTab }: SoilTabProps
         } finally {
             setNpkLoading(false);
         }
-    }, [landId, npkToken, npkHrBaseId, npkForce, npk, t]);
+    }, [groupId, landId, npkForce, npk, t]);
 
     const handleFetchSiteAdmission = useCallback(async () => {
-        const token = siteToken.trim();
-        if (!token) {
-            toast.error(t("siteAdmissionTokenRequired"));
+        const credentials = resolveCdfinanceCredentials(groupId);
+        if (!credentials.token) {
+            toast.error(t("cdfinanceLoginRequired"));
             return;
         }
         setSiteLoading(true);
         try {
             const res = await soilApi.fetchSiteAdmission(landId, {
-                token,
-                group_id: siteGroupId.trim() || undefined,
+                token: credentials.token,
+                group_id: credentials.groupId || undefined,
                 force: siteForce || !!siteAdmission,
-                hr_base_id: siteHrBaseId.trim() || undefined,
+                hr_base_id: credentials.hrBaseId || undefined,
             });
             setSiteAdmission(res.admission);
-            if (res.admission.group_id) {
-                setSiteGroupId(String(res.admission.group_id));
-            }
             toast.success(res.message || t("siteAdmissionFetchOk"));
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : t("siteAdmissionFetchFail");
@@ -183,7 +177,7 @@ export default function SoilTab({ landId, mapInstance, activeTab }: SoilTabProps
         } finally {
             setSiteLoading(false);
         }
-    }, [landId, siteToken, siteGroupId, siteHrBaseId, siteForce, siteAdmission, t]);
+    }, [groupId, landId, siteForce, siteAdmission, t]);
 
 
     /* ── Sampling zone map markers (target / bullseye style) ── */
@@ -360,7 +354,6 @@ export default function SoilTab({ landId, mapInstance, activeTab }: SoilTabProps
             try {
                 const cachedSite = await soilApi.getSiteAdmission(landId);
                 setSiteAdmission(cachedSite);
-                if (cachedSite.group_id) setSiteGroupId(String(cachedSite.group_id));
             } catch {
                 setSiteAdmission(null);
             }
@@ -885,24 +878,6 @@ export default function SoilTab({ landId, mapInstance, activeTab }: SoilTabProps
                         </p>
                     )}
                     <div className="space-y-1.5">
-                        <label className="text-[10px] text-muted-foreground">{t("npkTokenPrompt")}</label>
-                        <input
-                            type="password"
-                            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-                            placeholder={t("npkTokenPlaceholder")}
-                            value={npkToken}
-                            onChange={(e) => setNpkToken(e.target.value)}
-                            autoComplete="off"
-                        />
-                        <label className="text-[10px] text-muted-foreground">{t("siteAdmissionHrBaseId")}</label>
-                        <input
-                            type="text"
-                            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-                            placeholder={t("siteAdmissionHrBaseIdPlaceholder")}
-                            value={npkHrBaseId}
-                            onChange={(e) => setNpkHrBaseId(e.target.value)}
-                            autoComplete="off"
-                        />
                         <div className="flex items-center gap-2">
                             <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
                                 <input
@@ -984,33 +959,6 @@ export default function SoilTab({ landId, mapInstance, activeTab }: SoilTabProps
                         <p className="text-[11px] text-muted-foreground">{t("siteAdmissionEmpty")}</p>
                     )}
                     <div className="space-y-1.5">
-                        <label className="text-[10px] text-muted-foreground">{t("siteAdmissionGroupId")}</label>
-                        <input
-                            type="text"
-                            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-                            placeholder={t("siteAdmissionGroupPlaceholder")}
-                            value={siteGroupId}
-                            onChange={(e) => setSiteGroupId(e.target.value)}
-                            autoComplete="off"
-                        />
-                        <label className="text-[10px] text-muted-foreground">{t("siteAdmissionTokenPrompt")}</label>
-                        <input
-                            type="password"
-                            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-                            placeholder={t("siteAdmissionTokenPlaceholder")}
-                            value={siteToken}
-                            onChange={(e) => setSiteToken(e.target.value)}
-                            autoComplete="off"
-                        />
-                        <label className="text-[10px] text-muted-foreground">{t("siteAdmissionHrBaseId")}</label>
-                        <input
-                            type="text"
-                            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-                            placeholder={t("siteAdmissionHrBaseIdPlaceholder")}
-                            value={siteHrBaseId}
-                            onChange={(e) => setSiteHrBaseId(e.target.value)}
-                            autoComplete="off"
-                        />
                         <div className="flex items-center gap-2">
                             <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
                                 <input
