@@ -1202,6 +1202,7 @@
     "loading": "Cargando…",
     "loadFailed": "Error al cargar",
     "noChildren": "Sin subregiones",
+    "drillDownHint": "Haga clic para ver las subregiones",
     "dateWindow": "Ventana",
     "clickMapHint": "Clic en el mapa",
     "pctOfParcels": "% de parcelas",

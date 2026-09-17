@@ -105,11 +105,14 @@ export default function SeasonGrowthReportTab({
     }, [refreshMeta, stopPoll]);
 
     // 页签切换会卸载组件；重新进入时若任务仍在执行，需要自动恢复轮询。
+    const latestJobId = latest?.id;
+    const latestJobStatus = latest?.status;
     useEffect(() => {
-        if (!latest || !["pending", "running"].includes(latest.status)) return;
-        startPoll(latest.id);
+        if (!latestJobId || !["pending", "running"].includes(latestJobStatus || "")) return;
+        // 只依赖任务 ID 和状态，避免轮询每次更新任务对象时重复创建定时器。
+        startPoll(latestJobId);
         return stopPoll;
-    }, [latest?.id, latest?.status, startPoll, stopPoll]);
+    }, [latestJobId, latestJobStatus, startPoll, stopPoll]);
 
     const handleGenerate = async () => {
         if (!startDate || !endDate) {

@@ -1202,6 +1202,7 @@
     "loading": "Loading…",
     "loadFailed": "Failed to load overview",
     "noChildren": "No sub-regions",
+    "drillDownHint": "Click to view sub-regions",
     "dateWindow": "Date window",
     "clickMapHint": "Click the map to drill down",
     "pctOfParcels": "% of parcels",

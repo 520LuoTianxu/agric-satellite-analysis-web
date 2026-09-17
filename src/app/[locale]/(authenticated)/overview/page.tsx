@@ -46,8 +46,9 @@ function padAdcode(level: OverviewLevel, code: string | null | undefined): strin
     if (!code) return null;
     const c = String(code).trim();
     if (!/^\d+$/.test(c)) return c;
-    if (level === "province") return c.padStart(2, "0") + "0000";
-    if (level === "city") return c.padStart(4, "0") + "00";
+    // 既兼容接口返回的短编码，也兼容地图 GeoJSON 返回的完整六位行政区编码。
+    if (level === "province") return c.length >= 6 ? c.padStart(6, "0") : c.padStart(2, "0") + "0000";
+    if (level === "city") return c.length >= 6 ? c.padStart(6, "0") : c.padStart(4, "0") + "00";
     if (level === "county") return c.padStart(6, "0");
     return c.padStart(6, "0");
 }
@@ -207,6 +208,7 @@ export default function OverviewPage() {
         flood: "洪涝",
         weakGrowth: "弱长势",
         noData: "暂无统计",
+        drillDown: "点击查看下级区划",
     });
 
     statsRef.current = stats;
@@ -218,6 +220,7 @@ export default function OverviewPage() {
         flood: t("flood"),
         weakGrowth: t("weakGrowth"),
         noData: t("noChildren"),
+        drillDown: t("drillDownHint"),
     };
 
     useEffect(() => {
@@ -424,6 +427,8 @@ export default function OverviewPage() {
             if (!f) return;
             const name = String(f.properties?.name ?? f.properties?.adname ?? "");
             const adcode = f.properties?.adcode != null ? String(f.properties.adcode) : null;
+            const rawLevel = String(f.properties?.level ?? "");
+            const featureLevel = rawLevel === "province" || rawLevel === "city" ? rawLevel : null;
             const children = statsRef.current?.children ?? [];
             const match = children.find((c) => {
                 const padded = padAdcode(c.level, c.code);
@@ -431,6 +436,10 @@ export default function OverviewPage() {
                 return c.name === name;
             });
             if (match) onFeatureClickRef.current(match);
+            else if (featureLevel && name && adcode) {
+                // 没有快照时 children 为空，仍按 GeoJSON 自带的行政区级别和编码允许继续下钻。
+                setDrill({ level: featureLevel, code: adcode, name });
+            }
         });
 
         const popup = new maplibregl.Popup({
@@ -445,13 +454,15 @@ export default function OverviewPage() {
             const L = popupLabelsRef.current;
             const name = String(props.name ?? props.adname ?? "—");
             const has = Number(props.has_data) === 1;
+            const level = String(props.level ?? "");
+            const canDrillDown = level === "province" || level === "city";
             const row = (label: string, value: string) =>
                 `<div style="display:flex;justify-content:space-between;gap:12px;line-height:1.45">` +
                 `<span style="color:#111827">${label}</span>` +
                 `<span style="color:#2563eb;font-variant-numeric:tabular-nums">${value}</span></div>`;
             if (!has) {
                 return `<div style="font-weight:600;margin-bottom:4px;color:#111827">${name}</div>` +
-                    `<div style="color:#6b7280;font-size:12px">${L.noData}</div>`;
+                    `<div style="color:#6b7280;font-size:12px">${canDrillDown ? L.drillDown : L.noData}</div>`;
             }
             const parcels = Number(props.parcel_count ?? 0);
             const area = Math.round(Number(props.area_mu ?? 0)).toLocaleString();
@@ -492,21 +503,24 @@ export default function OverviewPage() {
     // Load / update choropleth when stats or map ready
     useEffect(() => {
         const map = mapRef.current;
-        if (!map || !mapReady || !stats) return;
+        // 行政区边界不依赖态势快照；没有已保存快照时也要先展示中国地图，统计数据仅作为填色与提示的附加信息。
+        if (!map || !mapReady) return;
 
         let cancelled = false;
         const fetchLevel: OverviewLevel =
-            stats.region.level === "county" ? "city" : stats.region.level;
+            stats?.region.level === "county" ? "city" : stats?.region.level ?? drill.level;
         const fetchAdcode =
             fetchLevel === "country"
                 ? "100000"
-                : stats.region.level === "county"
+                : stats?.region.level === "county"
                   ? padAdcode(
                         "city",
                         stats.region.path.find((n) => n.level === "city")?.code ?? null,
                     )
-                  : stats.region.adcode ||
-                    padAdcode(stats.region.level, stats.region.code);
+                  : stats?.region.adcode ||
+                    (stats
+                        ? padAdcode(stats.region.level, stats.region.code)
+                        : padAdcode(drill.level, drill.code));
         const fetchUrl = geoJsonUrl(fetchLevel, fetchAdcode);
 
         (async () => {
@@ -517,9 +531,10 @@ export default function OverviewPage() {
                 const gj = await res.json();
                 if (cancelled || !mapRef.current) return;
 
-                const childByName = new Map(stats.children.map((c) => [c.name, c]));
+                const children = stats?.children ?? [];
+                const childByName = new Map(children.map((c) => [c.name, c]));
                 const childByCode = new Map(
-                    stats.children
+                    children
                         .filter((c) => c.code)
                         .flatMap((c) => {
                             const entries: [string, OverviewChild][] = [[String(c.code), c]];
@@ -675,7 +690,7 @@ export default function OverviewPage() {
         return () => {
             cancelled = true;
         };
-    }, [stats, mapReady, t]);
+    }, [drill, stats, mapReady, t]);
 
     // Metric toggle: recolor without reloading geojson
     useEffect(() => {
