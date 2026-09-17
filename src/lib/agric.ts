@@ -298,11 +298,23 @@ export async function listCropLands(params: {
 export async function listAllCropLands(groupId: string | number): Promise<AgricLand[]> {
     const pageSize = 200;
     const all: AgricLand[] = [];
+    const seen = new Set<string>();
     let pageNum = 1;
-    while (pageNum <= 50) {
+    // 项目统计必须读取完整业务名单；接口截短或重复分页时明确失败，不能展示部分总数。
+    while (true) {
         const page = await listCropLands({ groupId, pageNum, pageSize });
-        all.push(...page.rows);
-        if (all.length >= page.total || page.rows.length < pageSize) break;
+        const previousCount = all.length;
+        for (const land of page.rows) {
+            const id = String(land.landId);
+            if (!seen.has(id)) {
+                seen.add(id);
+                all.push(land);
+            }
+        }
+        if (all.length >= page.total) break;
+        if (all.length === previousCount) {
+            throw new Error("Incomplete project land list");
+        }
         pageNum += 1;
     }
     return all;

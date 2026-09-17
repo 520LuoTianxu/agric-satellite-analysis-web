@@ -15,6 +15,8 @@ export const ALERT_RULE_NAMES = [
     "savi_threshold",
     "ndwi_drop",
     "ndwi_threshold",
+    "ndmi_drop",
+    "ndmi_threshold",
     "soil_ph_critical",
     "soil_ph_warning",
     "soil_soc_critical",

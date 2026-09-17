@@ -892,6 +892,60 @@ export const seasonGrowthApi = {
     },
 };
 
+export type ProjectRiskLevel = "high" | "medium" | "low" | "normal" | "unknown";
+export type ProjectDataStatus = "fresh" | "stale" | "low_quality" | "missing";
+
+export interface ProjectObservation {
+    date: string;
+    ndvi: number | null;
+    evi: number | null;
+    ndmi: number | null;
+    cloud_cover: number | null;
+    source: string | null;
+}
+
+export interface ProjectAlert {
+    id: string;
+    date: string;
+    severity: string;
+    rule_name: string;
+    message: string;
+    status: string;
+    index_type: string | null;
+}
+
+export interface ProjectLandMonitoring {
+    land_id: string;
+    land_name: string | null;
+    area_mu: number | null;
+    crop_type: string | null;
+    boundary_geojson: GeoJSON.Geometry | null;
+    risk_level: ProjectRiskLevel;
+    data_status: ProjectDataStatus;
+    latest_scene_date: string | null;
+    observation: ProjectObservation | null;
+    previous_observation: ProjectObservation | null;
+    open_alert_count: number;
+    open_high_count: number;
+    risk_alert_count: number;
+    alerts: ProjectAlert[];
+}
+
+export interface ProjectMonitoring {
+    group_id: string;
+    as_of: string;
+    generated_at: string;
+    freshness_days: number;
+    items: ProjectLandMonitoring[];
+}
+
+export const projectsApi = {
+    monitoring: (groupId: string, freshnessDays = 14) =>
+        apiFetch<ProjectMonitoring>(
+            `/projects/${encodeURIComponent(groupId)}/monitoring?freshness_days=${freshnessDays}`,
+        ),
+};
+
 export const alertsApi = {
     list: (opts: { status?: string; severity?: string; limit?: number; offset?: number } = {}) => {
         const params = new URLSearchParams();
