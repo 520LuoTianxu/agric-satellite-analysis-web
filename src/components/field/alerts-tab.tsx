@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslations } from "next-intl";
 import { AlertRow } from "@/components/alert-row";
+import { formatAlertCount } from "@/lib/alert-session";
 
 /* ── Props ────────────────────────────────────────────────────── */
 
@@ -96,11 +97,11 @@ export default function AlertsTab({ landId, onOpenCountChange }: AlertsTabProps)
             {/* Summary + filter */}
             <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">{openAlerts.length}</span>{" "}
+                    <span className="font-medium text-foreground">{formatAlertCount(openAlerts.length)}</span>{" "}
                     {t("open")}
                     {closedAlerts.length > 0 && (
                         <span className="ml-1">
-                            · {closedAlerts.length} {t("closed")}
+                            · {formatAlertCount(closedAlerts.length)} {t("closed")}
                         </span>
                     )}
                 </p>

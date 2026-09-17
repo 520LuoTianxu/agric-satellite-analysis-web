@@ -11,6 +11,7 @@ import { getPlantingGroup, getPlantingTypeDict, listAllCropLands, groupStatusLab
 import { EMPTY_PROJECT_FILTERS, RISK_CLASSES, filterProjectLands, mergeProjectLands, summarizeProjectLands, type ProjectFilters, type ProjectLand } from "@/lib/project-monitoring";
 import { ruleLabel } from "@/lib/alert-rules";
 import { cn } from "@/lib/utils";
+import { formatAlertCount } from "@/lib/alert-session";
 import { MAP_CHROME } from "@/lib/design-tokens";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -133,7 +134,7 @@ function FarmDetailPageContent() {
                 <p className="text-xs text-muted-foreground">{[land.areaMu === null ? "—" : t("areaValue", { value: land.areaMu.toFixed(2) }), land.cropText, land.cropStatus].filter(Boolean).join(" · ")}</p>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <ProjectRiskBadge land={land} />
-                    {(land.monitoring?.open_alert_count ?? 0) > 0 && <span className="text-xs text-muted-foreground">{t("pendingShort", { count: land.monitoring!.open_alert_count })}</span>}
+                    {(land.monitoring?.open_alert_count ?? 0) > 0 && <span className="text-xs text-muted-foreground">{t("pendingShort", { count: formatAlertCount(land.monitoring!.open_alert_count) })}</span>}
                 </div>
                 {firstAlert && <p className="truncate text-xs">{ruleLabel(firstAlert.rule_name, tRules)}</p>}
                 <p className={cn("text-xs", land.dataStatus === "fresh" ? "text-muted-foreground" : "text-warning")}>{t("data." + land.dataStatus)} · {land.monitoring?.observation?.date ?? "—"}</p>

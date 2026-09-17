@@ -477,6 +477,20 @@
     "openLabel": "abiertas",
     "more": "alertas más"
   },
+  "alertReading": {
+    "read": "Leída",
+    "unread": "Sin leer",
+    "myUnread": "Mis alertas sin leer",
+    "markRead": "Marcar como leída",
+    "markAllRead": "Marcar todas como leídas",
+    "allReadHint": "Marca todas mis alertas sin leer de esta organización, incluidas otras páginas. No afecta a otros usuarios.",
+    "allReadSuccess": "Se marcaron {count} alertas como leídas",
+    "failed": "No se pudieron marcar las alertas. Inténtalo de nuevo.",
+    "loadFailed": "No se pudieron cargar las alertas",
+    "retry": "Reintentar",
+    "filter": "Estado de lectura",
+    "all": "Todos los estados de lectura"
+  },
   "alertsPage": {
     "title": "Alertas",
     "subtitle": "Anomalías de vegetación, clima y suelo en todos los campos",

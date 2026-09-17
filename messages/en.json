@@ -477,6 +477,20 @@
     "openLabel": "open",
     "more": "more alerts"
   },
+  "alertReading": {
+    "read": "Read",
+    "unread": "Unread",
+    "myUnread": "My unread alerts",
+    "markRead": "Mark as read",
+    "markAllRead": "Mark all as read",
+    "allReadHint": "Mark all my unread alerts in this tenant as read, including other pages. Other users are unaffected.",
+    "allReadSuccess": "Marked {count} alerts as read",
+    "failed": "Could not mark alerts as read. Please retry.",
+    "loadFailed": "Could not load alerts",
+    "retry": "Retry",
+    "filter": "Read status",
+    "all": "All read statuses"
+  },
   "alertsPage": {
     "title": "Alerts",
     "subtitle": "Vegetation, weather and soil anomalies across all fields",

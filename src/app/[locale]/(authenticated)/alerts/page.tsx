@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { alertsApi } from "@/lib/api";
-import type { Alert, AlertSummary } from "@/lib/api";
+import type { Alert } from "@/lib/api";
+import { useAlertSummary } from "@/hooks/use-alert-summary";
+import { formatAlertCount } from "@/lib/alert-session";
 import { toast } from "sonner";
 import {
     AlertTriangle,
@@ -11,6 +13,8 @@ import {
     ChevronLeft,
     ChevronRight,
     ShieldAlert,
+    CheckCheck,
+    Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,61 +39,84 @@ const PAGE_SIZE = 10;
 
 export default function AlertsPage() {
     const t = useTranslations("alertsPage");
+    const tRead = useTranslations("alertReading");
+    const { data: summary, error: summaryError } = useAlertSummary();
+    const requestId = useRef(0);
 
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [total, setTotal] = useState(0);
-    const [summary, setSummary] = useState<AlertSummary | null>(null);
     const [loading, setLoading] = useState(true);
     const [togglingId, setTogglingId] = useState<string | null>(null);
+    const [markingAll, setMarkingAll] = useState(false);
+    const [readFilter, setReadFilter] = useState("all");
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     // Filters. Both are applied server-side now: severity used to be a
     // client-side filter over a capped fetch, which is why the page could
     // only ever see the first 200 alerts.
-    const [statusFilter, setStatusFilter] = useState<string>("open");
+    const [statusFilter, setStatusFilter] = useState<string>("all");
     const [severityFilter, setSeverityFilter] = useState<string>("all");
     const [page, setPage] = useState(0);
 
     const loadAlerts = useCallback(async () => {
+        const currentRequest = ++requestId.current;
         setLoading(true);
+        setLoadError(null);
         try {
             const res = await alertsApi.list({
                 status: statusFilter === "all" ? undefined : statusFilter,
                 severity: severityFilter === "all" ? undefined : severityFilter,
+                isRead: readFilter === "all" ? undefined : readFilter === "read",
                 limit: PAGE_SIZE,
                 offset: page * PAGE_SIZE,
             });
+            // 快速切换阅读筛选或页码时，旧响应不能覆盖最新列表。
+            if (currentRequest !== requestId.current) return;
             setAlerts(res.items);
             setTotal(res.total);
         } catch (err) {
-            console.error("Failed to load alerts:", err);
+            if (currentRequest === requestId.current) {
+                setLoadError(err instanceof Error ? err.message : tRead("loadFailed"));
+            }
         } finally {
-            setLoading(false);
+            if (currentRequest === requestId.current) setLoading(false);
         }
-    }, [statusFilter, severityFilter, page]);
-
-    /** Counts come from the server so they describe the workspace, not
-     *  whatever page of rows the client is holding. */
-    const loadSummary = useCallback(async () => {
-        try {
-            setSummary(await alertsApi.summary());
-        } catch {
-            setSummary(null);
-        }
-    }, []);
+    }, [statusFilter, severityFilter, readFilter, page, tRead]);
 
     useEffect(() => {
-                loadAlerts();
+        void loadAlerts();
+        return () => { requestId.current += 1; };
     }, [loadAlerts]);
-
-    useEffect(() => {
-                loadSummary();
-    }, [loadSummary]);
 
     // A filter change invalidates the current offset: page 8 of "all"
     // is not page 8 of "high".
     useEffect(() => {
         setPage(0);
-    }, [statusFilter, severityFilter]);
+    }, [statusFilter, severityFilter, readFilter]);
+
+    const markAllRead = async () => {
+        setMarkingAll(true);
+        try {
+            // 批量接口以当前租户和用户为范围，不受列表筛选或当前页影响。
+            const result = await alertsApi.markAllRead();
+            toast.success(tRead("allReadSuccess", { count: result.marked_count }));
+            if (page !== 0) setPage(0);
+            else await loadAlerts();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : tRead("failed"));
+        } finally {
+            setMarkingAll(false);
+        }
+    };
+
+    const onRead = (updated: Alert) => {
+        if (readFilter === "unread") {
+            if (alerts.length === 1 && page > 0) setPage((value) => value - 1);
+            else void loadAlerts();
+        } else {
+            setAlerts((previous) => previous.map((item) => item.id === updated.id ? updated : item));
+        }
+    };
 
     const toggleStatus = async (alert: Alert) => {
         const newStatus = alert.status === "open" ? "closed" : "open";
@@ -100,9 +127,7 @@ export default function AlertsPage() {
             toast.success(
                 newStatus === "closed" ? t("alertClosed") : t("alertReopened"),
             );
-            // The row may no longer belong on this page, and the open
-            // counts have certainly changed.
-            loadSummary();
+            // 更新接口统一刷新共享统计；筛选列表再按关闭状态重新加载。
             if (statusFilter !== "all") loadAlerts();
         } catch (err: any) {
             toast.error(err.detail || t("failedUpdate"));
@@ -144,6 +169,22 @@ export default function AlertsPage() {
                 <p className="mt-1 text-[13px] text-muted-foreground">
                     {t("subtitle")}
                 </p>
+            </div>
+
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm font-medium" title={String(summary?.unread_total ?? "")}>
+                    {tRead("myUnread")}：{summary ? formatAlertCount(summary.unread_total) : "—"}
+                </span>
+                <Button
+                    variant="outline"
+                    onClick={markAllRead}
+                    disabled={markingAll || !summary || !!summaryError || summary.unread_total === 0}
+                    title={tRead("allReadHint")}
+                >
+                    {markingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCheck className="mr-2 h-4 w-4" />}
+                    {tRead("markAllRead")}
+                </Button>
+                <p className="w-full text-xs text-muted-foreground">{tRead("allReadHint")}</p>
             </div>
 
             {/* Summary. Icon and count both read from the severity tokens,
@@ -216,6 +257,17 @@ export default function AlertsPage() {
                     </SelectContent>
                 </Select>
 
+                <Select value={readFilter} onValueChange={setReadFilter}>
+                    <SelectTrigger className="w-[140px]" aria-label={tRead("filter")}>
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">{tRead("all")}</SelectItem>
+                        <SelectItem value="unread">{tRead("unread")}</SelectItem>
+                        <SelectItem value="read">{tRead("read")}</SelectItem>
+                    </SelectContent>
+                </Select>
+
                 {/* A filtered list with no total is a trap: the user reads
                     four alerts and thinks that is all of them. */}
                 <span className="ml-auto whitespace-nowrap text-xs text-muted-foreground tabular-nums">
@@ -224,7 +276,12 @@ export default function AlertsPage() {
             </div>
 
             {/* Alert List */}
-            {alerts.length === 0 ? (
+            {loadError ? (
+                <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">
+                    <p>{loadError}</p>
+                    <Button variant="outline" className="mt-3" onClick={loadAlerts}>{tRead("retry")}</Button>
+                </div>
+            ) : alerts.length === 0 ? (
                 <Card className="border-2 border-dashed">
                     <CardContent className="p-12 text-center">
                         <CheckCircle2 className="mx-auto h-12 w-12 text-primary/30" />
@@ -241,6 +298,7 @@ export default function AlertsPage() {
                             <AlertRow
                                 key={alert.id}
                                 alert={alert}
+                                onRead={onRead}
                                 fieldName={alert.land_name ?? undefined}
                                 farmId={alert.farm_id ?? undefined}
                                 farmName={alert.farm_name ?? undefined}
@@ -310,7 +368,7 @@ function SummaryCard({
                     <span className="text-sm leading-snug text-muted-foreground">{label}</span>
                 </div>
                 <p className={cn("mt-3 text-2xl font-bold tracking-tight tabular-nums", countClass)}>
-                    {count}
+                    <span title={String(count)}>{formatAlertCount(count)}</span>
                 </p>
             </CardContent>
         </Card>

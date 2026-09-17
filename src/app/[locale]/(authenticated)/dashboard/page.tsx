@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "@/i18n/navigation";
 import { alertsApi } from "@/lib/api";
+import { formatAlertCount } from "@/lib/alert-session";
 import type { Alert } from "@/lib/api";
 import { listPlantingGroups, formatMu, type AgricGroup } from "@/lib/agric";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -112,7 +113,7 @@ export default function DashboardPage() {
                 <StatCard
                     icon={<Bell className="h-5 w-5 text-primary" />}
                     label={t("openAlerts")}
-                    value={openAlertTotal}
+                    value={formatAlertCount(openAlertTotal)}
                     sublabel={t("requireAttention")}
                     tone={openAlertTotal > 0 ? "danger" : "default"}
                 />
@@ -258,7 +259,7 @@ function StatCard({
 }: {
     icon: React.ReactNode;
     label: string;
-    value: number;
+    value: number | string;
     sublabel?: string;
     tone?: "default" | "danger";
 }) {
