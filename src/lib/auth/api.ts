@@ -1,5 +1,6 @@
 import { AuthApiError, type JointLoginData, type JointV2LoginParams, type MachineLoginInfo } from "./types";
 import { getBmsToken, getItem, AUTH_KEYS } from "./storage";
+import { resolveGatewayUrl } from "@/lib/api-origin";
 
 const SELLER_BASIC = "Basic c2VsbGVyOnNlbGxlcg==";
 
@@ -76,7 +77,7 @@ async function request<T>(
         else signal.addEventListener("abort", () => controller.abort(), { once: true });
     }
     try {
-        const res = await fetch(url, {
+        const res = await fetch(resolveGatewayUrl(url, "business"), {
             ...rest,
             signal: controller.signal,
             headers: {
