@@ -1,3 +1,5 @@
+import { resolveGatewayUrl } from "@/lib/api-origin";
+
 /**
  * agric-satellite-analysis API client.
  *
@@ -7,10 +9,8 @@
 
 /**
  * Resolve API base URL.
- * In a static deployment, use the same-origin `/satellite-api` gateway and let
- * the deployment proxy forward it to the configured satellite gateway; this
- * keeps browser requests on the frontend origin and gives every API call one
- * stable prefix.
+ * 默认使用同源 `/satellite-api`，本地由 Next rewrite 代理；测试静态构建开启
+ * 直连后，会在这里拼接测试卫星网关地址，避免依赖部署端反向代理。
  */
 export function getApiBase(): string {
     const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
@@ -22,7 +22,8 @@ export function getApiBase(): string {
             const normalized = raw.replace(/\/$/, "");
             const legacyPaths = new Set(["/v1", basePath ? `${basePath}/v1` : ""]);
             legacyPaths.delete("");
-            return legacyPaths.has(normalized) ? defaultApi : normalized || defaultApi;
+            const apiPath = legacyPaths.has(normalized) ? defaultApi : normalized || defaultApi;
+            return resolveGatewayUrl(apiPath, "satellite");
         }
         try {
             const u = new URL(raw);
@@ -36,7 +37,7 @@ export function getApiBase(): string {
             /* keep raw */
         }
     }
-    return raw.replace(/\/$/, "");
+    return resolveGatewayUrl(raw.replace(/\/$/, ""), "satellite");
 }
 
 /** Auth/org headers removed — API AUTH_DISABLED; no JWT / X-Org-Id. */

@@ -22,7 +22,7 @@ const SATELLITE_API_PROXY =
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // 静态发布由 Nginx 直接读取 out/，API 由 Nginx 单独代理到后端服务。
+    // 静态发布由静态服务器直接读取 out/；API 路由按构建配置保持同源或直连网关。
     trailingSlash: true,
     basePath: BASE_PATH,
     // 将自动推导出的前缀注入浏览器代码，保证 API、分享链接和地图资源也使用同一前缀。

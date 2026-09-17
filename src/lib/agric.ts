@@ -1,9 +1,10 @@
 /**
  * 乡合种植项目 / 地块接口。
- * 本地 next dev 经 /agric-api 反代到 https://joint-venture.cdfinance.com.cn/agric-api
+ * 本地 next dev 经 /agric-api 反代到正式网关；测试静态构建开启直连时由浏览器直接访问正式网关。
  */
 import { AuthApiError } from "@/lib/auth/types";
 import { AUTH_KEYS, getItem } from "@/lib/auth/storage";
+import { resolveGatewayUrl } from "@/lib/api-origin";
 
 const AUTH_EXPIRED_CODES = new Set<string | number>([
     401,
@@ -171,7 +172,7 @@ async function agricRequest<T>(
         else init.signal.addEventListener("abort", () => controller.abort(), { once: true });
     }
     try {
-        const res = await fetch(`/agric-api${path}`, {
+        const res = await fetch(resolveGatewayUrl(`/agric-api${path}`, "business"), {
             ...init,
             signal: controller.signal,
             headers: {
