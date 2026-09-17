@@ -1202,6 +1202,7 @@
     "loading": "加载中…",
     "loadFailed": "态势数据加载失败",
     "noChildren": "无下级区划",
+    "drillDownHint": "点击查看下级区划",
     "dateWindow": "时间窗口",
     "clickMapHint": "点击地图下钻",
     "pctOfParcels": "占地块比例",
