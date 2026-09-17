@@ -31,6 +31,7 @@ import { tokenColor } from "@/lib/design-tokens";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ruleLabel } from "@/lib/alert-rules";
 import { formatAreaMu } from "@/lib/area";
+import { getBasemapStyle, installBasemapFallback } from "@/lib/pmtiles";
 
 const NdviChart = dynamic(() => import("@/components/charts/ndvi-chart"), {
     ssr: false,
@@ -570,26 +571,14 @@ function FieldMap({
 
         const map = new maplibregl.Map({
             container: containerRef.current,
-            style: {
-                version: 8,
-                sources: {
-                    esri: {
-                        type: "raster",
-                        tiles: [
-                            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                        ],
-                        tileSize: 256,
-                        attribution: "Esri, Maxar, Earthstar Geographics",
-                        maxzoom: 18,
-                    },
-                },
-                layers: [{ id: "satellite", type: "raster", source: "esri" }],
-            },
+            style: getBasemapStyle(),
             center: [0, 0],
             zoom: 2,
             interactive: false,
-            attributionControl: false,
+            attributionControl: { compact: true },
         });
+
+        installBasemapFallback(map);
 
         map.on("load", () => {
             const geojson: GeoJSON.Feature = {

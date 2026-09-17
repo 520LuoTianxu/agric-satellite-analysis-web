@@ -4,7 +4,7 @@ import React, { useRef, useEffect, useCallback } from "react";
 import maplibregl from "maplibre-gl";
 import { tokenColor } from "@/lib/design-tokens";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { registerPMTilesProtocol, getBasemapStyle, tryUpgradeToPMTiles } from "@/lib/pmtiles";
+import { registerPMTilesProtocol, getBasemapStyle, tryUpgradeToPMTiles, installBasemapFallback, type MapStyleId } from "@/lib/pmtiles";
 import { createTransformRequest, refreshMapToken } from "@/lib/map-auth";
 
 export interface BaseMapProps {
@@ -16,6 +16,8 @@ export interface BaseMapProps {
     zoom?: number;
     /** Callback when map is loaded */
     onMapReady?: (map: maplibregl.Map) => void;
+    /** 底图自动降级后同步界面中的图层选中状态。 */
+    onBasemapFallback?: (styleId: MapStyleId) => void;
     /** If true, the map fills its parent container */
     fill?: boolean;
 }
@@ -24,13 +26,14 @@ export interface BaseMapProps {
  * Base MapLibre GL JS component.
  *
  * Per PRD: Uses PMTiles basemap from Aliyun OSS when NEXT_PUBLIC_PROTOMAPS_URL
- * is set. Falls back to OSM raster tiles otherwise.
+ * is set. 默认使用与农业管理端一致的 WGS84 卫星瓦片。
  */
 export default function BaseMap({
     className = "",
     center = [78.9629, 20.5937], // India center
     zoom = 5,
     onMapReady,
+    onBasemapFallback,
     fill = true,
 }: BaseMapProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -65,6 +68,8 @@ export default function BaseMap({
                 compact: true,
             },
         });
+
+        installBasemapFallback(map, onBasemapFallback);
 
         // Refresh JWT for tile requests every 10 minutes
         const tokenRefresh = setInterval(() => refreshMapToken(), 10 * 60_000);
