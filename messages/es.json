@@ -396,7 +396,7 @@
     "edit": "Editar",
     "delete": "Eliminar",
     "tabInfo": "Info",
-    "tabNdvi": "Índices",
+    "tabNdvi": "Teledetección",
     "tabAlerts": "Alertas",
     "tabScouting": "Scouting",
     "tabShare": "Compartir",
@@ -985,7 +985,8 @@
     "styleStreet": "Calles",
     "styleTerrain": "Terreno",
     "styleSatellite": "Satélite",
-    "styleDark": "Oscuro"
+    "styleDark": "Oscuro",
+    "myLocation": "Mi ubicación"
   },
   "ndviChart": {
     "threshold": "Umbral",
@@ -1299,39 +1300,38 @@
   },
   "remoteSensingOnboarding": {
     "trigger": "Guía inicial",
-    "title": "Teledetección agrícola en 4 pasos",
-    "description": "Busca una parcela, entiende los cambios y consulta su informe.",
-    "stepsLabel": "Pasos de la guía",
-    "progress": "Paso {current} de {total}",
-    "skip": "Omitir por ahora",
+    "skip": "Omitir",
     "previous": "Anterior",
     "next": "Siguiente",
-    "finish": "Listo",
-    "start": "Elegir parcela",
-    "reopen": "Puedes omitir la guía y volver a abrirla desde la navegación superior.",
-    "field": {
-      "label": "Parcela",
-      "title": "Busca la parcela que quieres revisar",
-      "body": "Abre la teledetección de proyectos en la navegación superior, elige un proyecto y una parcela. Comprueba sus límites y el cultivo en los detalles.",
-      "tip": "Empieza por una parcela conocida para relacionar el mapa con lo que ves en el campo."
+    "finish": "Entendido",
+    "waiting": "Abriendo el siguiente paso…",
+    "nav": {
+      "title": "Empieza por Teledetección de proyectos",
+      "body": "Usa la navegación superior para ver tus proyectos de cultivo."
+    },
+    "project": {
+      "title": "Abre un proyecto",
+      "body": "Elige un proyecto para ver las parcelas que contiene."
+    },
+    "land": {
+      "title": "Elige una parcela",
+      "body": "Selecciona una parcela para abrir sus detalles. Comprueba primero el límite y el cultivo."
+    },
+    "ndvi": {
+      "title": "Abre la pestaña de teledetección",
+      "body": "Cambia a Teledetección para elegir fechas y ver las capas de crecimiento."
     },
     "date": {
-      "label": "Fecha",
-      "title": "Abre Índices y elige una fecha",
-      "body": "En la pestaña de índices, elige un punto de la gráfica o una fecha de la lista para ver esa observación. Prefiere fechas despejadas. Si faltan imágenes, actualízalas, elige la fecha inicial y espera a que termine el proceso.",
-      "tip": "La imagen corresponde a la fecha indicada; no es una vista en directo. Más nubosidad significa más superficie oculta."
+      "title": "Elige una fecha de observación",
+      "body": "Pulsa una fecha o un punto de la gráfica. Prefiere fechas con poca nubosidad."
     },
     "growth": {
-      "label": "Crecimiento",
-      "title": "Empieza con NDVI y compara fechas",
-      "body": "NDVI ayuda a observar la cobertura vegetal. Lee la explicación del indicador, consulta la leyenda y compara varias fechas. Usa EVI para cultivos densos, o los modos de sequía e inundación para revisar cambios relacionados con el agua.",
-      "tip": "Un valor bajo también puede deberse a plantas jóvenes, maduración, cosecha o nubes. No significa necesariamente daños."
+      "title": "Empieza con NDVI y compara",
+      "body": "Usa NDVI, sequía e inundación en la parte inferior del mapa. Un valor bajo también puede deberse a nascencia, maduración o nubes."
     },
     "report": {
-      "label": "Informe",
-      "title": "Consulta el clima y el informe, y revisa el campo",
-      "body": "Si un cambio persiste, revisa las lluvias recientes y consulta o genera un informe de la parcela. Visita las zonas señaladas y registra lo observado en la sección de inspección.",
-      "tip": "Elige parcela → elige fecha → compara cambios → consulta el informe y comprueba el campo. La teledetección aporta pistas; la visita ayuda a explicar sus causas."
+      "title": "Consulta el informe de la parcela",
+      "body": "Si un cambio persiste, abre el informe de la parcela y verifícalo en el campo."
     }
   },
   "projectMonitoring": {
@@ -1398,6 +1398,8 @@
     "filterData": "Filtrar por validez",
     "filterPlanting": "Filtrar por estado de siembra",
     "filterFocus": "Filtrar por enfoque",
+    "showFilters": "Mostrar filtros",
+    "hideFilters": "Ocultar filtros",
     "allRisks": "Todos los riesgos",
     "allCrops": "Todos los cultivos",
     "allData": "Todos los estados de datos",

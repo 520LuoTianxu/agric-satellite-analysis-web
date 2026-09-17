@@ -21,6 +21,8 @@ python scripts/check-i18n-keys.py
 
 默认前端地址为 `http://localhost:3000`，API 地址通过 `NEXT_PUBLIC_API_URL` 配置。
 
+本地 `npm run dev` 将 `/bapi`、`/agric-api`、`/admin-api` 转发到正式网关 `https://joint-venture.cdfinance.com.cn`（`JOINT_VENTURE_PROXY`），`/satellite-api` 独立转发到测试网关 `https://joint-venture-test.cdfinance.com.cn`（`SATELLITE_API_PROXY`）。静态部署的接口转发仍由部署端 Nginx 配置。
+
 ## 地图底图
 
 默认卫星底图复用 `agric-admin-front` 中的 `2025_WGS84_HIGH_Satellite` 自维护瓦片，使用 WGS84 经纬度和 Web Mercator 瓦片网格，与地块边界和遥感热力图保持一致，无需引入高德 JS SDK 或转换业务坐标。

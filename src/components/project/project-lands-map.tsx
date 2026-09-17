@@ -19,7 +19,6 @@ interface ProjectLandsMapProps {
     lands: ProjectLand[];
     selectedLandId: string | null;
     onSelect: (landId: string) => void;
-    fitVersion: number;
 }
 
 const SOURCE = "project-lands";
@@ -57,7 +56,7 @@ function ensureLayers(map: maplibregl.Map) {
         paint: { "line-color": tokenColor("--foreground"), "line-width": 2, "line-gap-width": 5 } });
 }
 
-export default function ProjectLandsMap({ lands, selectedLandId, onSelect, fitVersion }: ProjectLandsMapProps) {
+export default function ProjectLandsMap({ lands, selectedLandId, onSelect }: ProjectLandsMapProps) {
     const t = useTranslations("projectMonitoring");
     const { resolvedTheme } = useTheme();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -136,7 +135,7 @@ export default function ProjectLandsMap({ lands, selectedLandId, onSelect, fitVe
         popupRef.current?.remove();
         const selected = selectedLandId ? landById.get(selectedLandId) : null;
         fitLands(map, selected ? [selected] : lands, Boolean(selected));
-    }, [lands, landById, selectedLandId, fitVersion, fitLands, syncMap, resolvedTheme]);
+    }, [lands, landById, selectedLandId, fitLands, syncMap, resolvedTheme]);
 
     useEffect(() => {
         const element = containerRef.current;

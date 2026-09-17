@@ -15,7 +15,10 @@ const BASE_PATH_NAME = (configuredBasePath ?? ciDefaultBasePath)
 const BASE_PATH = BASE_PATH_NAME ? `/${BASE_PATH_NAME}` : "";
 
 const JOINT_VENTURE_PROXY =
-    process.env.JOINT_VENTURE_PROXY || "https://joint-venture-test.cdfinance.com.cn";
+    process.env.JOINT_VENTURE_PROXY || "https://joint-venture.cdfinance.com.cn";
+// 卫星分析仍使用测试数据，必须与正式环境的登录、农业业务代理分开配置。
+const SATELLITE_API_PROXY =
+    process.env.SATELLITE_API_PROXY || "https://joint-venture-test.cdfinance.com.cn";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -31,7 +34,7 @@ const nextConfig = {
 if (process.env.NODE_ENV === "production") {
     nextConfig.output = "export";
 } else {
-    // 静态导出没有 rewrite。本地 next dev 把乡合登录接口和卫星分析 API 转到测试网关。
+    // 静态导出没有 rewrite。本地登录和农业业务走正式网关，卫星分析保留测试网关。
     nextConfig.rewrites = async () => [
         // 卫星 OSS 未允许 localhost 跨域；开发环境同源代理，生产静态站点直连业务域名白名单图源。
         {
@@ -41,7 +44,7 @@ if (process.env.NODE_ENV === "production") {
         { source: "/bapi/:path*", destination: `${JOINT_VENTURE_PROXY}/bapi/:path*` },
         { source: "/agric-api/:path*", destination: `${JOINT_VENTURE_PROXY}/agric-api/:path*` },
         { source: "/admin-api/:path*", destination: `${JOINT_VENTURE_PROXY}/admin-api/:path*` },
-        { source: "/satellite-api/:path*", destination: `${JOINT_VENTURE_PROXY}/satellite-api/:path*` },
+        { source: "/satellite-api/:path*", destination: `${SATELLITE_API_PROXY}/satellite-api/:path*` },
         // next-intl as-needed：开发时把无前缀路径转到默认语言，生产由 prepare-static-output 复制 out/zh。
         { source: "/", destination: "/zh" },
         {

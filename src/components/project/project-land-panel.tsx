@@ -107,7 +107,11 @@ export function ProjectLandPanel({ land, groupId, freshnessDays, onClose }: {
                 </section>}
             </div>
             <div className="border-t p-4">
-                <Button className="w-full" asChild><Link href={href}><ExternalLink className="mr-2 h-4 w-4" />{t("fullDetail")}</Link></Button>
+                <Button className="w-full" asChild>
+                    <Link href={href} data-tour="land-detail" data-tour-href={href}>
+                        <ExternalLink className="mr-2 h-4 w-4" />{t("fullDetail")}
+                    </Link>
+                </Button>
             </div>
         </aside>
     );

@@ -11,7 +11,6 @@ import type { LandParcel, RasterLayer, IndexType } from "@/lib/api";
 import type { AgriHeatIndex, AgriHeatmapImage } from "@/lib/agri-heatmap";
 import { AGRI_MODE_LABELS, AGRI_PRIMARY_MODES, canvasToObjectUrl, clipHeatmapImageToField, dataUrlToObjectUrl, heatmapImageHasContent, revokeHeatmapObjectUrl } from "@/lib/agri-heatmap";
 import { cn } from "@/lib/utils";
-import { formatAreaMu } from "@/lib/area";
 import { toast } from "sonner";
 import {
     ArrowLeft,
@@ -20,7 +19,6 @@ import {
     Layers,
     Loader2,
     Save,
-    Trash2,
     X,
     Bell,
     ClipboardList,
@@ -33,11 +31,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useConfirm } from "@/components/confirm-dialog";
 import { useTranslations } from "next-intl";
 import { MAP_STYLES, type MapStyleId } from "@/lib/pmtiles";
 import { tokenColor, MAP_CHROME } from "@/lib/design-tokens";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TOUR_PREPARE_EVENT, type TourPrepareDetail } from "@/lib/product-tour";
 
 const DrawMap = dynamic(() => import("@/components/map/draw-map"), {
     ssr: false,
@@ -227,7 +225,6 @@ function clampPanelWidthPx(px: number): number {
 
 function FieldDetailPageContent() {
     const t = useTranslations("fieldDetail");
-    const confirm = useConfirm();
     const searchParams = useSearchParams();
     const router = useRouter();
     const farmId = searchParams.get("farmId") || "";
@@ -254,8 +251,9 @@ function FieldDetailPageContent() {
     // Map
     const [mapInstance, setMapInstance] = useState<maplibregl.Map | null>(null);
     const [mapStyle, setMapStyle] = useState<MapStyleId>("satellite");
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState("info");
+    // 地块详情需要优先展示分析内容，进入页面时默认展开右侧分析侧栏。
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [activeTab, setActiveTab] = useState("land-report");
     const [panelWidthPx, setPanelWidthPx] = useState(PANEL_WIDTH_DEFAULT_PX);
     const [isResizingPanel, setIsResizingPanel] = useState(false);
     const panelWidthRef = useRef(PANEL_WIDTH_DEFAULT_PX);
@@ -268,6 +266,16 @@ function FieldDetailPageContent() {
     const indexLayerRef = useRef<RasterLayer | null>(null);
     const activeIndexTypeRef = useRef<IndexType>("NDVI");
     const landRef = useRef<LandParcel | null>(null);
+
+    useEffect(() => {
+        const onPrepare = (event: Event) => {
+            const detail = (event as CustomEvent<TourPrepareDetail>).detail;
+            if (detail?.sidebar) setSidebarOpen(true);
+            if (detail?.tab) setActiveTab(detail.tab);
+        };
+        window.addEventListener(TOUR_PREPARE_EVENT, onPrepare);
+        return () => window.removeEventListener(TOUR_PREPARE_EVENT, onPrepare);
+    }, []);
     const agriHeatmapRef = useRef<AgriHeatmapImage | null>(null);
     /** blob: URL currently fed to MapLibre ImageSource — revoke on clear/replace. */
     const agriHeatmapBlobUrlRef = useRef<string | null>(null);
@@ -791,23 +799,6 @@ function FieldDetailPageContent() {
         }
     };
 
-    const handleDelete = async () => {
-        const ok = await confirm({
-            title: t("delete"),
-            description: t("confirmDelete"),
-            confirmLabel: t("delete"),
-            variant: "destructive",
-        });
-        if (!ok) return;
-        try {
-            await landsApi.delete(landId);
-            toast.success(t("fieldDeleted"));
-            router.push(backHref);
-        } catch (err: any) {
-            toast.error(err.detail || t("failedDelete"));
-        }
-    };
-
     if (loading) {
         return (
             <div className="relative h-full w-full overflow-hidden">
@@ -877,7 +868,7 @@ function FieldDetailPageContent() {
                 }}
             >
                 {activeTab === "ndvi" && (
-                    <div className={cn("flex gap-1 rounded-lg p-1", MAP_CHROME)}>
+                    <div data-tour="heatmap-modes" className={cn("flex gap-1 rounded-lg p-1", MAP_CHROME)}>
                         {AGRI_PRIMARY_MODES.map((mode) => (
                             <Button
                                 key={mode}
@@ -1001,36 +992,17 @@ function FieldDetailPageContent() {
                     />
                 </div>
                 <div className={cn("flex h-full flex-col overflow-hidden rounded-xl", MAP_CHROME)}>
-                    <Tabs defaultValue="info" value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 overflow-hidden">
+                    <Tabs defaultValue="land-report" value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 overflow-hidden">
                         {/* 页签保持紧凑单行，窄侧栏允许横向滚动，不挤占内容高度。 */}
-                        <TabsList variant="underline" className="flex shrink-0 flex-nowrap gap-3 overflow-x-auto bg-background/95 px-3 py-1">
+                        <div className="flex min-w-0 shrink-0 items-center border-b bg-background/95">
+                            <TabsList variant="underline" className="min-w-0 !w-auto flex-1 flex-nowrap gap-3 overflow-x-auto !border-b-0 px-3 py-1">
                             <TabsTrigger
-                                value="info"
+                                value="land-report"
                                 variant="underline"
                                 className="shrink-0 pb-2 pt-2 text-[11px]"
+                                data-tour="tab-report"
                             >
-                                {t("tabInfo")}
-                            </TabsTrigger>
-                            <TabsTrigger
-                                value="ndvi"
-                                variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
-                            >
-                                {t("tabNdvi")}
-                            </TabsTrigger>
-                            <TabsTrigger
-                                value="weather"
-                                variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
-                            >
-                                {t("tabWeather")}
-                            </TabsTrigger>
-                            <TabsTrigger
-                                value="soil"
-                                variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
-                            >
-                                {t("tabSoil")}
+                                {t("tabLandReport")}
                             </TabsTrigger>
                             <TabsTrigger
                                 value="alerts"
@@ -1045,27 +1017,50 @@ function FieldDetailPageContent() {
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
-                                value="land-report"
+                                value="ndvi"
                                 variant="underline"
                                 className="shrink-0 pb-2 pt-2 text-[11px]"
+                                data-tour="tab-ndvi"
                             >
-                                {t("tabLandReport")}
+                                {t("tabNdvi")}
                             </TabsTrigger>
                             <TabsTrigger
-                                value="scouting"
+                                value="weather"
                                 variant="underline"
                                 className="shrink-0 pb-2 pt-2 text-[11px]"
+                                data-tour="tab-weather"
                             >
-                                {t("tabScouting")}
+                                {t("tabWeather")}
                             </TabsTrigger>
                             <TabsTrigger
-                                value="share"
+                                value="soil"
                                 variant="underline"
                                 className="shrink-0 pb-2 pt-2 text-[11px]"
                             >
-                                {t("tabShare")}
+                                {t("tabSoil")}
                             </TabsTrigger>
-                        </TabsList>
+                            </TabsList>
+                            {/* 编辑收纳到页签栏右上角，避免操作按钮挤占报告内容区域。 */}
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="mr-2 h-7 w-7 shrink-0"
+                                aria-label={t("edit")}
+                                title={t("edit")}
+                                disabled={editing}
+                                onClick={() => {
+                                    setEditName(land.land_name || land.land_id);
+                                    setEditCropType(land.crop_type || "");
+                                    setEditSeason(land.season || "");
+                                    setEditGroupId(land.group_id || "");
+                                    setEditGeom(land.boundary_geojson);
+                                    setEditing(true);
+                                }}
+                            >
+                                <Edit2 className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
 
                         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
                             {editing ? (
@@ -1154,100 +1149,17 @@ function FieldDetailPageContent() {
                                 </div>
                             ) : (
                                 <>
-                                    <TabsContent value="info" className="mt-0 p-3 space-y-3">
-                                        {/* Field header card */}
-                                        <div className="rounded-lg bg-card p-3">
-                                            <h2 className="text-sm font-semibold">{land.land_name || land.land_id}</h2>
-                                            <p className="text-xs text-muted-foreground mt-0.5">
-                                                {land.area_ha != null ? formatAreaMu(land.area_ha) : ""}
-                                                {land.crop_type && land.crop_type !== "unknown" && ` · ${land.crop_type}`}
-                                                {land.season && ` · ${land.season}`}
-                                            </p>
-                                        </div>
-
-                                        {/* Field details card */}
-                                        <div className="rounded-lg bg-card p-3">
-                                            <dl className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-3">
-                                                <InfoRow label={t("name")} value={land.land_name || land.land_id} />
-                                                <InfoRow
-                                                    label={t("area")}
-                                                    value={
-                                                        formatAreaMu(land.area_ha)
-                                                    }
-                                                />
-                                                <InfoRow
-                                                    label={t("cropType")}
-                                                    value={land.crop_type && land.crop_type !== "unknown" ? land.crop_type : t("cropUnset")}
-                                                />
-                                                <InfoRow
-                                                    label={t("season")}
-                                                    value={land.season || "-"}
-                                                />
-                                                <InfoRow
-                                                    label={t("agriLandId")}
-                                                    value={land.land_id}
-                                                />
-                                                <InfoRow
-                                                    label={t("cdfinanceGroupId")}
-                                                    value={land.group_id || "-"}
-                                                />
-                                                <InfoRow
-                                                    label={t("tags")}
-                                                    value={land.tags_json?.join(", ") || "-"}
-                                                />
-                                                <InfoRow
-                                                    label={t("created")}
-                                                    value={new Date(
-                                                        land.created_at,
-                                                    ).toLocaleDateString()}
-                                                />
-                                                <InfoRow
-                                                    label={t("updated")}
-                                                    value={new Date(
-                                                        land.updated_at,
-                                                    ).toLocaleDateString()}
-                                                />
-                                            </dl>
-                                        </div>
-
-                                        {/* Actions */}
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="w-full"
-                                            onClick={() => {
-                                                setEditName(land.land_name || land.land_id);
-                                                setEditCropType(land.crop_type || "");
-                                                setEditSeason(land.season || "");
-                                                setEditGroupId(land.group_id || "");
-                                                setEditGeom(land.boundary_geojson);
-                                                setEditing(true);
-                                            }}
-                                        >
-                                            <Edit2 className="h-4 w-4 mr-2" />
-                                            {t("edit")}
-                                        </Button>
-
-                                        <div className="rounded-lg border border-destructive/20 bg-destructive/5 shadow-sm p-3">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p className="text-xs font-medium text-destructive">
-                                                        {t("delete")}
-                                                    </p>
-                                                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                                                        {t("confirmDelete")}
-                                                    </p>
-                                                </div>
-                                                <Button
-                                                    variant="destructive"
-                                                    size="sm"
-                                                    className="shrink-0 px-3 text-xs"
-                                                    onClick={handleDelete}
-                                                >
-                                                    <Trash2 className="h-3 w-3 mr-2" />
-                                                    {t("delete")}
-                                                </Button>
-                                            </div>
+                                    {/* 详情默认直接展示选地报告，基础字段信息不再占用侧栏空间；管理操作继续保留。 */}
+                                    <TabsContent value="land-report" className="mt-0">
+                                        <div className="space-y-3 p-3">
+                                            <LandReportTab
+                                                key={landId}
+                                                landId={landId}
+                                                cropType={land.crop_type}
+                                                onCropBound={(key) => {
+                                                    setLand((prev) => (prev ? { ...prev, crop_type: key } : prev));
+                                                }}
+                                            />
                                         </div>
                                     </TabsContent>
 
@@ -1275,18 +1187,6 @@ function FieldDetailPageContent() {
                                         <AlertsTab landId={landId} onOpenCountChange={setOpenAlertCount} />
                                     </TabsContent>
 
-                                    <TabsContent value="land-report" className="mt-0">
-                                        <LandReportTab
-                                            key={landId}
-                                            landId={landId}
-                                            cropType={land.crop_type}
-                                            onReportReady={() => router.push(`/?fieldId=${encodeURIComponent(landId)}`)}
-                                            onCropBound={(key) => {
-                                                setLand((prev) => (prev ? { ...prev, crop_type: key } : prev));
-                                            }}
-                                        />
-                                    </TabsContent>
-
                                     <TabsContent value="scouting" className="mt-0">
                                         <ScoutingTab landId={landId} mapInstance={mapInstance} activeTab={activeTab} />
                                     </TabsContent>
@@ -1308,15 +1208,6 @@ function FieldDetailPageContent() {
                     </Tabs>
                 </div>
             </div>
-        </div>
-    );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-    return (
-        <div className="min-w-0 rounded-lg bg-muted/35 px-3 py-2.5">
-            <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-            <dd className="mt-1 break-words text-xs font-medium leading-relaxed">{value}</dd>
         </div>
     );
 }

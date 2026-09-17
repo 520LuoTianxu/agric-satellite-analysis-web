@@ -1399,7 +1399,7 @@ export default function AgriTimeseriesPanel({
     const selectedMean = stats.find((point) => point.date === selectedDate)?.mean;
 
     return (
-        <Card className="overflow-hidden border-border/60 bg-card shadow-sm">
+        <Card data-tour="timeseries" className="overflow-hidden border-border/60 bg-card shadow-sm">
             <CardHeader className="border-b border-border/50 bg-muted/20 px-3 py-2.5">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
@@ -1814,7 +1814,7 @@ export default function AgriTimeseriesPanel({
                                 </div>
                             </>
                         )}
-                        <div className="space-y-3 rounded-lg bg-muted/20 p-2.5">
+                        <div data-tour="select-date" className="space-y-3 rounded-lg bg-muted/20 p-2.5">
                             <p className="text-[11px] text-muted-foreground leading-relaxed">
                                 {selectedDate
                                     ? t("heatmapDate", { date: selectedDate, mode: AGRI_MODE_LABELS[series] })
