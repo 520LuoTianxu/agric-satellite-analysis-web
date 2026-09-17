@@ -2,6 +2,7 @@
 
 export interface AccountRole {
     accountRoleId: number;
+    accountId?: number | string;
     shopName?: string;
     mainAccountFlag?: number;
     accountUsername?: string;
