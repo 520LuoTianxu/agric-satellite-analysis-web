@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import { Link, usePathname } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
-import { Leaf } from "lucide-react";
 import { alertsApi } from "@/lib/api";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -16,6 +16,9 @@ const NAV_ITEMS = [
     { href: "/farms" as const, labelKey: "projectRemoteSensing" as const },
     { href: "/alerts" as const, labelKey: "alerts" as const },
 ];
+
+/** 左上角品牌图标使用 OSS 公共资源，避免静态站点重复打包图片文件。 */
+const BRAND_ICON_URL = "https://agric-dev.oss-cn-beijing.aliyuncs.com/web/branding/icon.png";
 
 export function TopNav() {
     const pathname = usePathname();
@@ -40,7 +43,15 @@ export function TopNav() {
         <header className="sticky top-0 z-40 shrink-0 border-b border-border/80 bg-background/95 backdrop-blur-md">
             <div className="grid grid-cols-2 items-center gap-2 px-3 py-2 md:h-14 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-5 md:py-0">
                 <Link href="/" className="order-1 flex min-w-0 items-center gap-2">
-                    <Leaf className="h-6 w-6 shrink-0 text-primary" />
+                    <Image
+                        src={BRAND_ICON_URL}
+                        alt=""
+                        width={24}
+                        height={24}
+                        unoptimized
+                        aria-hidden="true"
+                        className="h-6 w-6 shrink-0 object-contain"
+                    />
                     <span className="truncate text-sm font-semibold tracking-tight sm:text-base">
                         {tCommon("brandName")}
                     </span>
@@ -59,7 +70,7 @@ export function TopNav() {
                                 href={item.href}
                                 data-tour={item.href === "/farms" ? "nav-farms" : undefined}
                                 className={cn(
-                                    "relative shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:text-sm",
+                                    "relative inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:text-sm",
                                     active
                                         ? "bg-background text-primary shadow-sm"
                                         : "text-muted-foreground hover:text-foreground",
@@ -67,7 +78,7 @@ export function TopNav() {
                             >
                                 {tNav(item.labelKey)}
                                 {showBadge && (
-                                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
+                                    <span className="ml-1 inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
                                         {openAlertCount > 99 ? "99+" : openAlertCount}
                                     </span>
                                 )}

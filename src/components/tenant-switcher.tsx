@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Check, ChevronsUpDown, LogOut, Search, User } from "lucide-react";
+import { Building2, Check, ChevronsUpDown, LogOut, Search, User } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { useRouter } from "@/i18n/navigation";
@@ -83,69 +83,80 @@ export function TenantSwitcher() {
                 </div>
             )}
 
-            {roles.length > 1 ? (
-                <DropdownMenu
-                    open={open}
-                    onOpenChange={(next) => {
-                        setOpen(next);
-                        if (!next) setKeyword("");
-                    }}
+            <div className="inline-flex min-w-0 shrink-0 items-center rounded-lg bg-muted/80">
+                <div
+                    className="inline-flex shrink-0 items-center gap-1 px-2 text-xs font-normal text-foreground"
+                    title={t("tenantLabel")}
                 >
-                    <DropdownMenuTrigger asChild>
-                        <Button
-                            variant="ghost"
-                            className="h-9 max-w-[9.5rem] gap-1.5 px-2 sm:max-w-[14rem]"
-                            title={tenantName}
-                        >
-                            <span className="min-w-0 flex-1 truncate text-left text-sm">
-                                {tenantName}
-                            </span>
-                            <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent side="bottom" align="end" className="w-64 p-2">
-                        <div className="relative mb-2">
-                            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                value={keyword}
-                                onChange={(event) => setKeyword(event.target.value)}
-                                onKeyDown={(event) => event.stopPropagation()}
-                                placeholder={t("searchTenant")}
-                                className="h-9 pl-8"
-                            />
-                        </div>
-                        <div className="max-h-64 overflow-y-auto">
-                            {filtered.length === 0 && (
-                                <p className="px-2 py-3 text-xs text-muted-foreground">{t("noTenantMatch")}</p>
-                            )}
-                            {filtered.map((role) => {
-                                const active = role.accountRoleId === activeId;
-                                return (
-                                    <button
-                                        key={role.accountRoleId}
-                                        type="button"
-                                        className={cn(
-                                            "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-accent",
-                                            active && "bg-primary-subtle text-primary",
-                                        )}
-                                        onClick={() => handleSelect(role.accountRoleId)}
-                                    >
-                                        <span className="min-w-0 flex-1 truncate">{role.shopName}</span>
-                                        {active && <Check className="h-4 w-4 shrink-0" />}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            ) : (
-                <p
-                    className="hidden max-w-[9.5rem] truncate px-2 text-sm sm:block sm:max-w-[14rem]"
-                    title={tenantName}
-                >
-                    {tenantName}
-                </p>
-            )}
+                    <Building2 className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
+                    <span className="hidden text-foreground sm:inline">{t("tenantLabel")}</span>
+                    <span className="sr-only">{t("tenantLabel")}</span>
+                </div>
+
+                {roles.length > 1 ? (
+                    <DropdownMenu
+                        open={open}
+                        onOpenChange={(next) => {
+                            setOpen(next);
+                            if (!next) setKeyword("");
+                        }}
+                    >
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                variant="ghost"
+                                className="h-9 max-w-[9.5rem] gap-1.5 px-2 sm:max-w-[14rem]"
+                                title={tenantName}
+                            >
+                                <span className="min-w-0 flex-1 truncate text-left text-sm">
+                                    {tenantName}
+                                </span>
+                                <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="bottom" align="end" className="w-64 p-2">
+                            <div className="relative mb-2">
+                                <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    value={keyword}
+                                    onChange={(event) => setKeyword(event.target.value)}
+                                    onKeyDown={(event) => event.stopPropagation()}
+                                    placeholder={t("searchTenant")}
+                                    className="h-9 pl-8"
+                                />
+                            </div>
+                            <div className="max-h-64 overflow-y-auto">
+                                {filtered.length === 0 && (
+                                    <p className="px-2 py-3 text-xs text-muted-foreground">{t("noTenantMatch")}</p>
+                                )}
+                                {filtered.map((role) => {
+                                    const active = role.accountRoleId === activeId;
+                                    return (
+                                        <button
+                                            key={role.accountRoleId}
+                                            type="button"
+                                            className={cn(
+                                                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-accent",
+                                                active && "bg-primary-subtle text-primary",
+                                            )}
+                                            onClick={() => handleSelect(role.accountRoleId)}
+                                        >
+                                            <span className="min-w-0 flex-1 truncate">{role.shopName}</span>
+                                            {active && <Check className="h-4 w-4 shrink-0" />}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                ) : (
+                    <p
+                        className="hidden max-w-[9.5rem] truncate px-2 text-sm sm:block sm:max-w-[14rem]"
+                        title={tenantName}
+                    >
+                        {tenantName}
+                    </p>
+                )}
+            </div>
 
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
