@@ -477,6 +477,20 @@
     "openLabel": "未关闭",
     "more": "更多预警"
   },
+  "alertReading": {
+    "read": "已读",
+    "unread": "未读",
+    "myUnread": "我的未读",
+    "markRead": "标记已读",
+    "markAllRead": "一键已读",
+    "allReadHint": "将当前租户下我的全部未读预警标为已读，包含其他分页，不影响其他用户。",
+    "allReadSuccess": "已将 {count} 条预警标记为已读",
+    "failed": "标记已读失败，请重试",
+    "loadFailed": "预警加载失败",
+    "retry": "重试",
+    "filter": "阅读状态",
+    "all": "全部阅读状态"
+  },
   "alertsPage": {
     "title": "预警",
     "subtitle": "所有地块的植被、气象与土壤异常",

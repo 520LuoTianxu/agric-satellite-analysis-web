@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { RISK_CLASSES, type ProjectLand } from "@/lib/project-monitoring";
 import { ruleLabel } from "@/lib/alert-rules";
 import { cn } from "@/lib/utils";
+import { formatAlertCount } from "@/lib/alert-session";
 import { MAP_CHROME } from "@/lib/design-tokens";
 
 export function ProjectRiskBadge({ land }: { land: Pick<ProjectLand, "riskLevel"> }) {
@@ -62,7 +63,7 @@ export function ProjectLandPanel({ land, groupId, freshnessDays, onClose }: {
                     <p className="text-sm">{firstAlert ? ruleLabel(firstAlert.rule_name, tRules)
                         : t(land.dataStatus === "fresh" ? "noCurrentAlerts" : "cannotAssess")}</p>
                     {firstAlert && <p className="text-xs text-muted-foreground">{t("alertEvidence", { date: firstAlert.date })}</p>}
-                    <p className="text-xs text-muted-foreground">{land.dataStatus === "unavailable" ? t("data.unavailable") : t("pendingCount", { count: monitoring?.open_alert_count ?? 0 })}</p>
+                    <p className="text-xs text-muted-foreground">{land.dataStatus === "unavailable" ? t("data.unavailable") : t("pendingCount", { count: formatAlertCount(monitoring?.open_alert_count ?? 0) })}</p>
                     <p className="text-xs text-muted-foreground">{t("verificationNote")}</p>
                 </section>
                 <section className="space-y-2">
@@ -94,7 +95,7 @@ export function ProjectLandPanel({ land, groupId, freshnessDays, onClose }: {
                     <p className="text-xs text-muted-foreground">{previous ? t("comparison", { date: previous.date }) : t("noComparison")}</p>
                 </section>
                 {monitoring && monitoring.alerts.length > 0 && <section className="space-y-2">
-                    <h2 className="text-sm font-semibold">{t("alertReasons", { count: monitoring.risk_alert_count })}</h2>
+                    <h2 className="text-sm font-semibold">{t("alertReasons", { count: formatAlertCount(monitoring.risk_alert_count) })}</h2>
                     {monitoring.alerts.map((alert) => <div key={alert.id} className="space-y-2 rounded-lg border p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="text-xs font-medium">{ruleLabel(alert.rule_name, tRules)}</span>

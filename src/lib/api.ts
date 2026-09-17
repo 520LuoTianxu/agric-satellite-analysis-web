@@ -1,4 +1,6 @@
 import { resolveGatewayUrl } from "@/lib/api-origin";
+import { getAlertSession } from "@/lib/alert-session";
+import { mutate as mutateCache } from "swr";
 
 /**
  * agric-satellite-analysis API client.
@@ -414,6 +416,7 @@ export interface NdviJob {
 /** Open alert counts across the workspace, independent of paging. */
 export interface AlertSummary {
     open_total: number;
+    unread_total: number;
     high: number;
     medium: number;
     low: number;
@@ -432,6 +435,8 @@ export interface Alert {
     weather_context: Record<string, any> | null;
     soil_context: Record<string, any> | null;
     created_at: string;
+    is_read?: boolean | null;
+    read_at?: string | null;
     /** Resolved by the API at query time, not stored on the alert. Null
      *  when the field or farm has been deleted. */
     land_name: string | null;
@@ -982,26 +987,50 @@ export const projectsApi = {
         ),
 };
 
+/** 预警单独接入农业登录；用户 ID 由后端验证 token 获取，不接受浏览器指定。 */
+async function alertFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
+    const session = getAlertSession();
+    if (!session) throw new ApiError(401, "缺少有效登录或租户基地，请重新登录");
+    const result = await apiFetch<T>(path, {
+        ...opts,
+        headers: {
+            ...opts.headers,
+            Authorization: `Bearer ${session.token}`,
+            "Hr-Base-Id": session.baseId,
+        },
+    });
+    // 只在服务端写入成功后刷新角标，失败不能让页面误以为已读。
+    if (opts.method && opts.method !== "GET") {
+        void mutateCache(["alert-summary", session.baseId, session.token]).catch(() => undefined);
+    }
+    return result;
+}
+
 export const alertsApi = {
-    list: (opts: { status?: string; severity?: string; limit?: number; offset?: number } = {}) => {
+    list: (opts: { status?: string; severity?: string; isRead?: boolean; limit?: number; offset?: number } = {}) => {
         const params = new URLSearchParams();
         if (opts.status) params.set("status", opts.status);
         if (opts.severity) params.set("severity", opts.severity);
+        if (opts.isRead !== undefined) params.set("is_read", String(opts.isRead));
         params.set("limit", String(opts.limit ?? 50));
         params.set("offset", String(opts.offset ?? 0));
-        return apiFetch<Paginated<Alert>>(`/alerts?${params}`);
+        return alertFetch<Paginated<Alert>>(`/alerts?${params}`);
     },
     /** Open counts by severity across the workspace, for the summary cards. */
-    summary: () => apiFetch<AlertSummary>("/alerts/summary"),
+    summary: () => alertFetch<AlertSummary>("/alerts/summary"),
     listForLand: (landId: string, limit = 50, indexType?: string) => {
         const params = new URLSearchParams({ land_id: landId, limit: String(limit) });
         if (indexType) params.set("index_type", indexType);
-        return apiFetch<Paginated<Alert>>(`/alerts?${params}`);
+        return alertFetch<Paginated<Alert>>(`/alerts?${params}`);
     },
     listForFarm: (farmId: string, limit = 50) =>
-        apiFetch<Paginated<Alert>>(`/alerts?farm_id=${farmId}&limit=${limit}`),
+        alertFetch<Paginated<Alert>>(`/alerts?farm_id=${farmId}&limit=${limit}`),
     update: (alertId: string, data: { status: string }) =>
-        apiFetch<Alert>(`/alerts/${alertId}`, { method: "PATCH", body: JSON.stringify(data) }),
+        alertFetch<Alert>(`/alerts/${alertId}`, { method: "PATCH", body: JSON.stringify(data) }),
+    markRead: (alertId: string) =>
+        alertFetch<Alert>(`/alerts/${alertId}/read`, { method: "POST" }),
+    markAllRead: () =>
+        alertFetch<{ marked_count: number }>("/alerts/read-all", { method: "POST" }),
 };
 
 // ── Scouting ─────────────────────────────────────────────────────

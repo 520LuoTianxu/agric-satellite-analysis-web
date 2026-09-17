@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Image from "next/image";
 import { Link, usePathname } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
-import { alertsApi } from "@/lib/api";
+import { useAlertSummary } from "@/hooks/use-alert-summary";
+import { formatAlertCount } from "@/lib/alert-session";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { TenantSwitcher } from "@/components/tenant-switcher";
@@ -24,20 +25,8 @@ export function TopNav() {
     const pathname = usePathname();
     const tNav = useTranslations("nav");
     const tCommon = useTranslations("common");
-    const [openAlertCount, setOpenAlertCount] = useState(0);
-
-    useEffect(() => {
-        let cancelled = false;
-        alertsApi
-            .list({ status: "open", limit: 1 })
-            .then((res) => {
-                if (!cancelled) setOpenAlertCount(res.total);
-            })
-            .catch(() => {});
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    const { data: summary } = useAlertSummary();
+    const unreadAlertCount = summary?.unread_total ?? 0;
 
     return (
         <header className="sticky top-0 z-40 shrink-0 border-b border-border/80 bg-background/95 backdrop-blur-md">
@@ -63,7 +52,7 @@ export function TopNav() {
                 >
                     {NAV_ITEMS.map((item) => {
                         const active = pathname.startsWith(item.href);
-                        const showBadge = item.labelKey === "alerts" && openAlertCount > 0;
+                        const showBadge = item.labelKey === "alerts" && unreadAlertCount > 0;
                         return (
                             <Link
                                 key={item.href}
@@ -79,7 +68,7 @@ export function TopNav() {
                                 {tNav(item.labelKey)}
                                 {showBadge && (
                                     <span className="ml-1 inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
-                                        {openAlertCount > 99 ? "99+" : openAlertCount}
+                                        {formatAlertCount(unreadAlertCount)}
                                     </span>
                                 )}
                             </Link>

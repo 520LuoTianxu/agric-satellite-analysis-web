@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "@/i18n/navigation";
-import type { Alert } from "@/lib/api";
+import { alertsApi, type Alert } from "@/lib/api";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,6 +56,7 @@ const SEVERITY_CONFIG: Record<
 
 interface AlertRowProps {
     alert: Alert;
+    onRead?: (alert: Alert) => void;
     /** Optional field name to show as context link. */
     fieldName?: string;
     /** Farm ID for building field link. */
@@ -79,6 +81,7 @@ interface AlertRowProps {
 
 export function AlertRow({
     alert,
+    onRead,
     fieldName,
     farmId,
     farmName,
@@ -90,8 +93,39 @@ export function AlertRow({
     compact = false,
 }: AlertRowProps) {
     const tRules = useTranslations("alertRules");
+    const tRead = useTranslations("alertReading");
+    const [reading, setReading] = useState(false);
+    const [readId, setReadId] = useState<string | null>(null);
     const severity = SEVERITY_CONFIG[alert.severity] || SEVERITY_CONFIG.low;
     const isClosed = alert.status === "closed";
+    const isRead = alert.is_read === true || readId === alert.id;
+
+    const markRead = async () => {
+        setReading(true);
+        try {
+            const updated = await alertsApi.markRead(alert.id);
+            setReadId(updated.id);
+            onRead?.(updated);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : tRead("failed"));
+        } finally {
+            setReading(false);
+        }
+    };
+    // 公开分享等无个人阅读上下文的页面不展示已读状态，阅读操作不改变关闭状态。
+    const readControl = typeof alert.is_read === "boolean" ? (
+        <div className="mt-1.5 flex items-center gap-2 text-xs">
+            <span className={isRead ? "text-muted-foreground" : "font-medium text-primary"}>
+                {tRead(isRead ? "read" : "unread")}
+            </span>
+            {!isRead && (
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={reading} onClick={markRead}>
+                    {reading && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                    {tRead("markRead")}
+                </Button>
+            )}
+        </div>
+    ) : null;
 
     /* ── Compact layout (field detail sidebar - narrow) ───── */
     if (compact) {
@@ -128,6 +162,7 @@ export function AlertRow({
                 <p className="text-xs leading-relaxed text-foreground/90 mt-1">
                     {alert.message}
                 </p>
+                {readControl}
 
                 {/* Weather context */}
                 {alert.weather_context && (
@@ -228,6 +263,7 @@ export function AlertRow({
                 <p className="mt-1 text-sm leading-relaxed text-foreground/90">
                     {alert.message}
                 </p>
+                {readControl}
 
                 {/* Weather context */}
                 {alert.weather_context && (

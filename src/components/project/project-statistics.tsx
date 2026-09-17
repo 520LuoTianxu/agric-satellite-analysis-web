@@ -3,6 +3,7 @@
 import { Bell, Map, MapPin, ScanLine, ShieldAlert, SquareDashed } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { formatAlertCount } from "@/lib/alert-session";
 import { type ProjectFilters, type summarizeProjectLands } from "@/lib/project-monitoring";
 
 type Stats = ReturnType<typeof summarizeProjectLands>;
@@ -30,8 +31,8 @@ export function ProjectStatistics({ stats, available, onFilter, inline = false }
             note: stats.riskMissingArea ? t("missingArea", { count: stats.riskMissingArea })
                 : available && stats.riskAreaPercent !== null ? t("riskAreaShare", { value: stats.riskAreaPercent.toFixed(1) })
                 : t("riskAreaNote"), action: { focus: "risk", risk: "all" } as Partial<ProjectFilters> },
-        { key: "openAlerts", icon: Bell, value: available ? number(stats.openAlerts) : "—",
-            note: available ? t("highAlerts", { count: stats.openHigh }) : t("data.unavailable"),
+        { key: "openAlerts", icon: Bell, value: available ? formatAlertCount(stats.openAlerts) : "—",
+            note: available ? t("highAlerts", { count: formatAlertCount(stats.openHigh) }) : t("data.unavailable"),
             action: { focus: "pending", risk: "all" } as Partial<ProjectFilters> },
     ];
     return (
