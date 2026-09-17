@@ -835,9 +835,10 @@ function FieldDetailPageContent() {
                         initialGeometry={land.boundary_geojson}
                         onGeometryChange={(g) => setEditGeom(g)}
                         onMapReady={(m) => setMapInstance(m)}
+                        onBasemapFallback={setMapStyle}
                     />
                 ) : (
-                    <BaseMap onMapReady={handleMapReady} />
+                    <BaseMap onMapReady={handleMapReady} onBasemapFallback={setMapStyle} />
                 )}
             </div>
 

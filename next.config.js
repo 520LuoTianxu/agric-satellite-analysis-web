@@ -33,6 +33,11 @@ if (process.env.NODE_ENV === "production") {
 } else {
     // 静态导出没有 rewrite。本地 next dev 把乡合登录接口和卫星分析 API 转到测试网关。
     nextConfig.rewrites = async () => [
+        // 卫星 OSS 未允许 localhost 跨域；开发环境同源代理，生产静态站点直连业务域名白名单图源。
+        {
+            source: "/basemap-satellite/:path*",
+            destination: "https://cfpamf-map-info.oss-cn-beijing.aliyuncs.com/2025_WGS84_HIGH_Satellite/:path*",
+        },
         { source: "/bapi/:path*", destination: `${JOINT_VENTURE_PROXY}/bapi/:path*` },
         { source: "/agric-api/:path*", destination: `${JOINT_VENTURE_PROXY}/agric-api/:path*` },
         { source: "/admin-api/:path*", destination: `${JOINT_VENTURE_PROXY}/admin-api/:path*` },
@@ -40,7 +45,7 @@ if (process.env.NODE_ENV === "production") {
         // next-intl as-needed：开发时把无前缀路径转到默认语言，生产由 prepare-static-output 复制 out/zh。
         { source: "/", destination: "/zh" },
         {
-            source: "/:path((?!en|es|zh|_next|satellite-api|bapi|agric-api|admin-api).*)",
+            source: "/:path((?!en|es|zh|_next|satellite-api|basemap-satellite|bapi|agric-api|admin-api).*)",
             destination: "/zh/:path",
         },
     ];

@@ -6,7 +6,7 @@ import { tokenColor, MAP_CHROME } from "@/lib/design-tokens";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-import { registerPMTilesProtocol, getBasemapStyle, tryUpgradeToPMTiles } from "@/lib/pmtiles";
+import { registerPMTilesProtocol, getBasemapStyle, tryUpgradeToPMTiles, installBasemapFallback, type MapStyleId } from "@/lib/pmtiles";
 import { createTransformRequest, refreshMapToken } from "@/lib/map-auth";
 import { useTranslations } from "next-intl";
 
@@ -17,6 +17,8 @@ interface DrawMapProps {
     onGeometryChange: (geom: GeoJSON.Geometry | null) => void;
     /** Called when the map instance is ready */
     onMapReady?: (map: maplibregl.Map) => void;
+    /** 底图自动降级后同步界面中的图层选中状态。 */
+    onBasemapFallback?: (styleId: MapStyleId) => void;
     /** Map center [lng, lat] */
     center?: [number, number];
     /** Map zoom */
@@ -28,12 +30,13 @@ interface DrawMapProps {
  * Map component with polygon draw/edit tools.
  *
  * Per PRD: Uses PMTiles basemap when NEXT_PUBLIC_PROTOMAPS_URL is set.
- * Falls back to OSM raster tiles otherwise.
+ * 默认使用与农业管理端一致的 WGS84 卫星瓦片。
  */
 export default function DrawMap({
     initialGeometry,
     onGeometryChange,
     onMapReady,
+    onBasemapFallback,
     center = [78.9629, 20.5937],
     zoom = 5,
     className = "",
@@ -77,6 +80,8 @@ export default function DrawMap({
             zoom,
             transformRequest: createTransformRequest(),
         });
+
+        installBasemapFallback(map, onBasemapFallback);
 
         // Refresh JWT for tile requests every 10 minutes
         const tokenRefresh = setInterval(() => refreshMapToken(), 10 * 60_000);

@@ -118,7 +118,7 @@ function NewFieldPageContent() {
         <div className="relative h-full w-full overflow-hidden">
             {/* Full-screen map */}
             <div className="absolute inset-0">
-                <DrawMap onGeometryChange={handleGeomChange} onMapReady={setMapInstance} />
+                <DrawMap onGeometryChange={handleGeomChange} onMapReady={setMapInstance} onBasemapFallback={setMapStyle} />
             </div>
 
             {/* Back button + Style switcher + Search - top left */}
