@@ -41,7 +41,9 @@ python scripts/check-i18n-keys.py
 
 ## 静态部署
 
-本项目使用 Next.js 静态导出，构建产物为 `out/`，不需要启动 Node 服务。部署到子路径时，必须在构建前设置路径前缀，并让 Nginx 将统一的 `/satellite-api/` 请求转发到后端的 `/v1/` 接口：
+本项目使用 Next.js 静态导出，构建产物为 `out/`，不需要启动 Node 服务。静态构建不会执行 `next.config.js` 的 rewrites，因此部署端必须保留前端同源路径并由 Nginx 反代：`/bapi/`、`/agric-api/`、`/admin-api/` 转发到正式网关 `https://joint-venture.cdfinance.com.cn`，`/satellite-api/` 转发到测试网关 `https://joint-venture-test.cdfinance.com.cn`。仓库中的 [`deploy/nginx-proxy.conf`](deploy/nginx-proxy.conf) 已包含完整规则，Docker 静态镜像会自动加载；独立静态服务器请将该文件的 `server` 配置纳入站点 Nginx。
+
+部署到子路径时，仍需在构建前设置路径前缀和同源 API 前缀：
 
 ```bash
 export NEXT_PUBLIC_BASE_PATH=/agric-satellite-analysis-web
@@ -50,7 +52,7 @@ export NEXT_PUBLIC_SITE_URL=https://joint-venture-test.cdfinance.com.cn/agric-sa
 rm -rf node_modules && rm -rf .next && rm -rf out && npm install && npm run build
 ```
 
-平台 Node 版本使用 `.nvmrc` 中的 Node 20，推荐出包路径填写 `out/`。如果平台固定使用旧配置 `target=.next/standalone` 也可以，构建后的 `postbuild` 会把静态文件同步到该目录，`deploy.sh` 会自动识别。服务器发布目录可使用 `/data/mwbase/agric-satellite-analysis-web`，再执行仓库中的 `deploy.sh`。`NEXT_PUBLIC_BASE_PATH` 和 `NEXT_PUBLIC_API_URL` 都是在构建时写入前端的配置。
+平台 Node 版本使用 `.nvmrc` 中的 Node 20，推荐出包路径填写 `out/`。如果平台固定使用旧配置 `target=.next/standalone` 也可以，构建后的 `postbuild` 会把静态文件同步到该目录，`deploy.sh` 会自动识别。服务器发布目录可使用 `/data/mwbase/agric-satellite-analysis-web`，再执行仓库中的 `deploy.sh`。`NEXT_PUBLIC_BASE_PATH` 和 `NEXT_PUBLIC_API_URL` 都是在构建时写入前端的配置；`JOINT_VENTURE_PROXY`、`SATELLITE_API_PROXY` 用于本地 Next 代理，静态部署请同步使用 `deploy/nginx-proxy.conf` 中的路由目标。
 
 ## Docker Compose 集成
 

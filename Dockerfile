@@ -39,6 +39,8 @@ RUN npm run build
 FROM nginx:alpine AS runner
 WORKDIR /app
 COPY --from=builder /app/out /usr/share/nginx/html
+# 静态镜像仍保持同源 API 路径，测试部署由 Nginx 将业务接口分别转发到正式和测试网关。
+COPY deploy/nginx-proxy.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
