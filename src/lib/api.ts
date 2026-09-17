@@ -8,8 +8,9 @@
 /**
  * Resolve API base URL.
  * In a static deployment, use the same-origin `/satellite-api` gateway and let
- * Nginx proxy it to the FastAPI `/v1` routes; this keeps browser requests on
- * the frontend origin and gives every frontend API call one stable prefix.
+ * the deployment proxy forward it to the configured satellite gateway; this
+ * keeps browser requests on the frontend origin and gives every API call one
+ * stable prefix.
  */
 export function getApiBase(): string {
     const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
