@@ -1,6 +1,6 @@
 /**
  * 乡合种植项目 / 地块接口。
- * 本地 next dev 经 /agric-api 反代到 https://joint-venture-test.cdfinance.com.cn/agric-api
+ * 本地 next dev 经 /agric-api 反代到 https://joint-venture.cdfinance.com.cn/agric-api
  */
 import { AuthApiError } from "@/lib/auth/types";
 import { AUTH_KEYS, getItem } from "@/lib/auth/storage";
