@@ -1294,5 +1294,42 @@
     "total": "{total} parcels",
     "viewLand": "View land",
     "selectHint": "Select a land parcel to view or generate an assessment report."
+  },
+  "remoteSensingOnboarding": {
+    "trigger": "Quick start",
+    "title": "Farm remote sensing in 4 steps",
+    "description": "Find a field, understand changes, and review its report.",
+    "stepsLabel": "Quick start steps",
+    "progress": "Step {current} of {total}",
+    "skip": "Skip for now",
+    "previous": "Back",
+    "next": "Next",
+    "finish": "Done",
+    "start": "Choose a field",
+    "reopen": "You can skip any time and reopen Quick start from the top navigation.",
+    "field": {
+      "label": "Field",
+      "title": "Find the field you want to inspect",
+      "body": "Open Project remote sensing in the top navigation, choose a project, then a field. Check its boundary and crop in the field details.",
+      "tip": "Start with a field you know so you can relate the map to what you see on the ground."
+    },
+    "date": {
+      "label": "Date",
+      "title": "Open Indices and choose a date",
+      "body": "In the field’s Indices tab, select a point on the chart or a date in the list to see that observation on the map. Prefer clear dates. If no imagery is available, use Refresh imagery, choose a starting date, and wait for processing.",
+      "tip": "Imagery records the labeled observation date; it is not a live view. Higher cloud cover means more of the view is obscured."
+    },
+    "growth": {
+      "label": "Growth",
+      "title": "Start with NDVI and compare dates",
+      "body": "NDVI helps show vegetation cover and growth. Read the explanation beside the index, use the map legend, and compare several dates. Try EVI for dense crops, or drought and flood modes to investigate water-related changes.",
+      "tip": "A low value can also mean young crops, maturity, harvesting, or clouds. It does not automatically mean crop damage."
+    },
+    "report": {
+      "label": "Report",
+      "title": "Review weather and reports, then inspect",
+      "body": "For persistent changes, check recent rainfall in Weather and view or generate a land report. Visit the highlighted areas and record your observations in Scouting.",
+      "tip": "Choose a field → choose a date → compare changes → review the report and check the field. Remote sensing helps locate clues; field observations help explain them."
+    }
   }
 }

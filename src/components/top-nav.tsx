@@ -8,6 +8,7 @@ import { alertsApi } from "@/lib/api";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { TenantSwitcher } from "@/components/tenant-switcher";
+import { RemoteSensingOnboarding } from "@/components/remote-sensing-onboarding";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -76,6 +77,7 @@ export function TopNav() {
                 </nav>
 
                 <div className="order-2 flex min-w-0 items-center justify-end gap-0.5 sm:gap-1 md:order-3">
+                    <RemoteSensingOnboarding />
                     <TenantSwitcher />
                     <ThemeToggle />
                     <LanguageSwitcher side="bottom" align="end" />

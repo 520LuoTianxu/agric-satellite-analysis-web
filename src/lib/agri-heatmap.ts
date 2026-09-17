@@ -466,8 +466,8 @@ function continuousLegend(index: Exclude<AgriHeatIndex, "drought" | "flood">): A
 function droughtLegend(): AgriHeatmapLegend {
     return {
         kind: "classes",
-        label: "干旱 NDDI",
-        hint: "生育季 6–9 月 · 官方晴空/去云良好 · NDDI 色斑；日期等级另需 NDMI 干或 NDVI 偏低",
+        label: "干旱风险",
+        hint: "在 6–9 月用较清晰的影像排查缺水。颜色表示可能偏干的程度，需结合近期降雨和田间情况判断。",
         classes: (["severe", "moderate", "mild", "normal"] as AgriDroughtPixelClass[]).map((k) => ({
             key: k,
             label: DROUGHT_CLASS_STYLE[k].label,
@@ -479,8 +479,8 @@ function droughtLegend(): AgriHeatmapLegend {
 function floodLegend(): AgriHeatmapLegend {
     return {
         kind: "classes",
-        label: "洪涝 S1",
-        hint: "洪涝需 VV≤−17 dB、相对轨道基线下降≥3 dB、且 VH 或 VV−VH 辅助；近阈值为关注。春灌积水可能不是灾害洪涝",
+        label: "洪涝风险（雷达）",
+        hint: "根据雷达信号的变化排查积水；“关注”表示需要继续观察。春季灌溉、泡田也可能有积水，并不一定是洪灾。",
         classes: (["flood_severe", "flood_moderate", "watch"] as AgriFloodClass[]).map((k) => ({
             key: k,
             label: FLOOD_CLASS_STYLE[k].label,
