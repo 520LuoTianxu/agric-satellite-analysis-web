@@ -4,33 +4,18 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import {
     monitoringApi,
-    jobsApi,
-    landsApi,
     weatherApi,
     type RasterLayer,
     type LandStat,
-    type NdviJob,
     type IndexType,
     type WeatherDaily,
-    type BackfillStatusResponse,
     INDEX_CONFIG,
-    ALL_INDEX_TYPES,
 } from "@/lib/api";
 import { IndexExplainer } from "@/components/field/index-explainer";
-import { toast } from "sonner";
 import {
-    PlayCircle,
-    Loader2,
-    Calendar,
-    ChevronDown,
-    ChevronUp,
-    Check,
-    AlertTriangle,
     Eye,
     EyeOff,
     CloudRain,
-    History,
-    Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,34 +37,6 @@ const NdviChart = dynamic(() => import("@/components/charts/ndvi-chart"), {
 const AgriTimeseriesPanel = dynamic(() => import("@/components/field/agri-timeseries-panel"), {
     ssr: false,
 });
-
-/* ── Util: dd days ago as YYYY-MM-DD ─────────────────────────── */
-function daysAgo(days: number): string {
-    const d = new Date();
-    d.setDate(d.getDate() - days);
-    return d.toISOString().slice(0, 10);
-}
-
-function today(): string {
-    return new Date().toISOString().slice(0, 10);
-}
-
-/* ── Job sub-step labels ─────────────────────────────────────── */
-function getStepLabels(
-    indexType: IndexType,
-    t: (key: string, values?: Record<string, string>) => string,
-): Record<string, string> {
-    const label = INDEX_CONFIG[indexType].label;
-    return {
-        scene_search: t("jobStep.sceneSearch"),
-        download_bands: t("jobStep.downloadBands"),
-        [`compute_${indexType.toLowerCase()}`]: t("jobStep.computeIndex", { index: label }),
-        write_cog: t("jobStep.writeCog"),
-        compute_stats: t("jobStep.computeStats"),
-        run_alerts: t("jobStep.runAlerts"),
-        complete: t("jobStep.complete"),
-    };
-}
 
 /* ── Props ────────────────────────────────────────────────────── */
 
@@ -121,29 +78,10 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [layerVisible, setLayerVisible] = useState(true);
 
-    // ── Job creation form ────────────────────────────
-    const [showJobForm, setShowJobForm] = useState(false);
-    const [dateFrom, setDateFrom] = useState(daysAgo(30));
-    const [dateTo, setDateTo] = useState(today());
-    const [submitting, setSubmitting] = useState(false);
-    const [selectedIndices, setSelectedIndices] = useState<Set<IndexType>>(new Set(["NDVI"]));
-    const [saviL, setSaviL] = useState(0.5);
-
     // ── Weather overlay ──────────────────────────────
     const [showWeatherOverlay, setShowWeatherOverlay] = useState(false);
     const [weatherData, setWeatherData] = useState<WeatherDaily[]>([]);
 
-    // ── Backfill state ───────────────────────────────
-    const [backfilling, setBackfilling] = useState(false);
-    const [backfillTriggered, setBackfillTriggered] = useState(false);
-    const [backfillActive, setBackfillActive] = useState(false);
-    const [backfillProgress, setBackfillProgress] = useState<BackfillStatusResponse | null>(null);
-
-    // ── Active job tracking ──────────────────────────
-    const [activeJob, setActiveJob] = useState<NdviJob | null>(null);
-    const [jobIndices, setJobIndices] = useState<IndexType[]>([]);
-    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const backfillPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const loadGenRef = useRef(0); // prevents stale fetch results
 
     // ── Load layers + stats for active index ─────────
@@ -186,61 +124,6 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
         loadData();
     }, [loadData]);
 
-    const stopBackfillPoll = useCallback(() => {
-        if (backfillPollRef.current) {
-            clearInterval(backfillPollRef.current);
-            backfillPollRef.current = null;
-        }
-    }, []);
-
-    const startBackfillPoll = useCallback(() => {
-        stopBackfillPoll();
-        let wasActive = true;
-        const tick = async () => {
-            try {
-                const res = await landsApi.backfillStatus(landId);
-                setBackfillProgress(res);
-                setBackfillActive(res.has_active_backfill);
-                if (res.has_active_backfill) {
-                    setBackfillTriggered(true);
-                    wasActive = true;
-                } else {
-                    if (wasActive) {
-                        setBackfillTriggered(false);
-                        loadData();
-                        onDataLoaded?.();
-                    }
-                    wasActive = false;
-                    stopBackfillPoll();
-                }
-            } catch {
-                /* ignore */
-            }
-        };
-        void tick();
-        backfillPollRef.current = setInterval(tick, 5000);
-    }, [landId, loadData, onDataLoaded, stopBackfillPoll]);
-
-    // One-shot on mount — resume interval only if current wave is active
-    useEffect(() => {
-        let cancelled = false;
-        landsApi.backfillStatus(landId)
-            .then((res) => {
-                if (cancelled) return;
-                setBackfillProgress(res);
-                setBackfillActive(res.has_active_backfill);
-                if (res.has_active_backfill) {
-                    setBackfillTriggered(true);
-                    startBackfillPoll();
-                }
-            })
-            .catch(() => { });
-        return () => {
-            cancelled = true;
-            stopBackfillPoll();
-        };
-    }, [landId]); // eslint-disable-line react-hooks/exhaustive-deps
-
     // ── Fetch weather data when overlay is toggled on ──
     useEffect(() => {
         if (!showWeatherOverlay || stats.length === 0) return;
@@ -268,126 +151,10 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
         onShowLayer(layer, activeIndex);
     }, [selectedDate, layerVisible, layers, onShowLayer, activeIndex]);
 
-    // ── Job polling ─────────────────────────────────
-    const pollJob = useCallback(
-        async (jobId: string) => {
-            try {
-                const job = await jobsApi.get(jobId);
-                setActiveJob(job);
-                if (job.status === "completed" || job.status === "failed") {
-                    if (pollRef.current) clearInterval(pollRef.current);
-                    pollRef.current = null;
-                    const names = jobIndices.map((i) => INDEX_CONFIG[i].label).join(", ") || config.label;
-                    if (job.status === "completed") {
-                        toast.success(`${names} processing complete!`);
-                        loadData();
-                        onDataLoaded?.();
-                    } else {
-                        toast.error(tMon("jobFailedWith", { names, error: job.error || tMon("unknownError") }));
-                    }
-                    setActiveJob(null);
-                }
-            } catch {
-                // poll error - keep trying
-            }
-        },
-        [loadData, config.label, jobIndices, onDataLoaded, tMon],
-    );
-
-    useEffect(() => {
-        return () => {
-            if (pollRef.current) clearInterval(pollRef.current);
-            if (backfillPollRef.current) clearInterval(backfillPollRef.current);
-        };
-    }, []);
-
-    // ── Toggle index in job form selection ───────────
-    const toggleJobIndex = (idx: IndexType) => {
-        setSelectedIndices((prev) => {
-            const next = new Set(prev);
-            if (next.has(idx)) {
-                if (next.size > 1) next.delete(idx);
-            } else {
-                next.add(idx);
-            }
-            return next;
-        });
-    };
-
-    // ── Submit jobs (one per selected index) ─────────
-    const handleSubmitJob = async () => {
-        setSubmitting(true);
-        try {
-            const indices = Array.from(selectedIndices);
-            let lastJob: NdviJob | null = null;
-
-            for (const idx of indices) {
-                const params = idx === "SAVI" ? { savi_l: saviL } : undefined;
-                const job = await jobsApi.createIndex(landId, idx, dateFrom, dateTo, params);
-                lastJob = job;
-            }
-
-            if (lastJob) {
-                setActiveJob(lastJob);
-                setJobIndices(indices);
-                setShowJobForm(false);
-                const names = indices.map((i) => INDEX_CONFIG[i].label).join(", ");
-                toast.success(
-                    indices.length > 1
-                        ? tMon("jobsStarted", { names, count: indices.length })
-                        : tMon("jobStarted", { names }),
-                );
-
-                // Poll the last submitted job
-                if (pollRef.current) clearInterval(pollRef.current);
-                pollRef.current = setInterval(() => pollJob(lastJob!.id), 5000);
-            }
-        } catch (err: any) {
-            toast.error(err.detail || tMon("failedStartJob"));
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
     // ── Date select from chart ───────────────────────
     const handleChartDateSelect = (date: string) => {
         setSelectedDate(date);
         setLayerVisible(true);
-    };
-
-    // ── Backfill handler ────────────────────────────
-    const handleBackfill = async () => {
-        setBackfilling(true);
-        try {
-            await landsApi.backfillIndices(landId);
-            setBackfillTriggered(true);
-            setBackfillActive(true);
-            toast.success(tMon("backfill.started"));
-            startBackfillPoll();
-        } catch (err: any) {
-            const msg = err.detail || tMon("backfill.failed");
-            if (err.status === 409) {
-                setBackfillActive(true);
-                setBackfillTriggered(true);
-                startBackfillPoll();
-            }
-            toast.error(msg);
-        } finally {
-            setBackfilling(false);
-        }
-    };
-
-    // ── Job progress helper ─────────────────────────
-    const getJobProgress = () => {
-        if (!activeJob?.progress_json) return null;
-        const p = activeJob.progress_json as Record<string, string>;
-        const lastIdx = jobIndices[jobIndices.length - 1] || activeIndex;
-        const stepLabels = getStepLabels(lastIdx, tMon);
-        const steps = Object.entries(stepLabels);
-        return steps.map(([key, label]) => {
-            const status = p[key] || "pending";
-            return { key, label, status };
-        });
     };
 
     // ── Switch active index ──────────────────────────
@@ -399,11 +166,6 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
         setSelectedDate(null);
         setActiveIndex(idx);
         onActiveIndexChange?.(idx);
-        setActiveJob(null);
-        if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-        }
     };
 
     // Sync when parent overrides active index
@@ -413,11 +175,6 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
             setStats([]);
             setSelectedDate(null);
             setActiveIndex(activeIndexOverride);
-            setActiveJob(null);
-            if (pollRef.current) {
-                clearInterval(pollRef.current);
-                pollRef.current = null;
-            }
         }
     }, [activeIndexOverride]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -437,239 +194,6 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
 
     return (
         <div className="space-y-4">
-            {/* ── Section: Run Analysis + Backfill for the canonical land ───── */}
-            {/* 这些任务和场景产品都直接以 land_id 关联同一条地块主表记录。 */}
-            <div className="flex gap-2">
-                <Button
-                    variant="outline"
-                    onClick={() => setShowJobForm(!showJobForm)}
-                    className="flex-1 flex items-center justify-between"
-                >
-                    <span className="flex items-center gap-1.5">
-                        <PlayCircle className="h-4 w-4 text-primary" />
-                        {tMon("runAnalysis")}
-                    </span>
-                    {showJobForm ? (
-                        <ChevronUp className="h-4 w-4" />
-                    ) : (
-                        <ChevronDown className="h-4 w-4" />
-                    )}
-                </Button>
-                <Button
-                    variant="outline"
-                    onClick={handleBackfill}
-                    disabled={backfilling || backfillTriggered || backfillActive}
-                    className="flex items-center gap-1.5"
-                    title={backfillActive ? tMon("backfill.inProgressTitle") : tMon("backfill.buttonTitle")}
-                >
-                    {backfilling ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                        <History className="h-4 w-4" />
-                    )}
-                    <span className="hidden sm:inline">{tMon("backfill.buttonLabel")}</span>
-                </Button>
-            </div>
-
-            {showJobForm && (
-                <Card className="mt-2">
-                    <CardContent className="space-y-3 pt-4">
-                        {/* Index checkboxes */}
-                        <div>
-                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                                {tMon("indicesToCompute")}
-                            </label>
-                            <div className="flex flex-wrap gap-1.5">
-                                {ALL_INDEX_TYPES.map((idx) => (
-                                    <Button
-                                        key={idx}
-                                        type="button"
-                                        variant={selectedIndices.has(idx) ? "default" : "outline"}
-                                        size="sm"
-                                        onClick={() => toggleJobIndex(idx)}
-                                        className={cn(
-                                            "h-7 text-xs px-2.5",
-                                            selectedIndices.has(idx) && "shadow-sm",
-                                        )}
-                                    >
-                                        {INDEX_CONFIG[idx].label}
-                                    </Button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* SAVI L factor */}
-                        {selectedIndices.has("SAVI") && (
-                            <div>
-                                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                                    {tMon("saviLFactor")}
-                                </label>
-                                <input
-                                    type="number"
-                                    value={saviL}
-                                    onChange={(e) => setSaviL(Number(e.target.value))}
-                                    min={0}
-                                    max={1}
-                                    step={0.1}
-                                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                                />
-                                <p className="text-[10px] text-muted-foreground mt-0.5">
-                                    {tMon("saviLHint")}
-                                </p>
-                            </div>
-                        )}
-
-                        {/* Date range */}
-                        <div className="flex gap-2">
-                            <div className="flex-1">
-                                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                                    <Calendar className="inline h-3 w-3 mr-0.5" />
-                                    {tMon("dateFrom")}
-                                </label>
-                                <input
-                                    type="date"
-                                    value={dateFrom}
-                                    onChange={(e) => setDateFrom(e.target.value)}
-                                    max={dateTo}
-                                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                                />
-                            </div>
-                            <div className="flex-1">
-                                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                                    <Calendar className="inline h-3 w-3 mr-0.5" />
-                                    {tMon("dateTo")}
-                                </label>
-                                <input
-                                    type="date"
-                                    value={dateTo}
-                                    onChange={(e) => setDateTo(e.target.value)}
-                                    min={dateFrom}
-                                    max={today()}
-                                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                                />
-                            </div>
-                        </div>
-                        <p className="text-xs text-muted-foreground">{tMon("maxRange")}</p>
-                        <Button
-                            onClick={handleSubmitJob}
-                            disabled={submitting || !!activeJob}
-                            className="w-full"
-                        >
-                            {submitting ? (
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            ) : (
-                                <PlayCircle className="h-4 w-4 mr-2" />
-                            )}
-                            {submitting ? tMon("starting") : tMon("startProcessing")}
-                        </Button>
-                    </CardContent>
-                </Card>
-            )}
-
-            {/* ── Backfill in-progress banner ──────────── */}
-            {(backfillActive || backfillTriggered) && !loading && !activeJob && (
-                <Card className="bg-info-subtle">
-                    <CardContent className="p-3 space-y-2">
-                        <div className="flex items-start gap-2">
-                            <Info className="h-4 w-4 text-info mt-0.5 shrink-0" />
-                            <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-info">
-                                    {backfillProgress?.phase === "bridge"
-                                        ? tMon("backfill.progressBridge")
-                                        : backfillProgress?.message || tMon("backfill.processing")}
-                                </p>
-                                <p className="text-xs text-info/80">
-                                    {backfillProgress
-                                        ? tMon("backfill.progressCounts", {
-                                              done: backfillProgress.completed_jobs,
-                                              total: Math.max(
-                                                  backfillProgress.total_jobs,
-                                                  backfillProgress.completed_jobs
-                                                      + backfillProgress.pending_jobs
-                                                      + backfillProgress.running_jobs,
-                                              ),
-                                              running: backfillProgress.running_jobs,
-                                              pending: backfillProgress.pending_jobs,
-                                          })
-                                        : tMon("backfill.processingDesc")}
-                                </p>
-                            </div>
-                        </div>
-                        <div className="h-1.5 w-full rounded-full bg-info/15 overflow-hidden">
-                            <div
-                                className="h-full rounded-full bg-info transition-all duration-500"
-                                style={{
-                                    width: `${
-                                        backfillProgress?.phase === "bridge"
-                                            ? 100
-                                            : Math.min(100, Math.max(2, backfillProgress?.percent ?? 0))
-                                    }%`,
-                                }}
-                            />
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-
-            {/* ── Section: Active Job Progress ─────────── */}
-            {activeJob && (activeJob.status === "pending" || activeJob.status === "running") && (
-                <Card className="border-primary-border bg-primary-subtle">
-                    <CardHeader className="pb-2 pt-3 px-3">
-                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-primary">
-                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                            {tMon("processingIndices", { names: jobIndices.map((i) => INDEX_CONFIG[i].label).join(", ") })}
-                        </CardTitle>
-                    </CardHeader>
-                    {getJobProgress() && (
-                        <CardContent className="px-3 pb-3 pt-0">
-                            <ul className="space-y-1">
-                                {getJobProgress()!.map((step) => (
-                                    <li
-                                        key={step.key}
-                                        className={cn(
-                                            "flex items-center gap-1.5 text-xs",
-                                            step.status === "done" && "text-primary",
-                                            step.status === "running" && "text-foreground font-medium",
-                                            step.status !== "done" && step.status !== "running" && "text-muted-foreground",
-                                        )}
-                                    >
-                                        {step.status === "done" ? (
-                                            <Check className="h-3 w-3 text-primary" />
-                                        ) : step.status === "running" ? (
-                                            <Loader2 className="h-3 w-3 animate-spin text-foreground" />
-                                        ) : (
-                                            <span className="h-3 w-3 rounded-full border border-muted-foreground/40 inline-block" />
-                                        )}
-                                        {step.label}
-                                    </li>
-                                ))}
-                            </ul>
-                        </CardContent>
-                    )}
-                </Card>
-            )}
-
-            {/* ── Job failed banner ────────────────────── */}
-            {activeJob && activeJob.status === "failed" && (
-                <Card className="bg-danger-subtle">
-                    <CardContent className="flex items-start gap-2 p-3">
-                        <AlertTriangle className="h-4 w-4 text-danger mt-0.5" />
-                        <div>
-                            <p className="text-sm font-medium text-danger">{tMon("jobFailed")}</p>
-                            <p className="text-xs text-danger/80">{activeJob.error || tMon("unknownError")}</p>
-                            <Button
-                                variant="link"
-                                size="sm"
-                                onClick={() => setActiveJob(null)}
-                                className="mt-1 h-auto p-0 text-xs text-danger hover:text-danger/80"
-                            >
-                                {tMon("dismiss")}
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-
             {/* ── Canonical S1/S2 scene products ── */}
             <AgriTimeseriesPanel
                 landId={landId}
@@ -789,17 +313,6 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
                 </Card>
             )}
 
-            {/* ── No COG layer message; S1/S2 panels use the same land_id ── */}
-            {layers.length === 0 && !activeJob && (
-                <Card>
-                    <CardContent className="flex flex-col items-center justify-center py-6 text-center">
-                        <p className="text-sm text-muted-foreground mb-2">{tMon("noDataTitle")}</p>
-                        <p className="text-xs text-muted-foreground">
-                            {tMon("noDataDesc")}
-                        </p>
-                    </CardContent>
-                </Card>
-            )}
         </div>
     );
 }

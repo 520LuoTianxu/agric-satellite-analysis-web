@@ -8,6 +8,7 @@
         "prebuild": "node scripts/prepare-static.js",
         "build": "npm run lint && npm run type-check && next build",
         "build:test": "node --env-file=.env.test scripts/build-test.js",
+        "build:prod": "node --env-file=.env.prod scripts/build-prod.js",
         "postbuild": "node scripts/prepare-static-output.js",
         "start": "python -m http.server 3000 --directory out",
         "lint": "next lint --max-warnings 0",

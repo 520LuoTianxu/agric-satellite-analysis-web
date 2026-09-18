@@ -114,7 +114,8 @@ const SERIES_META: Record<
     }
 > = {
     ndvi: {
-        label: "NDVI（光学）",
+        // 主入口使用业务名称，series key 仍保持 ndvi，避免影响接口和计算逻辑。
+        label: "长势分析",
         sensor: "S2",
         avgKey: "ndvi_avg",
         chartKey: "ndvi_avg",
@@ -188,6 +189,8 @@ const SERIES_META: Record<
 /** Preferred button order: primary modes first, then other indices. */
 const BUTTON_ORDER: SeriesKey[] = [
     ...AGRI_PRIMARY_MODES,
+    // EVI 保留计算和查看能力，但通过“更多指数”入口访问。
+    "evi",
     "ndmi",
     "ndre",
     "mndwi",
@@ -326,7 +329,7 @@ function sceneSeriesAvg(scene: AgriSceneProduct, key: SeriesKey): number | null 
 
 const RECENT_DATE_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 const RECENT_DATE_CHIP_CAP = 14;
-const PRIMARY_SERIES_KEYS: SeriesKey[] = ["ndvi", "evi", "drought", "flood"];
+const PRIMARY_SERIES_KEYS: SeriesKey[] = ["ndvi", "drought", "flood"];
 
 function seriesIsAvailable(key: SeriesKey, scenes: AgriSceneProduct[]): boolean {
     const meta = SERIES_META[key];
@@ -419,10 +422,25 @@ export interface AgriTimeseriesPanelProps {
     enabled?: boolean;
 }
 
-function defaultRsDateFrom(): string {
+const MAX_RS_HISTORY_YEARS = 5;
+
+function dateYearsAgo(years: number): string {
     const d = new Date();
-    d.setMonth(d.getMonth() - 24);
+    d.setFullYear(d.getFullYear() - years);
     return d.toISOString().slice(0, 10);
+}
+
+function defaultRsDateFrom(): string {
+    return dateYearsAgo(2);
+}
+
+function earliestRsDateFrom(): string {
+    return dateYearsAgo(MAX_RS_HISTORY_YEARS);
+}
+
+function clampRsDateFrom(value: string): string {
+    const minimum = earliestRsDateFrom();
+    return value && value < minimum ? minimum : value;
 }
 
 const MAX_SEASON_WINDOWS = 3;
@@ -821,6 +839,9 @@ export default function AgriTimeseriesPanel({
         setBackfilling(true);
         try {
             const today = new Date().toISOString().slice(0, 10);
+            // 前端日期控件可被手动输入绕过 min 属性，因此提交前再次限制最多回溯五年。
+            const dateFrom = clampRsDateFrom(refreshDateFrom);
+            setRefreshDateFrom(dateFrom);
             const growing_seasons: GrowingSeasonWindow[] = seasonWindows
                 .filter((w) => w.start_date && w.end_date && w.crops.length > 0)
                 .map((w) => ({
@@ -831,7 +852,7 @@ export default function AgriTimeseriesPanel({
                 }));
             await landsApi.backfillIndices(landId, {
                 force: true,
-                date_from: refreshDateFrom,
+                date_from: dateFrom,
                 date_to: today,
                 ...(growing_seasons.length ? { growing_seasons } : {}),
             });
@@ -1457,8 +1478,9 @@ export default function AgriTimeseriesPanel({
                                     id="rs-date-from"
                                     type="date"
                                     value={refreshDateFrom}
+                                    min={earliestRsDateFrom()}
                                     max={new Date().toISOString().slice(0, 10)}
-                                    onChange={(e) => setRefreshDateFrom(e.target.value)}
+                                    onChange={(e) => setRefreshDateFrom(clampRsDateFrom(e.target.value))}
                                 />
                             </div>
                             <div className="grid gap-1.5">
@@ -1636,18 +1658,6 @@ export default function AgriTimeseriesPanel({
                                     </Button>
                                 );
                             })}
-                            {seriesInOverflow && (
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="default"
-                                    className="h-7 text-xs px-2.5 shrink-0"
-                                    onClick={() => setSeries(series)}
-                                    title={SERIES_META[series].hint}
-                                >
-                                    {SERIES_META[series].label}
-                                </Button>
-                            )}
                             {overflowKeys.length > 0 && (
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
@@ -1715,34 +1725,37 @@ export default function AgriTimeseriesPanel({
                             </p>
                         )}
                         <div className="rounded-lg bg-background p-2.5">
-                            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-muted/35 p-3">
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 shrink-0 text-[11px]"
-                                    disabled={!landId || harvestLoading}
-                                    onClick={() => void runHarvestDetect()}
-                                >
-                                    {harvestLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
-                                    {t("harvestDetect")}
-                                </Button>
-                                <span className="order-last w-full text-[11px] leading-relaxed text-muted-foreground">{t("harvestDetectHint")}</span>
-                                {harvestResult?.status === "detected" && harvestResult.harvest_date ? (
-                                    <Badge variant="secondary" className="ml-auto text-[11px] tabular-nums">
-                                        {harvestResult.harvest_date} · {t(harvestResult.confidence === "high" ? "confidenceHigh" : harvestResult.confidence === "medium" ? "confidenceMedium" : harvestResult.confidence === "low" ? "confidenceLow" : "confidenceUnknown")}
-                                    </Badge>
-                                ) : harvestResult ? (
-                                    <Badge variant="secondary" className="ml-auto text-[11px]">
-                                        {t(harvestResult.status === "no_growth" ? "harvestNoGrowthShort" : "harvestUncertainShort")}
-                                    </Badge>
-                                ) : null}
-                                {harvestError && <p role="alert" className="w-full text-[11px] text-destructive">{t("harvestFailed")}</p>}
+                            {/* 收获日识别属于历史曲线操作，和当前指标、日期放在同一行，避免单独占一块空间。 */}
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                                    <span>{AGRI_MODE_LABELS[series]}</span>
+                                    <span className="tabular-nums">{selectedDate ?? "—"} · {selectedMean != null ? selectedMean.toFixed(2) : "—"}</span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 shrink-0 text-[11px]"
+                                        disabled={!landId || harvestLoading}
+                                        title={t("harvestDetectHint")}
+                                        onClick={() => void runHarvestDetect()}
+                                    >
+                                        {harvestLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                                        {t("harvestDetect")}
+                                    </Button>
+                                    {harvestResult?.status === "detected" && harvestResult.harvest_date ? (
+                                        <Badge variant="secondary" className="text-[11px] tabular-nums">
+                                            {harvestResult.harvest_date} · {t(harvestResult.confidence === "high" ? "confidenceHigh" : harvestResult.confidence === "medium" ? "confidenceMedium" : harvestResult.confidence === "low" ? "confidenceLow" : "confidenceUnknown")}
+                                        </Badge>
+                                    ) : harvestResult ? (
+                                        <Badge variant="secondary" className="text-[11px]">
+                                            {t(harvestResult.status === "no_growth" ? "harvestNoGrowthShort" : "harvestUncertainShort")}
+                                        </Badge>
+                                    ) : null}
+                                </div>
                             </div>
-                            <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                                <span>{AGRI_MODE_LABELS[series]}</span>
-                                <span className="tabular-nums">{selectedDate ?? "—"} · {selectedMean != null ? selectedMean.toFixed(2) : "—"}</span>
-                            </div>
+                            {harvestError && <p role="alert" className="mb-2 text-[11px] text-destructive">{t("harvestFailed")}</p>}
                             {stats.length > 0 ? (
                                 <NdviChart
                                     stats={stats}

@@ -18,6 +18,7 @@ import {
     FolderKanban,
     ChevronRight,
     ChevronLeft,
+    Loader2,
     Search,
     RotateCcw,
 } from "lucide-react";
@@ -203,10 +204,12 @@ export default function FarmsListPage() {
     const projectGridClass = "grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3";
 
     return (
-        <div className="mx-auto max-w-7xl px-5 py-5">
+        <div className="mx-auto max-w-7xl px-5 py-5" aria-busy={loading}>
             <div className="mb-4 flex items-baseline gap-2">
                 <h1 className="text-xl font-semibold tracking-tight">{t("title")}</h1>
-                <p className="text-sm text-muted-foreground">{t("subtitle", { count: total })}</p>
+                <p className="text-sm text-muted-foreground">
+                    {loading ? t("loading") : t("subtitle", { count: total })}
+                </p>
             </div>
 
             <form
@@ -296,10 +299,16 @@ export default function FarmsListPage() {
             </form>
 
             {loading ? (
-                <div className={projectGridClass}>
-                    {Array.from({ length: 6 }, (_, i) => (
-                        <Skeleton key={i} className="h-[148px] rounded-lg" />
-                    ))}
+                <div className="space-y-3" role="status" aria-live="polite">
+                    <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        <span>{t("loading")}</span>
+                    </div>
+                    <div className={projectGridClass}>
+                        {Array.from({ length: 6 }, (_, i) => (
+                            <Skeleton key={i} className="h-[148px] rounded-lg" />
+                        ))}
+                    </div>
                 </div>
             ) : groups.length === 0 ? (
                 <Card className="border-dashed">
@@ -315,6 +324,7 @@ export default function FarmsListPage() {
                         {groups.map((group) => {
                             const groupId = String(group.groupId);
                             const area = group.effectiveArea ?? group.groupArea;
+                            const landCount = Number(group.groupNum) || 0;
                             const name = group.groupName || groupId;
                             const ownerLine = [group.ownerName, group.groupCode].filter(Boolean).join(" · ");
                             return (
@@ -322,6 +332,7 @@ export default function FarmsListPage() {
                                     key={groupId}
                                     href={`/farms/detail?groupId=${encodeURIComponent(groupId)}`}
                                     data-tour="project-card"
+                                    data-tour-has-lands={landCount > 0 ? "true" : "false"}
                                     data-tour-href={`/farms/detail?groupId=${encodeURIComponent(groupId)}`}
                                     className="group min-w-0"
                                 >
@@ -343,7 +354,7 @@ export default function FarmsListPage() {
                                                     </div>
                                                     <p className="mt-1.5 text-xs text-muted-foreground">
                                                         {t("landCountArea", {
-                                                            count: Number(group.groupNum) || 0,
+                                                            count: landCount,
                                                             area: formatMu(area),
                                                         })}
                                                     </p>

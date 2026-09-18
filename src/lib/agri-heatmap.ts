@@ -1676,7 +1676,8 @@ export function rasterizeAgriLonLatPixels(
 
 /** Mode labels for UI chips (Chinese). */
 export const AGRI_MODE_LABELS: Record<AgriHeatIndex, string> = {
-    ndvi: "NDVI",
+    // 地图快捷入口面向业务用户显示“长势分析”，内部仍使用 ndvi 计算模式。
+    ndvi: "长势分析",
     evi: "EVI",
     ndmi: "NDMI",
     ndre: "NDRE",
@@ -1688,5 +1689,5 @@ export const AGRI_MODE_LABELS: Record<AgriHeatIndex, string> = {
     flood: "洪涝",
 };
 
-/** Primary map-bottom modes requested next to NDVI/EVI. */
-export const AGRI_PRIMARY_MODES: AgriHeatIndex[] = ["ndvi", "evi", "drought", "flood"];
+/** 地图底部主入口：EVI 作为补充指标，不在快捷按钮中直接展示。 */
+export const AGRI_PRIMARY_MODES: AgriHeatIndex[] = ["ndvi", "drought", "flood"];

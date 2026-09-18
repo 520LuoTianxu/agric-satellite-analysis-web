@@ -208,6 +208,7 @@
   "farmsPage": {
     "title": "项目",
     "subtitle": "{count, plural, one {# 个项目} other {# 个项目}}",
+    "loading": "正在加载项目…",
     "newFarm": "新建项目",
     "noFarmsTitle": "暂无项目",
     "noFarmsDesc": "创建你的第一个项目，开始管理地块。",
@@ -397,7 +398,7 @@
     "edit": "编辑",
     "delete": "删除",
     "tabInfo": "信息",
-    "tabNdvi": "遥感",
+    "tabNdvi": "长势分析",
     "tabAlerts": "预警",
     "tabScouting": "田间调查",
     "tabShare": "分享",
@@ -1047,7 +1048,7 @@
     "onlyRealistic": "仅显示有效观测"
   },
   "agriPanel": {
-    "title": "遥感监测",
+    "title": "长势分析",
     "subtitle": "查看地块长势与历史变化{scenes}",
     "scenesCount": " · 共 {total} 景",
     "loading": "正在加载卫星影像…",
@@ -1344,7 +1345,7 @@
     },
     "project": {
       "title": "打开一个项目",
-      "body": "点选一个种植项目，进入项目下的地块列表。"
+      "body": "点选一个已有地块的种植项目，进入项目下的地块列表。"
     },
     "land": {
       "title": "选择一块地",

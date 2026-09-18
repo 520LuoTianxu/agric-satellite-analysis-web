@@ -27,7 +27,7 @@ export interface BaseMapProps {
  * Base MapLibre GL JS component.
  *
  * Per PRD: Uses PMTiles basemap from Aliyun OSS when NEXT_PUBLIC_PROTOMAPS_URL
- * is set. 默认使用与农业管理端一致的 WGS84 卫星瓦片。
+ * is set. 默认使用与农业管理端一致的 GCJ-02 高德卫星瓦片。
  */
 export default function BaseMap({
     className = "",
@@ -65,6 +65,8 @@ export default function BaseMap({
             style: getBasemapStyle(),
             center,
             zoom,
+            // 与农业管理端保持一致，最高 20 级由业务高清瓦片承接，避免继续放大到高德占位层。
+            maxZoom: 20,
             transformRequest: createTransformRequest(),
             attributionControl: {
                 compact: true,

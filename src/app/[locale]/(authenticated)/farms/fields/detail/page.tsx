@@ -27,14 +27,23 @@ import {
     PanelRight,
     PanelRightClose,
     Satellite,
+    MoreHorizontal,
+    Check,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useTranslations } from "next-intl";
 import { MAP_STYLES, type MapStyleId } from "@/lib/pmtiles";
 import { tokenColor, MAP_CHROME } from "@/lib/design-tokens";
+import { wgs84GeometryToGcj02, wgs84ToGcj02 } from "@/lib/coordinate-transform";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TOUR_PREPARE_EVENT, type TourPrepareDetail } from "@/lib/product-tour";
 
@@ -67,6 +76,11 @@ const MapStyleSwitcher = dynamic(() => import("@/components/map/map-style-switch
 
 /** Satellite codes as stored by the pipeline, expanded for the reader. */
 const SATELLITE_LABELS: Record<string, string> = { S2: "Sentinel-2 L2A" };
+
+/** 地图图层入口使用业务名称，内部指标编码仍保持 NDVI。 */
+function getIndexDisplayLabel(indexType: IndexType): string {
+    return indexType === "NDVI" ? "长势分析" : INDEX_CONFIG[indexType].label;
+}
 
 const DETAIL_PROJECT_LANDS_SOURCE = "detail-project-lands";
 const DETAIL_PROJECT_LANDS_FILL = "detail-project-lands-fill";
@@ -237,7 +251,8 @@ function projectLandFeatureCollection(
             .map((item) => ({
                 type: "Feature",
                 properties: { landId: item.land_id },
-                geometry: item.boundary_geojson,
+                // 地块边界入库为 WGS84，展示到高德底图前转换成 GCJ-02。
+                geometry: wgs84GeometryToGcj02(item.boundary_geojson) as GeoJSON.Geometry,
             })),
     };
 }
@@ -441,8 +456,8 @@ function FieldDetailPageContent() {
         if (!landId) return;
         monitoringApi.layerTypes(landId).then((types) => {
             const upper = new Set(types.map((t) => t.toUpperCase() as IndexType));
-            // 地图快捷切换只保留 NDVI 等当前需要的入口，EVI 仍可随任务计算但不在此处展示点击项。
-            const sorted = ALL_INDEX_TYPES.filter((t) => t !== "EVI" && upper.has(t));
+            // EVI 仍保留在可用图层列表，渲染时放入扩展菜单，避免用户失去已有数据查看能力。
+            const sorted = ALL_INDEX_TYPES.filter((t) => upper.has(t));
             setAvailableTypes(sorted);
         }).catch(() => { });
     }, [landId]);
@@ -638,7 +653,10 @@ function FieldDetailPageContent() {
                 map.addSource(imgSrcId, {
                     type: "image",
                     url,
-                    coordinates: clippedImg.coordinates,
+                    // 色斑数据本身按 WGS84 生成，叠加到高德底图时同步转换四角。
+                    coordinates: clippedImg.coordinates.map(([longitude, latitude]) =>
+                        wgs84ToGcj02(longitude, latitude),
+                    ) as AgriHeatmapImage["coordinates"],
                 });
                 const before =
                     beforeId && map.getLayer(beforeId) ? beforeId : undefined;
@@ -826,10 +844,12 @@ function FieldDetailPageContent() {
         }
 
         if (!f?.boundary_geojson) return;
+        const displayFieldGeometry = wgs84GeometryToGcj02(f.boundary_geojson);
+        if (!displayFieldGeometry) return;
 
         map.addSource("field-polygon", {
             type: "geojson",
-            data: { type: "Feature", properties: {}, geometry: f.boundary_geojson },
+            data: { type: "Feature", properties: {}, geometry: displayFieldGeometry },
         });
         // Transparent fill while heatmap is on — outline stays for boundary.
         map.addLayer({
@@ -868,7 +888,9 @@ function FieldDetailPageContent() {
     const fitFieldInView = useCallback((map: maplibregl.Map) => {
         if (!land?.boundary_geojson) return;
         const bounds = new maplibregl.LngLatBounds();
-        getAllCoords(land.boundary_geojson).forEach(([lng, lat]) => bounds.extend([lng, lat]));
+        const displayGeometry = wgs84GeometryToGcj02(land.boundary_geojson);
+        if (!displayGeometry) return;
+        getAllCoords(displayGeometry).forEach(([lng, lat]) => bounds.extend([lng, lat]));
         if (bounds.isEmpty()) return;
         const width = map.getContainer().clientWidth;
         const height = map.getContainer().clientHeight;
@@ -890,7 +912,9 @@ function FieldDetailPageContent() {
         let hasCoordinates = false;
         projectLands.forEach((item) => {
             if (!item.boundary_geojson) return;
-            getAllCoords(item.boundary_geojson).forEach(([lng, lat]) => {
+            const displayGeometry = wgs84GeometryToGcj02(item.boundary_geojson);
+            if (!displayGeometry) return;
+            getAllCoords(displayGeometry).forEach(([lng, lat]) => {
                 bounds.extend([lng, lat]);
                 hasCoordinates = true;
             });
@@ -1112,6 +1136,7 @@ function FieldDetailPageContent() {
                         onGeometryChange={(g) => setEditGeom(g)}
                         onMapReady={(m) => setMapInstance(m)}
                         onBasemapFallback={setMapStyle}
+                        basemapStyle={mapStyle}
                     />
                 ) : (
                     <BaseMap onMapReady={handleMapReady} onBasemapFallback={setMapStyle} />
@@ -1316,7 +1341,7 @@ function FieldDetailPageContent() {
 
                 {activeTab === "ndvi" && availableTypes.length > 0 && (
                     <div className={cn("flex gap-1 rounded-lg p-1", MAP_CHROME)}>
-                        {availableTypes.map((idx) => (
+                        {availableTypes.filter((idx) => idx !== "EVI").map((idx) => (
                             <Button
                                 key={idx}
                                 variant={idx === activeIndexType ? "default" : "ghost"}
@@ -1324,9 +1349,37 @@ function FieldDetailPageContent() {
                                 onClick={() => { if (idx === activeIndexType) return; setIndexLayer(null); setActiveIndexType(idx); }}
                                 className="px-3 text-xs font-medium"
                             >
-                                {INDEX_CONFIG[idx].label}
+                                {getIndexDisplayLabel(idx)}
                             </Button>
                         ))}
+                        {availableTypes.includes("EVI") && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        type="button"
+                                        variant={activeIndexType === "EVI" ? "secondary" : "ghost"}
+                                        size="sm"
+                                        className="h-8 w-8 p-0"
+                                        title="扩展指标"
+                                        aria-label="扩展指标"
+                                    >
+                                        <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="min-w-[8rem]">
+                                    <DropdownMenuItem
+                                        onSelect={() => {
+                                            setIndexLayer(null);
+                                            setActiveIndexType("EVI");
+                                        }}
+                                        className="gap-2 text-xs"
+                                    >
+                                        <span className="flex-1">{INDEX_CONFIG.EVI.label}</span>
+                                        {activeIndexType === "EVI" ? <Check className="h-3.5 w-3.5 text-primary" /> : null}
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
                     </div>
                 )}
 

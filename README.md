@@ -25,17 +25,18 @@ python scripts/check-i18n-keys.py
 
 ## 地图底图
 
-默认卫星底图复用 `agric-admin-front` 中的 `2025_WGS84_HIGH_Satellite` 自维护瓦片，使用 WGS84 经纬度和 Web Mercator 瓦片网格，与地块边界和遥感热力图保持一致，无需引入高德 JS SDK 或转换业务坐标。
+默认卫星底图使用与 `agric-admin-front` 的 `AMap.TileLayer.Satellite()` 同源的高德卫星瓦片，并叠加同源道路标注瓦片；17–20 级再叠加管理端 `map-info` 高清瓦片，避免高德原生卫星图在高层级返回“此区域无卫星图”。所有展示层保持 GCJ-02，地块数据仍保存 WGS84。
 
-- 高清数据提供 16–19 级、256 像素瓦片，对应 MapLibre 视图从 15 级起显示；继续放大会复用 19 级影像，不请求不存在的 20 级瓦片。
-- `NEXT_PUBLIC_TIANDITU_KEY` 配置浏览器端天地图 Key 后，低级别也显示卫星影像；高清瓦片缺失时保留正常的天地图影像，所有影像源不可用时回到 OSM 街道图，并保留地块、绘制内容及热力图。
-- `NEXT_PUBLIC_SATELLITE_TILE_URL` 可在构建前覆盖卫星瓦片模板，默认复用农业管理端的 OSS 地址。替换源需保持 WGS84、XYZ 网格和相同层级范围。
-- 本地 `next dev` 默认通过 `/basemap-satellite/` 同源代理，兼容 OSS 不允许 localhost 的 CORS 配置；静态部署直连 OSS，部署域名需在该桶的 CORS 白名单内（已验证测试域名）。自定义模板需自行允许页面来源跨域。
+- 高德标注层显示省、市、区县、村镇、道路和兴趣点名称；高德底图不可用时回到 OSM 街道图，并保留地块、绘制内容及热力图。
+- 高层级业务高清瓦片复刻农业管理端的范围选择：按 `map_new_data_range` / `map_new_data_area` 的 XYZ 范围在 `ghr`、`Map2025Shandong`、`uat` 三个目录中选择；本地开发通过 `/basemap-admin-satellite/` 同源代理，避免 localhost 跨域失败，也避免“无卫星图”占位瓦片覆盖高德底图。
+- 数据库地块边界统一保存 WGS84；仅在高德地图展示和编辑时转换为 GCJ-02，保存时反向转换回 WGS84。
 - 普通地图、绘制地图及分享报告使用同一套配置，不再请求 Esri 的 `World_Imagery`。
 
-天地图浏览器 Key 应保存在 `.env.local` 或 CI 环境变量中，构建前注入；命令行直接请求可能被拒绝，应以浏览器验证为准。农业管理端旧 AMap 图层使用的 GCJ-02 瓦片没有直接混入 WGS84 地块图层。
+高德底图通过浏览器瓦片接口加载，不需要把高德 Web JS API Key 写入当前项目；农业管理端的业务搜索、编辑能力仍由其自身 AMap JS SDK 负责。
 
-测试环境使用仓库中的 `.env.test`（仅包含前端公开配置、网关地址和浏览器端地图 Key），构建命令为 `npm run build:test`。该命令显式加载测试站点子路径、天地图 Key、高清卫星瓦片地址和直连网关配置，检查必需配置，并禁用覆盖卫星样式的 PMTiles 自动升级。测试发布平台应使用此命令；仅执行 `npm run build` 不会自动加载 `.env.test`。直连网关必须允许测试站点来源的 CORS 请求。不要在该文件中添加数据库密码或服务端密钥。
+测试环境使用仓库中的 `.env.test`（仅包含前端公开配置和网关地址），构建命令为 `npm run build:test`。该命令显式加载测试站点子路径和直连网关配置，检查必需配置，并禁用覆盖卫星样式的 PMTiles 自动升级。测试发布平台应使用此命令；仅执行 `npm run build` 不会自动加载 `.env.test`。直连网关必须允许测试站点来源的 CORS 请求。不要在该文件中添加数据库密码或服务端密钥。
+
+生产环境使用未提交的 `.env.prod`，构建命令为 `npm run build:prod`。可先复制 `.env.prod.example`，再填写生产域名；同源反向代理部署保持 `NEXT_PUBLIC_DIRECT_API_PROXY=false`，直连网关部署则需要同时填写两个 `NEXT_PUBLIC_*_PROXY` 地址。
 
 地图回归检查：`node scripts/verify-basemap.mjs`；真实浏览器瓦片与 403 降级验证：`python scripts/verify-basemap-ui.py`（需 Playwright、Chromium 和 Pillow）。
 

@@ -438,10 +438,14 @@ export default function NdviChart({
                         bottom: 8,
                         height: 18,
                         borderColor: "transparent",
+                        backgroundColor: "rgba(22,163,74,0.04)",
                         fillerColor: "rgba(22,163,74,0.12)",
                         dataBackground: { lineStyle: { color: indexLineColor(indexType), opacity: 0.4 }, areaStyle: { color: "rgba(22,163,74,0.06)" } },
                         showDetail: false,
-                        brushSelect: false,
+                        // 与多日长势占比趋势保持一致：允许拖动两端手柄或直接拖动选中范围。
+                        brushSelect: true,
+                        moveHandleSize: 8,
+                        moveHandleStyle: { color: indexLineColor(indexType), opacity: 0.55 },
                     },
                 ];
             })(),

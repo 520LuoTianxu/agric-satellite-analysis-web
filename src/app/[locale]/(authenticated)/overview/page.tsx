@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { DROUGHT_CLASS_STYLE, FLOOD_CLASS_STYLE } from "@/lib/agri-heatmap";
 import { OverviewHistory } from "@/components/overview-history";
+import { getBasemapStyle, installBasemapFallback } from "@/lib/pmtiles";
 
 /** China approximate bounds [west, south, east, north]. */
 const CHINA_BOUNDS: [[number, number], [number, number]] = [
@@ -363,23 +364,10 @@ export default function OverviewPage() {
     // Init map once
     useEffect(() => {
         if (!mapContainerRef.current || mapRef.current) return;
-        // No commercial basemap — only Aliyun DataV admin GeoJSON choropleth (no CARTO watermark).
-        const blankStyle = {
-            version: 8 as const,
-            glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
-            sources: {},
-            layers: [
-                {
-                    id: "background",
-                    type: "background" as const,
-                    paint: { "background-color": "rgba(0,0,0,0)" },
-                },
-            ],
-        };
-
         const map = new maplibregl.Map({
             container: mapContainerRef.current,
-            style: blankStyle,
+            // 全国态势图也使用统一的高德卫星底图，行政区热力图作为业务图层叠加。
+            style: getBasemapStyle(),
             center: CHINA_CENTER,
             zoom: 3.4,
             // 边界约束会抬高最小缩放级别，宽屏下仍裁切全国；允许留白并禁用世界副本。
@@ -393,6 +381,7 @@ export default function OverviewPage() {
                     '<a href="https://datav.aliyun.com/portal/school/atlas/area_selector" target="_blank" rel="noreferrer">阿里云 DataV</a>',
             },
         });
+        installBasemapFallback(map);
         map.addControl(new maplibregl.NavigationControl(), "top-left");
         mapRef.current = map;
 

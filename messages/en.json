@@ -208,6 +208,7 @@
   "farmsPage": {
     "title": "Projects",
     "subtitle": "{count, plural, one {# project} other {# projects}}",
+    "loading": "Loading projects…",
     "newFarm": "New project",
     "noFarmsTitle": "No projects yet",
     "noFarmsDesc": "Create your first project to start managing your fields.",
@@ -397,7 +398,7 @@
     "edit": "Edit",
     "delete": "Delete",
     "tabInfo": "Info",
-    "tabNdvi": "Remote sensing",
+    "tabNdvi": "Growth analysis",
     "tabAlerts": "Alerts",
     "tabScouting": "Scouting",
     "tabShare": "Share",
@@ -1047,7 +1048,7 @@
     "onlyRealistic": "Only valid observations"
   },
   "agriPanel": {
-    "title": "Satellite monitoring",
+    "title": "Growth analysis",
     "subtitle": "Field growth and history{scenes}",
     "scenesCount": " · {total} scenes",
     "loading": "Loading agri scenes…",
@@ -1344,7 +1345,7 @@
     },
     "project": {
       "title": "Open a project",
-      "body": "Choose a planting project to see the fields inside it."
+      "body": "Choose a planting project with fields so you can continue to the field list."
     },
     "land": {
       "title": "Choose a field",
