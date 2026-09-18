@@ -6,7 +6,7 @@ import { tokenColor, MAP_CHROME } from "@/lib/design-tokens";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-import { registerPMTilesProtocol, getBasemapStyle, tryUpgradeToPMTiles, installBasemapFallback, type MapStyleId } from "@/lib/pmtiles";
+import { registerPMTilesProtocol, getBasemapStyle, MAP_STYLES, tryUpgradeToPMTiles, installBasemapFallback, usesGcj02Coordinates, type MapStyleId } from "@/lib/pmtiles";
 import { createTransformRequest, refreshMapToken } from "@/lib/map-auth";
 import { gcj02GeometryToWgs84, wgs84GeometryToGcj02 } from "@/lib/coordinate-transform";
 import { useTranslations } from "next-intl";
@@ -20,7 +20,7 @@ interface DrawMapProps {
     onMapReady?: (map: maplibregl.Map) => void;
     /** 底图自动降级后同步界面中的图层选中状态。 */
     onBasemapFallback?: (styleId: MapStyleId) => void;
-    /** 当前底图样式；高德卫星/道路底图使用 GCJ-02。 */
+    /** 当前底图样式；只有高德道路底图使用 GCJ-02，农业卫星图使用 WGS84。 */
     basemapStyle?: MapStyleId;
     /** Map center [lng, lat] */
     center?: [number, number];
@@ -59,8 +59,8 @@ export default function DrawMap({
 
         const draw = drawRef.current;
         if (!draw) return;
-        const previousUsesGcj02 = usesGaodeCoordinates(previousStyle);
-        const nextUsesGcj02 = usesGaodeCoordinates(basemapStyle);
+        const previousUsesGcj02 = usesGcj02Coordinates(previousStyle);
+        const nextUsesGcj02 = usesGcj02Coordinates(basemapStyle);
         if (previousUsesGcj02 === nextUsesGcj02) return;
 
         // 样式切换时同步重投影绘制内容，避免从高德底图切到 WGS84 底图后边界残留偏移。
@@ -85,8 +85,8 @@ export default function DrawMap({
         }
         // Return the first polygon
         const geom = data.features[0].geometry;
-        // MapboxDraw 读到的是当前地图上的 GCJ-02，业务接口统一接收 WGS84。
-        onGeometryChange(usesGaodeCoordinates(basemapStyleRef.current) ? gcj02GeometryToWgs84(geom) : geom);
+        // 高德道路图上的绘制结果是 GCJ-02，业务接口统一接收 WGS84；卫星图可直接提交。
+        onGeometryChange(usesGcj02Coordinates(basemapStyleRef.current) ? gcj02GeometryToWgs84(geom) : geom);
     }, [onGeometryChange]);
 
     useEffect(() => {
@@ -105,7 +105,9 @@ export default function DrawMap({
 
         const map = new maplibregl.Map({
             container: containerRef.current,
-            style: getBasemapStyle(),
+            // 编辑页可能从高德道路图进入，初始化时必须使用与当前样式一致的图层，
+            // 否则会把 GCJ-02 边界叠加到 WGS84 卫星图上。
+            style: MAP_STYLES.find((item) => item.id === basemapStyle)?.style ?? getBasemapStyle(),
             center,
             zoom,
             // 17–20 级由参考管理端的高清瓦片承接，限制到 20 级避免请求无意义的占位层。
@@ -206,8 +208,8 @@ export default function DrawMap({
 
             // Load existing geometry if provided
             if (initialGeometry) {
-                // 数据库边界是 WGS84，加载到高德底图前必须转换成 GCJ-02。
-                const displayGeometry = usesGaodeCoordinates(basemapStyleRef.current)
+                // 数据库边界是 WGS84，仅在高德道路底图上转换成 GCJ-02。
+                const displayGeometry = usesGcj02Coordinates(basemapStyleRef.current)
                     ? wgs84GeometryToGcj02(initialGeometry)
                     : initialGeometry;
                 const fc: GeoJSON.FeatureCollection = {
@@ -301,10 +303,6 @@ export default function DrawMap({
             </div>
         </div>
     );
-}
-
-function usesGaodeCoordinates(styleId: MapStyleId): boolean {
-    return styleId === "satellite" || styleId === "street";
 }
 
 /** Extract all coordinates from a GeoJSON geometry for bounds calculation. */

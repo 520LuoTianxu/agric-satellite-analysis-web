@@ -431,6 +431,7 @@
     "fieldNotFound": "Field not found",
     "fieldUpdated": "Field updated",
     "failedUpdate": "Failed to update",
+    "oversizedLandWarning": "This may be an abnormal field: {area} mu exceeds 5,000 mu. Data cannot be downloaded. Please contact technical support.",
     "confirmDelete": "Delete this field? This cannot be undone.",
     "fieldDeleted": "Field deleted",
     "failedDelete": "Failed to delete",
@@ -748,6 +749,7 @@
     "fetchWeather": "Re-fetch weather data",
     "backfillStarted": "Weather re-fetch started",
     "backfillFailed": "Failed to start weather re-fetch",
+    "landTooLargeWarning": "This may be an abnormal field: {area} mu exceeds 5,000 mu. Data cannot be downloaded. Please contact technical support.",
     "frostDays": "Frost days",
     "heatStressDays": "Heat stress",
     "soilMoisture": "Soil moisture",
@@ -771,6 +773,7 @@
   },
   "soil": {
     "title": "Soil profile",
+    "landTooLargeWarning": "This may be an abnormal field: {area} mu exceeds 5,000 mu. Data cannot be downloaded. Please contact technical support.",
     "depthProfile": "Texture by depth",
     "properties": "Soil properties",
     "summary": "Summary",
@@ -1068,6 +1071,7 @@
     "refreshStarted": "Remote-sensing refresh started",
     "refreshFailed": "Failed to start remote-sensing refresh",
     "refreshInProgress": "Remote-sensing refresh in progress…",
+    "landTooLargeWarning": "This may be an abnormal field: {area} mu exceeds 5,000 mu. Satellite data cannot be downloaded. Please contact technical support.",
     "noMeanPoints": "No valid mean points for this index.",
     "heatmapDate": "Heatmap date: {date} · {mode}",
     "pickDate": "Select a date on the chart to load the heatmap",
@@ -1525,6 +1529,7 @@
     "success": "Completed",
     "failed": "Failed",
     "running": "Running",
-    "queued": "Queued"
+    "queued": "Queued",
+    "cancelled": "Cancelled"
   }
 }

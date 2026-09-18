@@ -1,6 +1,6 @@
 import type { AgricLand } from "@/lib/agric";
 import type { ProjectDataStatus, ProjectLandMonitoring, ProjectRiskLevel } from "@/lib/api";
-import { wgs84GeometryToGcj02 } from "@/lib/coordinate-transform";
+import { gcj02GeometryToWgs84 } from "@/lib/coordinate-transform";
 import { boundsFromGeometry, landPathToPolygon } from "@/lib/land-path";
 
 export type DataState = ProjectDataStatus | "unavailable";
@@ -84,12 +84,12 @@ export function mergeProjectLands(
     return Array.from(uniqueLands, ([landId, land]) => {
         const satellite = byId.get(landId) ?? null;
         const cropName = land.cropName || satellite?.crop_type || "";
-        // 高德底图是 GCJ-02；wgsLandPath 是数据库统一保存的 WGS84，只在展示层转换。
-        // 旧接口仅返回 landPath 时沿用参考管理端的高德坐标，不重复转换。
+        // 项目地图复刻 agric-admin-front 的 WGS84 图层栈，数据库边界直接展示。
+        // 旧接口仅返回 landPath 时，它仍是管理端历史 GCJ-02 坐标，先反算回 WGS84。
         const businessGeometry = land.wgsLandPath
-            ? wgs84GeometryToGcj02(landPathToPolygon(land.wgsLandPath))
-            : landPathToPolygon(land.landPath);
-        const monitoringGeometry = wgs84GeometryToGcj02(satellite?.boundary_geojson);
+            ? landPathToPolygon(land.wgsLandPath)
+            : gcj02GeometryToWgs84(landPathToPolygon(land.landPath));
+        const monitoringGeometry = satellite?.boundary_geojson ?? null;
         return {
             landId,
             landName: land.landName || satellite?.land_name || landId,

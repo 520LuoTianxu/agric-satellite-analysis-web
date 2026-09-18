@@ -41,10 +41,10 @@ if (process.env.NODE_ENV === "production") {
             source: "/basemap-satellite/:path*",
             destination: "https://cfpamf-map-info.oss-cn-beijing.aliyuncs.com/2025_WGS84_HIGH_Satellite/:path*",
         },
-        // 管理端 17–20 级高清瓦片本地同源代理，避免 map-info 服务拒绝 localhost 跨域请求。
+        // 管理端 16–19 级统一高清瓦片本地同源代理，避免 map-info 服务拒绝 localhost 跨域请求。
         {
             source: "/basemap-admin-satellite/:path*",
-            // 目录由 map_new_data_range / map_new_data_area 动态选择，不能固定重写到 uat。
+            // 高清目录由前端固定为 2025_WGS84_HIGH_Satellite，不能回退到会产生色带的 uat。
             destination: "https://map-info.cdfinance.com.cn/:path*",
         },
         { source: "/bapi/:path*", destination: `${JOINT_VENTURE_PROXY}/bapi/:path*` },

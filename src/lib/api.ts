@@ -217,6 +217,7 @@ export interface LandParcel {
     town_name: string | null;
     village_code: string | null;
     village_name: string | null;
+    land_area_mu: number | null;
     soil_property: string | null;
     current_batch: string | null;
     land_status: string | null;
@@ -1888,7 +1889,7 @@ export interface AdminTaskRun {
     label: string;
     task_name: string;
     celery_task_id: string | null;
-    status: "queued" | "running" | "success" | "failed";
+    status: "queued" | "running" | "success" | "failed" | "cancelled";
     params: Record<string, unknown>;
     result: unknown;
     error: string | null;

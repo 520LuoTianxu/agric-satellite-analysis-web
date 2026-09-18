@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { Loader2, RefreshCw, CloudOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land-schedule-filter";
 import ForecastBar from "@/components/field/forecast-bar";
 import WeatherChart from "@/components/charts/weather-chart";
 import WaterBalanceChart from "@/components/charts/water-balance-chart";
@@ -36,10 +37,14 @@ function getDateRange(range: RangeOption): { start: string; end: string } {
 
 interface WeatherTabProps {
     landId: string;
+    landAreaMu?: number | null;
+    areaHa?: number | null;
 }
 
-export default function WeatherTab({ landId }: WeatherTabProps) {
+export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }: WeatherTabProps) {
     const t = useTranslations("weather");
+    const areaMu = useMemo(() => resolveLandAreaMu(landAreaMu, areaHa), [areaHa, landAreaMu]);
+    const oversizedLand = isOversizedLand(areaMu);
 
     const [range, setRange] = useState<RangeOption>("30d");
     const [loading, setLoading] = useState(true);
@@ -78,6 +83,10 @@ export default function WeatherTab({ landId }: WeatherTabProps) {
     }, [loadWeather]);
 
     const handleBackfill = async () => {
+        if (oversizedLand) {
+            toast.error(t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }));
+            return;
+        }
         setBackfilling(true);
         setFetchProgress(true);
         try {
@@ -123,6 +132,11 @@ export default function WeatherTab({ landId }: WeatherTabProps) {
     if (data.length === 0 && forecast.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+                {oversizedLand && (
+                    <div role="alert" className="w-full flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-subtle px-3 py-2 text-left text-xs text-warning">
+                        <span>{t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) })}</span>
+                    </div>
+                )}
                 <CloudOff className="h-8 w-8 text-muted-foreground/50" />
                 <div>
                     <p className="text-sm font-medium">{t("noWeatherData")}</p>
@@ -132,7 +146,7 @@ export default function WeatherTab({ landId }: WeatherTabProps) {
                     size="sm"
                     variant="outline"
                     onClick={handleBackfill}
-                    disabled={backfilling || fetchProgress}
+                    disabled={oversizedLand || backfilling || fetchProgress}
                 >
                     {backfilling || fetchProgress ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -147,6 +161,11 @@ export default function WeatherTab({ landId }: WeatherTabProps) {
 
     return (
         <div className="space-y-4">
+            {oversizedLand && (
+                <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
+                    <span>{t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) })}</span>
+                </div>
+            )}
             {fetchProgress && (
                 <div className="rounded-md border border-info/30 bg-info-subtle/60 px-2.5 py-2 flex items-center gap-2 text-[11px] text-info">
                     <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
@@ -178,7 +197,7 @@ export default function WeatherTab({ landId }: WeatherTabProps) {
                     size="sm"
                     className="h-8 gap-1.5 text-xs"
                     onClick={() => { void handleBackfill(); }}
-                    disabled={backfilling || fetchProgress}
+                    disabled={oversizedLand || backfilling || fetchProgress}
                     title={t("refresh")}
                 >
                     {backfilling || fetchProgress ? (
