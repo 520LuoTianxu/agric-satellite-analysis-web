@@ -1495,7 +1495,7 @@
     "workersDescription": "Cada claim correcto, incluso vacío, actualiza el latido. Más de tres ciclos perdidos y al menos 30 segundos marcan la máquina como vencida; el doble de ese tiempo indica posible desconexión.",
     "noWorkers": "Ninguna máquina ha enviado un latido de claim todavía.",
     "tasksTitle": "Tareas programadas",
-    "tasksDescription": "Estas tareas forman la lista permitida de Beat y se envían a la cola ingest.",
+    "tasksDescription": "Aquí puedes iniciar tareas programadas y sincronizaciones de datos del API, y seguir su finalización.",
     "enabled": "Activa",
     "disabled": "Inactiva",
     "runNow": "Ejecutar",

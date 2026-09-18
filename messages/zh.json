@@ -1495,7 +1495,7 @@
     "workersDescription": "每次成功 claim（包括空队列）都会更新心跳；超过 3 个轮询周期且至少 30 秒未到达会标记为过期，再持续一倍时间会标记为疑似离线。",
     "noWorkers": "还没有下载机上报 claim 心跳。",
     "tasksTitle": "定时任务",
-    "tasksDescription": "以下任务来自现有 Beat 白名单，可以立即投递到 ingest 队列。",
+    "tasksDescription": "这里展示周期任务与 API 侧数据同步任务，可直接触发并查看完成情况。",
     "enabled": "已启用",
     "disabled": "未启用",
     "runNow": "立即运行",
