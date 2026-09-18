@@ -36,6 +36,8 @@ python scripts/check-i18n-keys.py
 
 测试环境使用仓库中的 `.env.test`（仅包含前端公开配置和网关地址），构建命令为 `npm run build:test`。该命令显式加载测试站点子路径和直连网关配置，检查必需配置，并禁用覆盖卫星样式的 PMTiles 自动升级。测试发布平台应使用此命令；仅执行 `npm run build` 不会自动加载 `.env.test`。直连网关必须允许测试站点来源的 CORS 请求。不要在该文件中添加数据库密码或服务端密钥。
 
+生产环境使用未提交的 `.env.prod`，构建命令为 `npm run build:prod`。可先复制 `.env.prod.example`，再填写生产域名；同源反向代理部署保持 `NEXT_PUBLIC_DIRECT_API_PROXY=false`，直连网关部署则需要同时填写两个 `NEXT_PUBLIC_*_PROXY` 地址。
+
 地图回归检查：`node scripts/verify-basemap.mjs`；真实浏览器瓦片与 403 降级验证：`python scripts/verify-basemap-ui.py`（需 Playwright、Chromium 和 Pillow）。
 
 ## 静态部署

@@ -208,6 +208,7 @@
   "farmsPage": {
     "title": "Proyectos",
     "subtitle": "{count, plural, one {# proyecto} other {# proyectos}}",
+    "loading": "Cargando proyectos…",
     "newFarm": "Nuevo proyecto",
     "noFarmsTitle": "Aún no hay proyectos",
     "noFarmsDesc": "Crea tu primer proyecto para gestionar tus campos.",
@@ -397,7 +398,7 @@
     "edit": "Editar",
     "delete": "Eliminar",
     "tabInfo": "Info",
-    "tabNdvi": "Teledetección",
+    "tabNdvi": "Análisis del crecimiento",
     "tabAlerts": "Alertas",
     "tabScouting": "Scouting",
     "tabShare": "Compartir",
@@ -1047,7 +1048,7 @@
     "onlyRealistic": "Solo observaciones válidas"
   },
   "agriPanel": {
-    "title": "Monitoreo satelital",
+    "title": "Análisis del crecimiento",
     "subtitle": "Crecimiento e historial del campo{scenes}",
     "scenesCount": " · {total} escenas",
     "loading": "Cargando escenas agri…",
@@ -1344,7 +1345,7 @@
     },
     "project": {
       "title": "Abre un proyecto",
-      "body": "Elige un proyecto para ver las parcelas que contiene."
+      "body": "Elige un proyecto con parcelas para continuar a la lista de parcelas."
     },
     "land": {
       "title": "Elige una parcela",

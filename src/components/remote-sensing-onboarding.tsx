@@ -11,7 +11,8 @@ import { prepareTourTarget, TOUR_STORAGE_PREFIX, waitForTourTarget } from "@/lib
 
 const STEPS = [
     { key: "nav", selectors: ["[data-tour='nav-farms']"], href: "/farms" },
-    { key: "project", selectors: ["[data-tour='project-card']"] },
+    // 第二步必须进入已有地块的项目，否则下一步无法引导用户选择地块。
+    { key: "project", selectors: ["[data-tour='project-card'][data-tour-has-lands='true']"] },
     // 只定位真实地块按钮；列表容器不能代表“选择一块地”，也不能响应任意筛选点击。
     { key: "land", selectors: ["[data-tour='project-land']"], prepare: { mobileList: true } },
     { key: "ndvi", selectors: ["[data-tour='tab-ndvi']"], prepare: { tab: "ndvi", sidebar: true } },
@@ -53,12 +54,18 @@ export function RemoteSensingOnboarding() {
     const abortRef = useRef<AbortController | null>(null);
     const openRef = useRef(false);
     const pathnameRef = useRef(pathname);
+    const routerRef = useRef(router);
     const routeByStepRef = useRef<Record<number, string>>({});
     const storageKey = session ? `${TOUR_STORAGE_PREFIX}${session.activeAccountRoleId}` : null;
 
     useEffect(() => {
         pathnameRef.current = pathname;
     }, [pathname]);
+
+    useEffect(() => {
+        // 路由对象可能随页面切换更新，但引导状态不能因此重新从第一步开始。
+        routerRef.current = router;
+    }, [router]);
 
     const markSeen = useCallback(() => {
         if (!storageKey) return;
@@ -97,7 +104,7 @@ export function RemoteSensingOnboarding() {
         setWaiting(true);
         setUnavailable(false);
         if (!options.skipNavigation && destination && !isCurrentRoute(pathnameRef.current, destination)) {
-            router.push(destination);
+            routerRef.current.push(destination);
         }
         const element = await waitForTourTarget(def.selectors, {
             timeoutMs: 8000,
@@ -110,7 +117,7 @@ export function RemoteSensingOnboarding() {
         setTarget(element);
         setWaiting(false);
         setUnavailable(!element);
-    }, [closeTour, router]);
+    }, [closeTour]);
 
     useEffect(() => {
         abortRef.current?.abort();
@@ -123,7 +130,12 @@ export function RemoteSensingOnboarding() {
             return;
         }
         try {
-            setOpen(localStorage.getItem(storageKey) !== "seen");
+            const shouldAutoOpen = localStorage.getItem(storageKey) !== "seen";
+            setOpen(shouldAutoOpen);
+            if (shouldAutoOpen) {
+                // 第一次自动展示就立即记为已触发，刷新或中途离开不会再次打断用户。
+                localStorage.setItem(storageKey, "seen");
+            }
         } catch {
             setOpen(true);
         }

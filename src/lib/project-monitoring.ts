@@ -39,12 +39,14 @@ export const RISK_ORDER: Record<ProjectRiskLevel, number> = {
 
 export const RISK_TOKENS: Record<ProjectRiskLevel, string> = {
     high: "--sev-high", medium: "--sev-medium", low: "--sev-low",
-    normal: "--success", unknown: "--muted-foreground",
+    normal: "--success",
+    // 暂时无法判断的地块使用高饱和信息蓝，避免灰色边界在卫星图上不易辨认。
+    unknown: "--info",
 };
 
 export const RISK_CLASSES: Record<ProjectRiskLevel, string> = {
     high: "text-sev-high", medium: "text-sev-medium", low: "text-sev-low",
-    normal: "text-success", unknown: "text-muted-foreground",
+    normal: "text-success", unknown: "text-info",
 };
 
 function areaNumber(value: unknown): number | null {

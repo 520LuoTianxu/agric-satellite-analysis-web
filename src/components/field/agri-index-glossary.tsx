@@ -175,41 +175,46 @@ export function AgriIndexGlossary({
                                 </h3>
                                 <p className="mt-1 text-xs text-muted-foreground">{entry.name}</p>
                             </div>
-                            <dl className="space-y-4 text-sm leading-relaxed">
-                                {[
-                                    ["是什么", entry.summary],
-                                    ["怎么看", entry.reading],
-                                    ["接下来做什么", entry.action],
-                                ].map(([label, text]) => (
-                                    <div key={label}>
-                                        <dt className="mb-1 font-semibold text-primary">{label}</dt>
-                                        <dd className="text-foreground/90">{text}</dd>
-                                    </div>
-                                ))}
-                            </dl>
-                            <details className="rounded-lg border bg-muted/20 p-3">
-                                <summary className="cursor-pointer text-xs font-medium">页面里的常见词是什么意思？</summary>
-                                <dl className="mt-3 space-y-3 text-xs leading-relaxed">
-                                    {REMOTE_SENSING_TERMS.map(([term, explanation]) => (
-                                        <div key={term}>
-                                            <dt className="font-medium">{term}</dt>
-                                            <dd className="mt-1 text-muted-foreground">{explanation}</dd>
-                                        </div>
-                                    ))}
-                                </dl>
-                            </details>
-                            {imageFile ? (
-                                <details key={selected} className="rounded-lg border bg-muted/20 p-3">
-                                    <summary className="cursor-pointer text-xs font-medium">想了解更多？查看专业示意图</summary>
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                        src={glossaryAsset(imageFile)}
-                                        alt={`${entry.name}专业示意图`}
-                                        loading="lazy"
-                                        className="mx-auto mt-3 max-h-[min(55vh,28rem)] w-full object-contain"
-                                    />
-                                </details>
-                            ) : null}
+                            <div className={cn("grid gap-4", imageFile && "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.9fr)]")}>
+                                <div className="min-w-0 space-y-3">
+                                    <dl className="space-y-4 text-sm leading-relaxed">
+                                        {[
+                                            ["是什么", entry.summary],
+                                            ["怎么看", entry.reading],
+                                            ["接下来做什么", entry.action],
+                                        ].map(([label, text]) => (
+                                            <div key={label}>
+                                                <dt className="mb-1 font-semibold text-primary">{label}</dt>
+                                                <dd className="text-foreground/90">{text}</dd>
+                                            </div>
+                                        ))}
+                                    </dl>
+                                    <details className="rounded-lg border bg-muted/20 p-3">
+                                        <summary className="cursor-pointer text-xs font-medium">页面里的常见词是什么意思？</summary>
+                                        <dl className="mt-3 space-y-3 text-xs leading-relaxed">
+                                            {REMOTE_SENSING_TERMS.map(([term, explanation]) => (
+                                                <div key={term}>
+                                                    <dt className="font-medium">{term}</dt>
+                                                    <dd className="mt-1 text-muted-foreground">{explanation}</dd>
+                                                </div>
+                                            ))}
+                                        </dl>
+                                    </details>
+                                </div>
+                                {imageFile ? (
+                                    // 专业图与说明并排展示，桌面端滚动文字时保持图片在视野内。
+                                    <figure key={selected} className="rounded-lg border bg-muted/20 p-3 lg:sticky lg:top-0 lg:self-start">
+                                        <figcaption className="text-xs font-medium">专业示意图</figcaption>
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                            src={glossaryAsset(imageFile)}
+                                            alt={`${entry.name}专业示意图`}
+                                            loading="lazy"
+                                            className="mx-auto mt-3 max-h-[min(65vh,36rem)] w-full object-contain"
+                                        />
+                                    </figure>
+                                ) : null}
+                            </div>
                         </div>
                     </div>
                 </div>
