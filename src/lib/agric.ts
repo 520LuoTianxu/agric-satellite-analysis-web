@@ -57,6 +57,15 @@ export interface AgricDictItem {
     remark?: string | null;
 }
 
+export type SatelliteTileRange = [number, number, number, number];
+
+export interface SatelliteTileCoverage {
+    /** map_new_data_range：管理端优先使用的 ghr 高清影像范围。 */
+    ghr: Record<string, SatelliteTileRange[]>;
+    /** map_new_data_area：山东更新影像范围。 */
+    map2025Shandong: Record<string, SatelliteTileRange[]>;
+}
+
 export interface AgricGroup {
     groupId: number | string;
     groupName?: string;
@@ -361,4 +370,44 @@ export async function getPlantingTypeDict(): Promise<PlantingTypeDict> {
     }
 
     return { options, labelByValue, categoriesByType };
+}
+
+function parseSatelliteTileRanges(items: AgricDictItem[]): Record<string, SatelliteTileRange[]> {
+    const ranges: Record<string, SatelliteTileRange[]> = {};
+    for (const item of items) {
+        const level = String(item.dictLabel ?? "").trim();
+        if (!level || !item.dictValue) continue;
+        try {
+            const value = JSON.parse(item.dictValue) as unknown;
+            if (!Array.isArray(value)) continue;
+            const validRanges = value.filter((range): range is SatelliteTileRange =>
+                Array.isArray(range) && range.length >= 4 && range.slice(0, 4).every((part) => Number.isFinite(Number(part))),
+            ).map((range) => [
+                Number(range[0]), Number(range[1]), Number(range[2]), Number(range[3]),
+            ] as SatelliteTileRange);
+            if (validRanges.length) ranges[level] = validRanges;
+        } catch {
+            // 单条字典配置损坏时忽略该级别，不能让整张地图停止加载。
+        }
+    }
+    return ranges;
+}
+
+let satelliteTileCoveragePromise: Promise<SatelliteTileCoverage> | null = null;
+
+/**
+ * 读取 agric-admin 的卫星瓦片范围字典。
+ * 管理端按 XYZ 范围选择 ghr / Map2025Shandong / uat，避免把“无卫星图”占位瓦片覆盖到高德底图上。
+ */
+export function getSatelliteTileCoverage(): Promise<SatelliteTileCoverage> {
+    if (!satelliteTileCoveragePromise) {
+        satelliteTileCoveragePromise = Promise.all([
+            agricRequest<AgricDictItem[]>("/system/dict/data/type/map_new_data_range", { method: "GET" }),
+            agricRequest<AgricDictItem[]>("/system/dict/data/type/map_new_data_area", { method: "GET" }),
+        ]).then(([newData, map2025]) => ({
+            ghr: parseSatelliteTileRanges(Array.isArray(newData.data) ? newData.data : []),
+            map2025Shandong: parseSatelliteTileRanges(Array.isArray(map2025.data) ? map2025.data : []),
+        }));
+    }
+    return satelliteTileCoveragePromise;
 }

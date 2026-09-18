@@ -8,6 +8,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import { registerPMTilesProtocol, getBasemapStyle, tryUpgradeToPMTiles, installBasemapFallback, type MapStyleId } from "@/lib/pmtiles";
 import { createTransformRequest, refreshMapToken } from "@/lib/map-auth";
+import { gcj02GeometryToWgs84, wgs84GeometryToGcj02 } from "@/lib/coordinate-transform";
 import { useTranslations } from "next-intl";
 
 interface DrawMapProps {
@@ -19,6 +20,8 @@ interface DrawMapProps {
     onMapReady?: (map: maplibregl.Map) => void;
     /** 底图自动降级后同步界面中的图层选中状态。 */
     onBasemapFallback?: (styleId: MapStyleId) => void;
+    /** 当前底图样式；高德卫星/道路底图使用 GCJ-02。 */
+    basemapStyle?: MapStyleId;
     /** Map center [lng, lat] */
     center?: [number, number];
     /** Map zoom */
@@ -37,6 +40,7 @@ export default function DrawMap({
     onGeometryChange,
     onMapReady,
     onBasemapFallback,
+    basemapStyle = "satellite",
     center = [78.9629, 20.5937],
     zoom = 5,
     className = "",
@@ -45,7 +49,32 @@ export default function DrawMap({
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const drawRef = useRef<MapboxDraw | null>(null);
+    const basemapStyleRef = useRef<MapStyleId>(basemapStyle);
     const [ready, setReady] = useState(false);
+
+    useEffect(() => {
+        const previousStyle = basemapStyleRef.current;
+        basemapStyleRef.current = basemapStyle;
+        if (previousStyle === basemapStyle) return;
+
+        const draw = drawRef.current;
+        if (!draw) return;
+        const previousUsesGcj02 = usesGaodeCoordinates(previousStyle);
+        const nextUsesGcj02 = usesGaodeCoordinates(basemapStyle);
+        if (previousUsesGcj02 === nextUsesGcj02) return;
+
+        // 样式切换时同步重投影绘制内容，避免从高德底图切到 WGS84 底图后边界残留偏移。
+        const data = draw.getAll();
+        draw.set({
+            ...data,
+            features: data.features.map((feature) => ({
+                ...feature,
+                geometry: nextUsesGcj02
+                    ? wgs84GeometryToGcj02(gcj02GeometryToWgs84(feature.geometry))
+                    : gcj02GeometryToWgs84(feature.geometry),
+            })),
+        } as GeoJSON.FeatureCollection);
+    }, [basemapStyle]);
 
     const handleUpdate = useCallback(() => {
         if (!drawRef.current) return;
@@ -56,7 +85,8 @@ export default function DrawMap({
         }
         // Return the first polygon
         const geom = data.features[0].geometry;
-        onGeometryChange(geom);
+        // MapboxDraw 读到的是当前地图上的 GCJ-02，业务接口统一接收 WGS84。
+        onGeometryChange(usesGaodeCoordinates(basemapStyleRef.current) ? gcj02GeometryToWgs84(geom) : geom);
     }, [onGeometryChange]);
 
     useEffect(() => {
@@ -78,6 +108,8 @@ export default function DrawMap({
             style: getBasemapStyle(),
             center,
             zoom,
+            // 17–20 级由参考管理端的高清瓦片承接，限制到 20 级避免请求无意义的占位层。
+            maxZoom: 20,
             transformRequest: createTransformRequest(),
         });
 
@@ -174,13 +206,17 @@ export default function DrawMap({
 
             // Load existing geometry if provided
             if (initialGeometry) {
+                // 数据库边界是 WGS84，加载到高德底图前必须转换成 GCJ-02。
+                const displayGeometry = usesGaodeCoordinates(basemapStyleRef.current)
+                    ? wgs84GeometryToGcj02(initialGeometry)
+                    : initialGeometry;
                 const fc: GeoJSON.FeatureCollection = {
                     type: "FeatureCollection",
                     features: [
                         {
                             type: "Feature",
                             properties: {},
-                            geometry: initialGeometry,
+                            geometry: displayGeometry as GeoJSON.Geometry,
                         },
                     ],
                 };
@@ -189,7 +225,7 @@ export default function DrawMap({
                 // Fit to geometry bounds
                 try {
                     const bounds = new maplibregl.LngLatBounds();
-                    const coords = getAllCoords(initialGeometry);
+                    const coords = getAllCoords(displayGeometry as GeoJSON.Geometry);
                     coords.forEach(([lng, lat]) => bounds.extend([lng, lat]));
                     if (!bounds.isEmpty()) {
                         map.fitBounds(bounds, { padding: 80, maxZoom: 16 });
@@ -265,6 +301,10 @@ export default function DrawMap({
             </div>
         </div>
     );
+}
+
+function usesGaodeCoordinates(styleId: MapStyleId): boolean {
+    return styleId === "satellite" || styleId === "street";
 }
 
 /** Extract all coordinates from a GeoJSON geometry for bounds calculation. */

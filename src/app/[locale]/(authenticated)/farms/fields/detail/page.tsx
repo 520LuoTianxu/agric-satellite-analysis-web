@@ -35,6 +35,7 @@ import { Label } from "@/components/ui/label";
 import { useTranslations } from "next-intl";
 import { MAP_STYLES, type MapStyleId } from "@/lib/pmtiles";
 import { tokenColor, MAP_CHROME } from "@/lib/design-tokens";
+import { wgs84GeometryToGcj02, wgs84ToGcj02 } from "@/lib/coordinate-transform";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TOUR_PREPARE_EVENT, type TourPrepareDetail } from "@/lib/product-tour";
 
@@ -237,7 +238,8 @@ function projectLandFeatureCollection(
             .map((item) => ({
                 type: "Feature",
                 properties: { landId: item.land_id },
-                geometry: item.boundary_geojson,
+                // 地块边界入库为 WGS84，展示到高德底图前转换成 GCJ-02。
+                geometry: wgs84GeometryToGcj02(item.boundary_geojson) as GeoJSON.Geometry,
             })),
     };
 }
@@ -638,7 +640,10 @@ function FieldDetailPageContent() {
                 map.addSource(imgSrcId, {
                     type: "image",
                     url,
-                    coordinates: clippedImg.coordinates,
+                    // 色斑数据本身按 WGS84 生成，叠加到高德底图时同步转换四角。
+                    coordinates: clippedImg.coordinates.map(([longitude, latitude]) =>
+                        wgs84ToGcj02(longitude, latitude),
+                    ) as AgriHeatmapImage["coordinates"],
                 });
                 const before =
                     beforeId && map.getLayer(beforeId) ? beforeId : undefined;
@@ -826,10 +831,12 @@ function FieldDetailPageContent() {
         }
 
         if (!f?.boundary_geojson) return;
+        const displayFieldGeometry = wgs84GeometryToGcj02(f.boundary_geojson);
+        if (!displayFieldGeometry) return;
 
         map.addSource("field-polygon", {
             type: "geojson",
-            data: { type: "Feature", properties: {}, geometry: f.boundary_geojson },
+            data: { type: "Feature", properties: {}, geometry: displayFieldGeometry },
         });
         // Transparent fill while heatmap is on — outline stays for boundary.
         map.addLayer({
@@ -868,7 +875,9 @@ function FieldDetailPageContent() {
     const fitFieldInView = useCallback((map: maplibregl.Map) => {
         if (!land?.boundary_geojson) return;
         const bounds = new maplibregl.LngLatBounds();
-        getAllCoords(land.boundary_geojson).forEach(([lng, lat]) => bounds.extend([lng, lat]));
+        const displayGeometry = wgs84GeometryToGcj02(land.boundary_geojson);
+        if (!displayGeometry) return;
+        getAllCoords(displayGeometry).forEach(([lng, lat]) => bounds.extend([lng, lat]));
         if (bounds.isEmpty()) return;
         const width = map.getContainer().clientWidth;
         const height = map.getContainer().clientHeight;
@@ -890,7 +899,9 @@ function FieldDetailPageContent() {
         let hasCoordinates = false;
         projectLands.forEach((item) => {
             if (!item.boundary_geojson) return;
-            getAllCoords(item.boundary_geojson).forEach(([lng, lat]) => {
+            const displayGeometry = wgs84GeometryToGcj02(item.boundary_geojson);
+            if (!displayGeometry) return;
+            getAllCoords(displayGeometry).forEach(([lng, lat]) => {
                 bounds.extend([lng, lat]);
                 hasCoordinates = true;
             });
@@ -1112,6 +1123,7 @@ function FieldDetailPageContent() {
                         onGeometryChange={(g) => setEditGeom(g)}
                         onMapReady={(m) => setMapInstance(m)}
                         onBasemapFallback={setMapStyle}
+                        basemapStyle={mapStyle}
                     />
                 ) : (
                     <BaseMap onMapReady={handleMapReady} onBasemapFallback={setMapStyle} />

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { useTranslations } from "next-intl";
 import type maplibregl from "maplibre-gl";
 import { MAP_STYLES, type MapStyleId } from "@/lib/pmtiles";
+import { wgs84ToGcj02 } from "@/lib/coordinate-transform";
 import { MAP_CHROME } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 import { formatAreaMu } from "@/lib/area";
@@ -59,8 +60,12 @@ function NewFieldPageContent() {
     }, []);
 
     const handleLocationSelect = useCallback((lngLat: [number, number]) => {
-        mapInstance?.flyTo({ center: lngLat, zoom: 16, duration: 1500 });
-    }, [mapInstance]);
+        // Nominatim 返回 WGS84；搜索结果定位到高德底图前转换成 GCJ-02。
+        const center = mapStyle === "satellite" || mapStyle === "street"
+            ? wgs84ToGcj02(lngLat[0], lngLat[1])
+            : lngLat;
+        mapInstance?.flyTo({ center, zoom: 16, duration: 1500 });
+    }, [mapInstance, mapStyle]);
 
     const handleStyleChange = useCallback((styleId: MapStyleId) => {
         if (!mapInstance) return;
@@ -118,7 +123,12 @@ function NewFieldPageContent() {
         <div className="relative h-full w-full overflow-hidden">
             {/* Full-screen map */}
             <div className="absolute inset-0">
-                <DrawMap onGeometryChange={handleGeomChange} onMapReady={setMapInstance} onBasemapFallback={setMapStyle} />
+                <DrawMap
+                    onGeometryChange={handleGeomChange}
+                    onMapReady={setMapInstance}
+                    onBasemapFallback={setMapStyle}
+                    basemapStyle={mapStyle}
+                />
             </div>
 
             {/* Back button + Style switcher + Search - top left */}
