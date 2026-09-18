@@ -1525,6 +1525,7 @@
     "success": "Completada",
     "failed": "Fallida",
     "running": "En ejecución",
-    "queued": "En cola"
+    "queued": "En cola",
+    "cancelled": "Cancelada"
   }
 }

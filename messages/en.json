@@ -1525,6 +1525,7 @@
     "success": "Completed",
     "failed": "Failed",
     "running": "Running",
-    "queued": "Queued"
+    "queued": "Queued",
+    "cancelled": "Cancelled"
   }
 }
