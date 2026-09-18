@@ -1856,6 +1856,71 @@ export interface OverviewWeakParcels {
     items: OverviewWeakParcel[];
 }
 
+// ── Admin operations ──────────────────────────────────────────────
+
+export interface DownloadWorkerStatus {
+    worker_id: string;
+    mode: string;
+    status: "online" | "stale" | "offline" | "unknown";
+    claim_types: string[];
+    poll_interval_seconds: number;
+    last_claim_count: number;
+    total_claims: number;
+    queue_name: string;
+    queue_depths: Record<string, number>;
+    pending_queue_count: number | null;
+    last_claim_at: string | null;
+    age_seconds: number | null;
+}
+
+export interface ScheduledTask {
+    key: string;
+    label: string;
+    description: string;
+    task_name: string;
+    schedule: string;
+    enabled: boolean;
+}
+
+export interface AdminTaskRun {
+    id: string;
+    task_key: string;
+    label: string;
+    task_name: string;
+    celery_task_id: string | null;
+    status: "queued" | "running" | "success" | "failed";
+    params: Record<string, unknown>;
+    result: unknown;
+    error: string | null;
+    triggered_by: string | null;
+    created_at: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+    updated_at: string | null;
+}
+
+export interface AdminOpsOverview {
+    generated_at: string;
+    workers: DownloadWorkerStatus[];
+    tasks: ScheduledTask[];
+    runs: AdminTaskRun[];
+}
+
+export const adminOpsApi = {
+    overview: (limit = 30) =>
+        apiFetch<AdminOpsOverview>(`/admin/ops/overview?limit=${limit}`),
+    trigger: (body: {
+        task_key: string;
+        as_of?: string;
+        window_days?: number;
+        crop?: string;
+    }) =>
+        apiFetch<AdminTaskRun>("/admin/ops/task-runs", {
+            method: "POST",
+            body: JSON.stringify(body),
+        }),
+};
+
 // ── Share Links ──────────────────────────────────────────────────
 
 export const shareApi = {
