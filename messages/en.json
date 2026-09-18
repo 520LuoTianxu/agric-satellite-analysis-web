@@ -1495,7 +1495,7 @@
     "workersDescription": "Every successful claim, including an empty claim, updates the heartbeat. More than three missed polling cycles and at least 30 seconds mark it stale; twice that age marks it possibly offline.",
     "noWorkers": "No download machine has reported a claim heartbeat yet.",
     "tasksTitle": "Scheduled tasks",
-    "tasksDescription": "These tasks are the existing Beat allowlist and can be queued on the ingest queue.",
+    "tasksDescription": "Scheduled jobs and API-side data sync tasks can be triggered here and tracked to completion.",
     "enabled": "Enabled",
     "disabled": "Disabled",
     "runNow": "Run now",
