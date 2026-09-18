@@ -23,6 +23,7 @@ import { Loader2, RefreshCw, Info, Layers, Check, Leaf, Droplets, AlertTriangle,
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { tokenColor } from "@/lib/design-tokens";
+import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land-schedule-filter";
 import {
     Tooltip,
     TooltipContent,
@@ -108,13 +109,17 @@ const PRIORITY_TOKEN_VARS: Record<number, string> = {
 
 interface SoilTabProps {
     landId: string;
+    landAreaMu?: number | null;
+    areaHa?: number | null;
     groupId?: string | number | null;
     mapInstance?: maplibregl.Map | null;
     activeTab?: string;
 }
 
-export default function SoilTab({ landId, groupId, mapInstance, activeTab }: SoilTabProps) {
+export default function SoilTab({ landId, landAreaMu = null, areaHa = null, groupId, mapInstance, activeTab }: SoilTabProps) {
     const t = useTranslations("soil");
+    const areaMu = resolveLandAreaMu(landAreaMu, areaHa);
+    const oversizedLand = isOversizedLand(areaMu);
 
     const [profile, setProfile] = useState<SoilProfile | null>(null);
     const [summary, setSummary] = useState<SoilFieldSummary | null>(null);
@@ -133,6 +138,10 @@ export default function SoilTab({ landId, groupId, mapInstance, activeTab }: Soi
     const [siteForce, setSiteForce] = useState(false);
 
     const handleFetchNpk = useCallback(async () => {
+        if (oversizedLand) {
+            toast.error(t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }));
+            return;
+        }
         const credentials = resolveCdfinanceCredentials(groupId);
         if (!credentials.token) {
             toast.error(t("cdfinanceLoginRequired"));
@@ -153,9 +162,13 @@ export default function SoilTab({ landId, groupId, mapInstance, activeTab }: Soi
         } finally {
             setNpkLoading(false);
         }
-    }, [groupId, landId, npkForce, npk, t]);
+    }, [areaMu, groupId, landId, npkForce, npk, oversizedLand, t]);
 
     const handleFetchSiteAdmission = useCallback(async () => {
+        if (oversizedLand) {
+            toast.error(t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }));
+            return;
+        }
         const credentials = resolveCdfinanceCredentials(groupId);
         if (!credentials.token) {
             toast.error(t("cdfinanceLoginRequired"));
@@ -177,7 +190,7 @@ export default function SoilTab({ landId, groupId, mapInstance, activeTab }: Soi
         } finally {
             setSiteLoading(false);
         }
-    }, [groupId, landId, siteForce, siteAdmission, t]);
+    }, [areaMu, groupId, landId, siteForce, siteAdmission, oversizedLand, t]);
 
 
     /* ── Sampling zone map markers (target / bullseye style) ── */
@@ -427,6 +440,10 @@ export default function SoilTab({ landId, groupId, mapInstance, activeTab }: Soi
     }, []);
 
     const handleRefresh = async () => {
+        if (oversizedLand) {
+            toast.error(t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }));
+            return;
+        }
         if (activeJob && (activeJob.status === "pending" || activeJob.status === "running")) {
             return; // already in progress
         }
@@ -488,6 +505,11 @@ export default function SoilTab({ landId, groupId, mapInstance, activeTab }: Soi
     if (!profile) {
         return (
             <div className="flex flex-col items-center justify-center py-12 text-center">
+                {oversizedLand && (
+                    <div role="alert" className="mb-3 w-full flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-subtle px-3 py-2 text-left text-xs text-warning">
+                        <span>{t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) })}</span>
+                    </div>
+                )}
                 <Layers className="h-10 w-10 text-muted-foreground/50 mb-3" />
                 <p className="text-sm font-medium">{t("noData")}</p>
                 <p className="text-xs text-muted-foreground mt-1 max-w-[250px]">
@@ -544,7 +566,7 @@ export default function SoilTab({ landId, groupId, mapInstance, activeTab }: Soi
                         size="sm"
                         className="mt-4"
                         onClick={handleRefresh}
-                        disabled={refreshing}
+                        disabled={oversizedLand || refreshing}
                     >
                         {refreshing ? (
                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -564,6 +586,11 @@ export default function SoilTab({ landId, groupId, mapInstance, activeTab }: Soi
 
     return (
         <div className="space-y-4">
+            {oversizedLand && (
+                <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
+                    <span>{t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) })}</span>
+                </div>
+            )}
             {/* Disclaimer banner */}
             <div className="flex items-start gap-2 rounded-lg border bg-info-subtle p-2.5 text-xs text-info">
                 <Info className="h-4 w-4 mt-0.5 shrink-0" />
@@ -891,7 +918,7 @@ export default function SoilTab({ landId, groupId, mapInstance, activeTab }: Soi
                                 size="sm"
                                 variant="secondary"
                                 className="ml-auto h-7 text-xs"
-                                disabled={npkLoading}
+                                disabled={oversizedLand || npkLoading}
                                 onClick={handleFetchNpk}
                             >
                                 {npkLoading ? (
@@ -972,7 +999,7 @@ export default function SoilTab({ landId, groupId, mapInstance, activeTab }: Soi
                                 size="sm"
                                 variant="secondary"
                                 className="ml-auto h-7 text-xs"
-                                disabled={siteLoading}
+                                disabled={oversizedLand || siteLoading}
                                 onClick={handleFetchSiteAdmission}
                             >
                                 {siteLoading ? (
@@ -1139,7 +1166,7 @@ export default function SoilTab({ landId, groupId, mapInstance, activeTab }: Soi
                         size="sm"
                         className="px-2 text-xs"
                         onClick={handleRefresh}
-                        disabled={refreshing || !!jobActive}
+                        disabled={oversizedLand || refreshing || !!jobActive}
                     >
                         {refreshing || jobActive ? (
                             <Loader2 className="h-3 w-3 mr-1 animate-spin" />

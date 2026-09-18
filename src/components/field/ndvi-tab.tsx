@@ -46,6 +46,8 @@ interface NdviTabProps {
     cropType?: string | null;
     /** Parcel area (ha) — NDVI donut center shows 亩 */
     areaHa?: number | null;
+    /** Source land area in 亩; used to block oversized data pulls. */
+    landAreaMu?: number | null;
     /** Called when a tile layer should be shown on the map */
     onShowLayer?: (layer: RasterLayer | null, indexType: IndexType) => void;
     /** Called when the active index changes - parent renders the selector */
@@ -63,7 +65,7 @@ interface NdviTabProps {
     agriHeatmapEnabled?: boolean;
 }
 
-export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, onActiveIndexChange, activeIndexOverride, onDataLoaded, onAgriHeatmapChange, agriHeatMode, onAgriHeatModeChange, agriHeatmapEnabled = true }: NdviTabProps) {
+export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = null, onShowLayer, onActiveIndexChange, activeIndexOverride, onDataLoaded, onAgriHeatmapChange, agriHeatMode, onAgriHeatModeChange, agriHeatmapEnabled = true }: NdviTabProps) {
     const tMon = useTranslations("monitoring");
     // ── Index selector ───────────────────────────────
     const [activeIndex, setActiveIndex] = useState<IndexType>("NDVI");
@@ -199,6 +201,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
                 landId={landId}
                 cropType={cropType}
                 areaHa={areaHa}
+                landAreaMu={landAreaMu}
                 hasMonitoringData={layers.length > 0 || stats.length > 0}
                 onHeatmapChange={onAgriHeatmapChange}
                 mode={agriHeatMode}

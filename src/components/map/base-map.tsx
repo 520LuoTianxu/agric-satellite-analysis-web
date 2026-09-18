@@ -5,8 +5,9 @@ import maplibregl from "maplibre-gl";
 import { useTranslations } from "next-intl";
 import { tokenColor } from "@/lib/design-tokens";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { registerPMTilesProtocol, getBasemapStyle, tryUpgradeToPMTiles, installBasemapFallback, type MapStyleId } from "@/lib/pmtiles";
+import { registerPMTilesProtocol, getBasemapStyle, MAP_STYLES, tryUpgradeToPMTiles, installBasemapFallback, usesGcj02Coordinates, type MapStyleId } from "@/lib/pmtiles";
 import { createTransformRequest, refreshMapToken } from "@/lib/map-auth";
+import { wgs84ToGcj02 } from "@/lib/coordinate-transform";
 
 export interface BaseMapProps {
     /** CSS class for the container div */
@@ -19,6 +20,8 @@ export interface BaseMapProps {
     onMapReady?: (map: maplibregl.Map) => void;
     /** 底图自动降级后同步界面中的图层选中状态。 */
     onBasemapFallback?: (styleId: MapStyleId) => void;
+    /** 当前底图坐标系；高德道路图定位时需要把浏览器 WGS84 转成 GCJ-02。 */
+    basemapStyle?: MapStyleId;
     /** If true, the map fills its parent container */
     fill?: boolean;
 }
@@ -27,7 +30,7 @@ export interface BaseMapProps {
  * Base MapLibre GL JS component.
  *
  * Per PRD: Uses PMTiles basemap from Aliyun OSS when NEXT_PUBLIC_PROTOMAPS_URL
- * is set. 默认使用与农业管理端一致的 GCJ-02 高德卫星瓦片。
+ * is set. 默认使用与农业管理端一致的 WGS84 农业卫星图层；切换高德道路图时才使用 GCJ-02。
  */
 export default function BaseMap({
     className = "",
@@ -35,11 +38,17 @@ export default function BaseMap({
     zoom = 5,
     onMapReady,
     onBasemapFallback,
+    basemapStyle = "satellite",
     fill = true,
 }: BaseMapProps) {
     const t = useTranslations("mapControls");
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
+    const basemapStyleRef = useRef<MapStyleId>(basemapStyle);
+
+    useEffect(() => {
+        basemapStyleRef.current = basemapStyle;
+    }, [basemapStyle]);
 
     const onReadyCb = useCallback(
         (map: maplibregl.Map) => onMapReady?.(map),
@@ -62,7 +71,7 @@ export default function BaseMap({
 
         const map = new maplibregl.Map({
             container: containerRef.current,
-            style: getBasemapStyle(),
+            style: MAP_STYLES.find((item) => item.id === basemapStyle)?.style ?? getBasemapStyle(),
             center,
             zoom,
             // 与农业管理端保持一致，最高 20 级由业务高清瓦片承接，避免继续放大到高德占位层。
@@ -101,12 +110,15 @@ export default function BaseMap({
                         (pos) => {
                             btn.style.opacity = "1";
                             const { longitude, latitude } = pos.coords;
-                            map.flyTo({ center: [longitude, latitude], zoom: 17, duration: 1500 });
+                            const displayPosition = usesGcj02Coordinates(basemapStyleRef.current)
+                                ? wgs84ToGcj02(longitude, latitude)
+                                : [longitude, latitude] as [number, number];
+                            map.flyTo({ center: displayPosition, zoom: 17, duration: 1500 });
                             if (this._marker) {
-                                this._marker.setLngLat([longitude, latitude]);
+                                this._marker.setLngLat(displayPosition);
                             } else {
                                 this._marker = new maplibregl.Marker({ color: tokenColor("--primary") })
-                                    .setLngLat([longitude, latitude])
+                                    .setLngLat(displayPosition)
                                     .addTo(map);
                             }
                         },

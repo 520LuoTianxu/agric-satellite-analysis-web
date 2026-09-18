@@ -73,13 +73,13 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Eye, EyeOff, RefreshCw, History, MoreHorizontal, Check, Plus, Trash2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, RefreshCw, History, MoreHorizontal, Check, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { reverseDescScenesPage } from "@/lib/agri-scenes-page";
 import { IndexExplainer } from "@/components/field/index-explainer";
 import { REMOTE_SENSING_GUIDE } from "@/lib/remote-sensing-guide";
 import { toast } from "sonner";
-import { haToMu } from "@/lib/area";
+import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land-schedule-filter";
 import type { DayGradeShare } from "@/components/charts/ndvi-grade-shares-chart";
 import {
     computePixelNdviGradeShares,
@@ -411,6 +411,8 @@ export interface AgriTimeseriesPanelProps {
     cropType?: string | null;
     /** Field area in hectares — donut center shows 亩 (×15) */
     areaHa?: number | null;
+    /** Exact land area from the backend, used to protect oversized scheduled pulls. */
+    landAreaMu?: number | null;
     /** When true, parent already has monitoring layers */
     hasMonitoringData?: boolean;
     /** Push 色斑图 overlay to the field map */
@@ -476,6 +478,7 @@ export default function AgriTimeseriesPanel({
     landId,
     cropType,
     areaHa = null,
+    landAreaMu = null,
     hasMonitoringData = false,
     onHeatmapChange,
     mode: modeProp,
@@ -713,6 +716,10 @@ export default function AgriTimeseriesPanel({
     }, [landId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const openRefreshRsDialog = () => {
+        if (oversizedLand) {
+            toast.error(t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }));
+            return;
+        }
         setRefreshDateFrom(defaultRsDateFrom());
         if (!seasonWindows.length && cropOption?.key) {
             const y = yearFromIso(defaultRsDateFrom());
@@ -835,6 +842,10 @@ export default function AgriTimeseriesPanel({
     };
 
     const handleRefreshRs = async () => {
+        if (oversizedLand) {
+            toast.error(t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }));
+            return;
+        }
         setRefreshDateOpen(false);
         setBackfilling(true);
         try {
@@ -1287,10 +1298,11 @@ export default function AgriTimeseriesPanel({
         return peakMonths.includes(m) && st.mean < UNCROPPED_NDVI;
     }, [selectedDate, stats, series, peakMonths]);
 
-    const areaMu = useMemo(() => {
-        if (areaHa == null || !Number.isFinite(areaHa)) return null;
-        return haToMu(areaHa);
-    }, [areaHa]);
+    const areaMu = useMemo(
+        () => resolveLandAreaMu(landAreaMu, areaHa),
+        [areaHa, landAreaMu],
+    );
+    const oversizedLand = isOversizedLand(areaMu);
 
     const selectedDayShare = useMemo(() => {
         if (!selectedDate) return null;
@@ -1433,6 +1445,12 @@ export default function AgriTimeseriesPanel({
                                 scenes: summary ? t("scenesCount", { total: summary.total }) : "",
                             })}
                         </p>
+                        {oversizedLand && (
+                            <div role="alert" className="mt-1 flex items-start gap-1.5 text-[11px] text-warning">
+                                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                <span>{t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) })}</span>
+                            </div>
+                        )}
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                         <Button
@@ -1441,8 +1459,8 @@ export default function AgriTimeseriesPanel({
                             variant="default"
                             className="h-7 text-[11px] gap-1.5"
                             onClick={openRefreshRsDialog}
-                            disabled={backfilling || backfillActive}
-                            title={backfillActive ? t("refreshInProgress") : t("refreshRsTitle")}
+                            disabled={oversizedLand || backfilling || backfillActive}
+                            title={oversizedLand ? t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }) : backfillActive ? t("refreshInProgress") : t("refreshRsTitle")}
                         >
                             {backfilling || backfillActive ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1574,7 +1592,7 @@ export default function AgriTimeseriesPanel({
                             <Button type="button" variant="outline" onClick={() => setRefreshDateOpen(false)}>
                                 {t("refreshRsDateCancel")}
                             </Button>
-                            <Button type="button" onClick={handleRefreshRs} disabled={!refreshDateFrom || backfilling}>
+                            <Button type="button" onClick={handleRefreshRs} disabled={oversizedLand || !refreshDateFrom || backfilling}>
                                 {t("refreshRsDateConfirm")}
                             </Button>
                         </DialogFooter>

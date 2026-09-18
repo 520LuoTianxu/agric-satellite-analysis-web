@@ -8,17 +8,17 @@
  *
  * Usage: Import and call once before creating any MapLibre map instances.
  * If NEXT_PUBLIC_PROTOMAPS_URL is set, maps will use the PMTiles basemap.
- * 默认底图使用同一坐标系的高德卫星与道路标注瓦片。
+ * 默认卫星底图复刻农业管理端的 WGS84 图层；高德道路样式单独使用 GCJ-02。
  */
 
 import maplibregl from "maplibre-gl";
 import { Protocol } from "pmtiles";
 import { Map as MapIcon, Mountain, Satellite, Moon, type LucideIcon } from "lucide-react";
-import { getSatelliteTileCoverage, type SatelliteTileCoverage, type SatelliteTileRange } from "@/lib/agric";
 
 let registered = false;
 const ADMIN_SATELLITE_PROTOCOL = "agric-admin";
-const ADMIN_SATELLITE_TILE_URL = `${ADMIN_SATELLITE_PROTOCOL}://{z}/{z}-{x}-{y}.png`;
+const getAdminSatelliteTileUrl = (folder: string) =>
+    `${ADMIN_SATELLITE_PROTOCOL}://${folder}/{z}/{z}-{x}-{y}.png`;
 const EMPTY_RASTER_TILE_BASE64 =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
@@ -31,21 +31,6 @@ export function registerPMTilesProtocol(): void {
     // 管理端高清影像需要按后端下发的 XYZ 范围选择目录，不能用单一 URL 模板覆盖所有区域。
     maplibregl.addProtocol(ADMIN_SATELLITE_PROTOCOL, adminSatelliteTileProtocol);
     registered = true;
-}
-
-let satelliteCoverageWarningShown = false;
-let satelliteCoverage: Promise<SatelliteTileCoverage> | null = null;
-
-function tileInRanges(z: number, x: number, y: number, ranges: Record<string, SatelliteTileRange[]> | undefined): boolean {
-    return Boolean(ranges?.[String(z)]?.some(([minX, maxX, minY, maxY]) =>
-        x >= minX && x <= maxX && y >= minY && y <= maxY,
-    ));
-}
-
-function getAdminSatelliteFolder(z: number, x: number, y: number, coverage: SatelliteTileCoverage | null): string {
-    if (coverage && tileInRanges(z, x, y, coverage.ghr)) return "ghr";
-    if (coverage && tileInRanges(z, x, y, coverage.map2025Shandong)) return "Map2025Shandong";
-    return "uat";
 }
 
 function getAdminSatelliteBaseUrl(): string {
@@ -64,30 +49,18 @@ async function adminSatelliteTileProtocol(
     params: { url: string },
     abortController: AbortController,
 ): Promise<{ data: ArrayBuffer }> {
-    const match = params.url.match(/^agric-admin:\/\/(\d+)\/\d+-(\d+)-(\d+)\.png$/);
+    const match = params.url.match(/^agric-admin:\/\/([^/]+)\/(\d+)\/\d+-(\d+)-(\d+)\.png$/);
     if (!match) throw new Error(`Invalid agric-admin satellite tile URL: ${params.url}`);
 
-    const z = Number(match[1]);
-    const x = Number(match[2]);
-    const y = Number(match[3]);
-    let coverage: SatelliteTileCoverage | null = null;
-    try {
-        if (!satelliteCoverage) satelliteCoverage = getSatelliteTileCoverage();
-        coverage = await satelliteCoverage;
-    } catch (error) {
-        // 未登录、字典接口暂时不可用时仍保留 uat 兼容路径，底图不应因此整体白屏。
-        if (!satelliteCoverageWarningShown) {
-            satelliteCoverageWarningShown = true;
-            console.warn("[agric-satellite-analysis] Satellite coverage dictionary unavailable; using uat tiles.", error);
-        }
-    }
-
-    const folder = getAdminSatelliteFolder(z, x, y, coverage);
+    const folder = decodeURIComponent(match[1]);
+    const z = Number(match[2]);
+    const x = Number(match[3]);
+    const y = Number(match[4]);
     const response = await fetch(`${getAdminSatelliteBaseUrl()}${folder}/${z}/${z}-${x}-${y}.png`, {
         signal: abortController.signal,
     });
-    // 业务目录没有该瓦片时返回透明图，让下方高德底图继续可见，不能把整个高清图源判定为故障并移除。
-    if (response.status === 404) return { data: getEmptyRasterTile() };
+    // 对象存储对不存在瓦片可能返回 403 或 404；统一返回透明图，让下方影像层承接，不能让单块缺图移除整层高清影像。
+    if (response.status === 403 || response.status === 404) return { data: getEmptyRasterTile() };
     if (!response.ok) throw new Error(`Admin satellite tile ${response.status}: ${response.url}`);
     return { data: await response.arrayBuffer() };
 }
@@ -101,7 +74,7 @@ export const PMTILES_BASEMAP_URL =
 /**
  * Returns a MapLibre style spec.
  *
- * 高德底图沿用 agric-admin-front 中 AMap.TileLayer.Satellite 的视觉来源。
+ * 卫星底图沿用 agric-admin-front 的影像/标注图层来源。
  * Use `tryUpgradeToPMTiles(map)` after map creation to switch to
  * PMTiles vector tiles if the basemap file is available.
  */
@@ -310,48 +283,79 @@ export function getStreetBasemapStyle(): maplibregl.StyleSpecification {
 
 export type MapStyleId = "street" | "terrain" | "satellite" | "dark";
 
-/** 参考 agric-admin-front 的 AMap.TileLayer.Satellite，使用同一坐标系的高德底图。 */
+/**
+ * 判断当前底图是否要求 GCJ-02 坐标。
+ * 农业管理端复刻的卫星图层和天地图图层按 WGS84 展示，只有高德道路瓦片
+ * 使用 GCJ-02；统一由这个判断避免业务边界在错误的底图上重复偏移。
+ */
+export function usesGcj02Coordinates(styleId: MapStyleId): boolean {
+    return styleId === "street";
+}
+
+const TIANDITU_KEY = process.env.NEXT_PUBLIC_TIANDITU_KEY || "9899a5939e2c1a52ccd5cc03977b1a75";
+const TIANDITU_IMG_TILE_URL =
+    `https://t2.tianditu.gov.cn/DataServer?T=img_w&x={x}&y={y}&l={z}&tk=${encodeURIComponent(TIANDITU_KEY)}`;
+const TIANDITU_LABEL_TILE_URL =
+    `https://t2.tianditu.gov.cn/DataServer?T=cia_w&x={x}&y={y}&l={z}&tk=${encodeURIComponent(TIANDITU_KEY)}`;
+
+/**
+ * 复刻 agric-admin-front 的 OpenLayers 图层栈：天地图影像/标注承接基础层，
+ * 16 级开始叠加 2025_WGS84_HIGH 高清影像，避免请求高德 17 级异常卫星瓦片。
+ */
 export function getSatelliteBasemapStyle(): maplibregl.StyleSpecification {
     return {
         version: 8,
         sources: {
-            "gaode-satellite": {
+            "tianditu-satellite": {
                 type: "raster" as const,
-                // 与参考项目的 AMap.TileLayer.Satellite 使用同一高德卫星瓦片来源。
-                tiles: [
-                    "https://webst01.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
-                    "https://webst02.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
-                    "https://webst03.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
-                    "https://webst04.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
-                ],
+                // 与参考项目 baseLayer 完全一致，18 级以下由天地图影像承接。
+                tiles: [TIANDITU_IMG_TILE_URL],
                 tileSize: 256,
-                maxzoom: 19,
-                attribution: '<a href="https://www.amap.com">高德地图</a>',
+                maxzoom: 18,
+                attribution: '<a href="https://www.tianditu.gov.cn">天地图</a>',
             },
-            "gaode-label": {
+            "tianditu-label": {
                 type: "raster" as const,
-                // 高德卫星瓦片只有影像；道路瓦片叠加后才会显示省市区县、村镇和兴趣点名称。
-                tiles: GAODE_ROAD_TILE_URLS,
+                // 参考项目 labelLayer 使用 cia_w，负责行政区、村镇和道路标注。
+                tiles: [TIANDITU_LABEL_TILE_URL],
                 tileSize: 256,
-                maxzoom: 19,
-                attribution: '<a href="https://www.amap.com">高德地图</a>',
+                maxzoom: 18,
+                attribution: '<a href="https://www.tianditu.gov.cn">天地图</a>',
             },
-            "agric-admin-satellite": {
+            "agric-admin-2025": {
                 type: "raster" as const,
-                // 管理端同样使用 256 像素 XYZ 瓦片；协议处理器会按瓦片范围选择实际目录。
-                tiles: [ADMIN_SATELLITE_TILE_URL],
+                // 对应参考项目的 gaodeMineLayer，保留 18 级以上业务影像承接。
+                tiles: [getAdminSatelliteTileUrl("2025_WGS84")],
                 tileSize: 256,
-                minzoom: 17,
-                maxzoom: 20,
+                minzoom: 18,
+                maxzoom: 19,
+                attribution: '<a href="https://map-info.cdfinance.com.cn">农业影像服务</a>',
+            },
+            "agric-admin-high": {
+                type: "raster" as const,
+                // 对应参考项目的 mineHDLayer，使用统一高清影像避免瓦片批次混拼。
+                tiles: [getAdminSatelliteTileUrl("2025_WGS84_HIGH")],
+                tileSize: 256,
+                minzoom: 16,
+                maxzoom: 19,
+                attribution: '<a href="https://map-info.cdfinance.com.cn">农业影像服务</a>',
+            },
+            "agric-admin-high-satellite": {
+                type: "raster" as const,
+                // 对应参考项目的 mineHDNoMarkLayer，作为最上层无标注高清影像。
+                tiles: [getAdminSatelliteTileUrl("2025_WGS84_HIGH_Satellite")],
+                tileSize: 256,
+                minzoom: 16,
+                maxzoom: 19,
                 attribution: '<a href="https://map-info.cdfinance.com.cn">农业影像服务</a>',
             },
         },
         layers: [
-            { id: "gaode-satellite-layer", type: "raster", source: "gaode-satellite", minzoom: 0 },
-            // 高清业务瓦片覆盖高德高层级占位区域，标注层继续放在最上方。
-            { id: "agric-admin-satellite-layer", type: "raster", source: "agric-admin-satellite", minzoom: 17 },
-            // 影像与标注都来自高德，坐标系一致后才能保证村镇名称与地块边界重合。
-            { id: "gaode-label-layer", type: "raster", source: "gaode-label", minzoom: 0 },
+            { id: "tianditu-satellite-layer", type: "raster", source: "tianditu-satellite", minzoom: 0, maxzoom: 18, paint: { "raster-fade-duration": 0 } },
+            { id: "tianditu-label-layer", type: "raster", source: "tianditu-label", minzoom: 0, maxzoom: 18, paint: { "raster-fade-duration": 0 } },
+            { id: "agric-admin-2025-layer", type: "raster", source: "agric-admin-2025", minzoom: 18, paint: { "raster-fade-duration": 0 } },
+            { id: "agric-admin-high-layer", type: "raster", source: "agric-admin-high", minzoom: 16, paint: { "raster-fade-duration": 0 } },
+            { id: "agric-admin-high-satellite-layer", type: "raster", source: "agric-admin-high-satellite", minzoom: 16, paint: { "raster-fade-duration": 0 } },
         ],
     };
 }
@@ -430,7 +434,17 @@ export function installBasemapFallback(
     map: maplibregl.Map,
     onFallback?: (styleId: MapStyleId) => void,
 ): void {
-    const sourceIds = new Set(["agric-admin-satellite", "gaode-satellite", "gaode-label", "gaode-road", "topo", "carto", "protomaps"]);
+    const sourceIds = new Set([
+        "agric-admin-2025",
+        "agric-admin-high",
+        "agric-admin-high-satellite",
+        "tianditu-satellite",
+        "tianditu-label",
+        "gaode-road",
+        "topo",
+        "carto",
+        "protomaps",
+    ]);
     let pending: ReturnType<typeof setTimeout> | undefined;
     const failedSources = new Map<string, unknown>();
 
@@ -475,7 +489,13 @@ export function installBasemapFallback(
                 const firstOverlay = map.getStyle().layers.find((layer) => layer.type !== "background");
                 map.addLayer(fallback.layers[0], firstOverlay?.id);
             }
-            const hasImagery = Boolean(map.getSource("agric-admin-satellite") || map.getSource("gaode-satellite") || map.getSource("gaode-label") || map.getSource("gaode-road"));
+            const hasImagery = Boolean(
+                map.getSource("agric-admin-2025") ||
+                map.getSource("agric-admin-high") ||
+                map.getSource("agric-admin-high-satellite") ||
+                map.getSource("tianditu-satellite") ||
+                map.getSource("gaode-road"),
+            );
             console.warn("[agric-satellite-analysis] Basemap source unavailable; keeping available layers.", [...failedIds]);
             onFallback?.(hasImagery ? "satellite" : "street");
         }, 0);

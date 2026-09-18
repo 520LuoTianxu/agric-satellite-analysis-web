@@ -217,6 +217,7 @@ export interface LandParcel {
     town_name: string | null;
     village_code: string | null;
     village_name: string | null;
+    land_area_mu: number | null;
     soil_property: string | null;
     current_batch: string | null;
     land_status: string | null;

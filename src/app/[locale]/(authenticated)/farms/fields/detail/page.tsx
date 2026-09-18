@@ -29,6 +29,7 @@ import {
     Satellite,
     MoreHorizontal,
     Check,
+    AlertTriangle,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -41,11 +42,16 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTranslations } from "next-intl";
-import { MAP_STYLES, type MapStyleId } from "@/lib/pmtiles";
+import { MAP_STYLES, usesGcj02Coordinates, type MapStyleId } from "@/lib/pmtiles";
 import { tokenColor, MAP_CHROME } from "@/lib/design-tokens";
 import { wgs84GeometryToGcj02, wgs84ToGcj02 } from "@/lib/coordinate-transform";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TOUR_PREPARE_EVENT, type TourPrepareDetail } from "@/lib/product-tour";
+import {
+    formatLandAreaMu,
+    isOversizedLand,
+    resolveLandAreaMu,
+} from "@/lib/land-schedule-filter";
 
 const DrawMap = dynamic(() => import("@/components/map/draw-map"), {
     ssr: false,
@@ -242,6 +248,7 @@ function projectLandFeatureCollection(
     lands: LandParcel[],
     selectedLandId: string,
     showAll: boolean,
+    styleId: MapStyleId,
 ): GeoJSON.FeatureCollection {
     return {
         type: "FeatureCollection",
@@ -251,8 +258,10 @@ function projectLandFeatureCollection(
             .map((item) => ({
                 type: "Feature",
                 properties: { landId: item.land_id },
-                // 地块边界入库为 WGS84，展示到高德底图前转换成 GCJ-02。
-                geometry: wgs84GeometryToGcj02(item.boundary_geojson) as GeoJSON.Geometry,
+                // 农业卫星图按 WGS84 展示，只有切换到高德道路图才转换成 GCJ-02。
+                geometry: usesGcj02Coordinates(styleId)
+                    ? wgs84GeometryToGcj02(item.boundary_geojson) as GeoJSON.Geometry
+                    : item.boundary_geojson,
             })),
     };
 }
@@ -304,6 +313,8 @@ function FieldDetailPageContent() {
     // Map
     const [mapInstance, setMapInstance] = useState<maplibregl.Map | null>(null);
     const [mapStyle, setMapStyle] = useState<MapStyleId>("satellite");
+    // 供地图图层、视野计算和遥感色膜读取当前底图坐标系，避免状态更新时闭包拿到旧值。
+    const mapStyleRef = useRef<MapStyleId>("satellite");
     // 地块详情需要优先展示分析内容，进入页面时默认展开右侧分析侧栏。
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [activeTab, setActiveTab] = useState("land-report");
@@ -653,9 +664,11 @@ function FieldDetailPageContent() {
                 map.addSource(imgSrcId, {
                     type: "image",
                     url,
-                    // 色斑数据本身按 WGS84 生成，叠加到高德底图时同步转换四角。
+                    // 色斑数据本身按 WGS84 生成，仅在高德道路底图上转换四角。
                     coordinates: clippedImg.coordinates.map(([longitude, latitude]) =>
-                        wgs84ToGcj02(longitude, latitude),
+                        usesGcj02Coordinates(mapStyleRef.current)
+                            ? wgs84ToGcj02(longitude, latitude)
+                            : [longitude, latitude],
                     ) as AgriHeatmapImage["coordinates"],
                 });
                 const before =
@@ -766,11 +779,13 @@ function FieldDetailPageContent() {
             projectLands,
             f?.land_id || "",
             showAllProjectLands,
+            mapStyleRef.current,
         );
         const selectedProjectFeatures = projectLandFeatureCollection(
             pendingProjectLand ? [pendingProjectLand] : [],
             f?.land_id || "",
             Boolean(pendingProjectLand),
+            mapStyleRef.current,
         );
         if (!f?.boundary_geojson && !projectFeatures.features.length && !selectedProjectFeatures.features.length) return;
 
@@ -844,7 +859,9 @@ function FieldDetailPageContent() {
         }
 
         if (!f?.boundary_geojson) return;
-        const displayFieldGeometry = wgs84GeometryToGcj02(f.boundary_geojson);
+        const displayFieldGeometry = usesGcj02Coordinates(mapStyleRef.current)
+            ? wgs84GeometryToGcj02(f.boundary_geojson)
+            : f.boundary_geojson;
         if (!displayFieldGeometry) return;
 
         map.addSource("field-polygon", {
@@ -888,7 +905,9 @@ function FieldDetailPageContent() {
     const fitFieldInView = useCallback((map: maplibregl.Map) => {
         if (!land?.boundary_geojson) return;
         const bounds = new maplibregl.LngLatBounds();
-        const displayGeometry = wgs84GeometryToGcj02(land.boundary_geojson);
+        const displayGeometry = usesGcj02Coordinates(mapStyleRef.current)
+            ? wgs84GeometryToGcj02(land.boundary_geojson)
+            : land.boundary_geojson;
         if (!displayGeometry) return;
         getAllCoords(displayGeometry).forEach(([lng, lat]) => bounds.extend([lng, lat]));
         if (bounds.isEmpty()) return;
@@ -912,7 +931,9 @@ function FieldDetailPageContent() {
         let hasCoordinates = false;
         projectLands.forEach((item) => {
             if (!item.boundary_geojson) return;
-            const displayGeometry = wgs84GeometryToGcj02(item.boundary_geojson);
+            const displayGeometry = usesGcj02Coordinates(mapStyleRef.current)
+                ? wgs84GeometryToGcj02(item.boundary_geojson)
+                : item.boundary_geojson;
             if (!displayGeometry) return;
             getAllCoords(displayGeometry).forEach(([lng, lat]) => {
                 bounds.extend([lng, lat]);
@@ -1013,6 +1034,7 @@ function FieldDetailPageContent() {
             const styleDef = MAP_STYLES.find((s) => s.id === styleId);
             if (!styleDef) return;
 
+            mapStyleRef.current = styleId;
             mapInstance.setStyle(styleDef.style);
             setMapStyle(styleId);
 
@@ -1123,6 +1145,9 @@ function FieldDetailPageContent() {
 
     if (!land) return null;
 
+    const landAreaMu = resolveLandAreaMu(land.land_area_mu, land.area_ha);
+    const oversizedLand = isOversizedLand(landAreaMu);
+
     return (
         <div
             className="relative h-full w-full overflow-hidden"
@@ -1139,7 +1164,11 @@ function FieldDetailPageContent() {
                         basemapStyle={mapStyle}
                     />
                 ) : (
-                    <BaseMap onMapReady={handleMapReady} onBasemapFallback={setMapStyle} />
+                    <BaseMap
+                        onMapReady={handleMapReady}
+                        onBasemapFallback={setMapStyle}
+                        basemapStyle={mapStyle}
+                    />
                 )}
             </div>
 
@@ -1546,6 +1575,20 @@ function FieldDetailPageContent() {
                             </Button>
                         </div>
 
+                        {oversizedLand && (
+                            <div
+                                role="alert"
+                                className="mx-3 mt-2 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning"
+                            >
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                                <span>
+                                    {t("oversizedLandWarning", {
+                                        area: formatLandAreaMu(landAreaMu),
+                                    })}
+                                </span>
+                            </div>
+                        )}
+
                         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
                             {editing ? (
                                 <div className="p-4">
@@ -1657,6 +1700,7 @@ function FieldDetailPageContent() {
                                             landId={landId}
                                             cropType={land.crop_type}
                                             areaHa={land.area_ha}
+                                            landAreaMu={land.land_area_mu}
                                             onShowLayer={handleShowLayer}
                                             activeIndexOverride={activeIndexType}
                                             onActiveIndexChange={setActiveIndexType}
@@ -1677,11 +1721,11 @@ function FieldDetailPageContent() {
                                     </TabsContent>
 
                                     <TabsContent value="weather" className="mt-0 p-3">
-                                        <WeatherTab landId={landId} />
+                                        <WeatherTab landId={landId} landAreaMu={land.land_area_mu} areaHa={land.area_ha} />
                                     </TabsContent>
 
                                     <TabsContent value="soil" className="mt-0 p-3">
-                                        <SoilTab landId={landId} groupId={land.group_id} mapInstance={mapInstance} activeTab={activeTab} />
+                                        <SoilTab landId={landId} landAreaMu={land.land_area_mu} areaHa={land.area_ha} groupId={land.group_id} mapInstance={mapInstance} activeTab={activeTab} />
                                     </TabsContent>
 
                                     <TabsContent value="season-growth" className="mt-0">
