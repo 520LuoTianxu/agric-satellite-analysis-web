@@ -1532,9 +1532,9 @@
     "queued": "Queued",
     "cancelled": "Cancelled",
     "jobsSummary": "Total jobs",
-    "jobsSummaryDetail": "Counts include every status; the table shows the latest 200",
+    "jobsSummaryDetail": "Counts include every status; pagination exposes the full history",
     "workItemsSummary": "Total work items",
-    "workItemsSummaryDetail": "Includes pending, leased, completed, and failed items",
+    "workItemsSummaryDetail": "Includes pending, leased, completed, and failed items; pagination exposes the full history",
     "terminal": "Terminal",
     "nonTerminal": "Non-terminal",
     "executionLoadFailed": "Failed to load job and work-item execution data.",
@@ -1575,6 +1575,9 @@
     "statusDone": "Done",
     "statusFailed": "Failed",
     "statusCancelled": "Cancelled",
-    "statusUnknown": "Unknown"
+    "statusUnknown": "Unknown",
+    "showingRange": "Showing {from}-{to} of {total}",
+    "previous": "Previous",
+    "next": "Next"
   }
 }

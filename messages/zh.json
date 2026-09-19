@@ -1532,9 +1532,9 @@
     "queued": "排队中",
     "cancelled": "已取消",
     "jobsSummary": "Jobs 总数",
-    "jobsSummaryDetail": "按全部状态统计；下方展示最近 200 条",
+    "jobsSummaryDetail": "按全部状态统计；列表支持分页查看全部记录",
     "workItemsSummary": "Work Items 总数",
-    "workItemsSummaryDetail": "包括待处理、租约中、完成和失败数据",
+    "workItemsSummaryDetail": "包括待处理、租约中、完成和失败数据；列表支持分页查看全部记录",
     "terminal": "终态",
     "nonTerminal": "未终态",
     "executionLoadFailed": "Jobs / Work Items 执行数据加载失败，请稍后重试。",
@@ -1575,6 +1575,9 @@
     "statusDone": "已完成",
     "statusFailed": "失败",
     "statusCancelled": "已取消",
-    "statusUnknown": "未知"
+    "statusUnknown": "未知",
+    "showingRange": "显示 {from}-{to} / 共 {total} 条",
+    "previous": "上一页",
+    "next": "下一页"
   }
 }

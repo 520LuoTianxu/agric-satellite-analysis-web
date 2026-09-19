@@ -1949,6 +1949,8 @@ export interface AdminExecutionOverview {
     generated_at: string;
     job_counts: Record<string, number>;
     work_item_counts: Record<string, number>;
+    job_has_more: boolean;
+    work_item_has_more: boolean;
     jobs: AdminExecutionJob[];
     work_items: AdminExecutionWorkItem[];
 }
@@ -1966,10 +1968,12 @@ export const adminOpsApi = {
             method: "POST",
             body: JSON.stringify(body),
         }),
-    execution: (limit = 50, jobStatus?: string, workItemStatus?: string) => {
+    execution: (limit = 50, jobStatus?: string, workItemStatus?: string, jobOffset = 0, workItemOffset = 0) => {
         const params = new URLSearchParams({ limit: String(limit) });
         if (jobStatus) params.set("job_status", jobStatus);
         if (workItemStatus) params.set("work_item_status", workItemStatus);
+        if (jobOffset) params.set("job_offset", String(jobOffset));
+        if (workItemOffset) params.set("work_item_offset", String(workItemOffset));
         return apiFetch<AdminExecutionOverview>(`/admin/ops/execution?${params.toString()}`);
     },
     job: (jobId: string) =>

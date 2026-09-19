@@ -1532,9 +1532,9 @@
     "queued": "En cola",
     "cancelled": "Cancelada",
     "jobsSummary": "Jobs totales",
-    "jobsSummaryDetail": "Incluye todos los estados; la tabla muestra los 200 más recientes",
+    "jobsSummaryDetail": "Incluye todos los estados; la paginación permite ver todo el historial",
     "workItemsSummary": "Work items totales",
-    "workItemsSummaryDetail": "Incluye pendientes, arrendados, completados y fallidos",
+    "workItemsSummaryDetail": "Incluye pendientes, arrendados, completados y fallidos; la paginación permite ver todo el historial",
     "terminal": "Terminal",
     "nonTerminal": "No terminal",
     "executionLoadFailed": "No se pudieron cargar los datos de jobs y work items.",
@@ -1575,6 +1575,9 @@
     "statusDone": "Hecha",
     "statusFailed": "Fallida",
     "statusCancelled": "Cancelada",
-    "statusUnknown": "Desconocido"
+    "statusUnknown": "Desconocido",
+    "showingRange": "Mostrando {from}-{to} de {total}",
+    "previous": "Anterior",
+    "next": "Siguiente"
   }
 }

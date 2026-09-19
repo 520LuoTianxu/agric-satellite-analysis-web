@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import useSWR from "swr";
 import {
     CheckCircle2,
+    ChevronLeft,
     ChevronDown,
     ChevronRight,
     CircleAlert,
@@ -107,12 +108,14 @@ export function AdminExecutionMonitor() {
     const locale = useLocale();
     const [jobFilter, setJobFilter] = useState("all");
     const [workItemFilter, setWorkItemFilter] = useState("all");
+    const [jobOffset, setJobOffset] = useState(0);
+    const [workItemOffset, setWorkItemOffset] = useState(0);
     const jobStatus = jobFilter === "all" ? undefined : jobFilter;
     const workItemStatus = workItemFilter === "all" ? undefined : workItemFilter;
-    const executionKey = `/admin/ops/execution?limit=200&job_status=${jobStatus || ""}&work_item_status=${workItemStatus || ""}`;
+    const executionKey = `/admin/ops/execution?limit=200&job_status=${jobStatus || ""}&work_item_status=${workItemStatus || ""}&job_offset=${jobOffset}&work_item_offset=${workItemOffset}`;
     const { data, error, isLoading, mutate } = useSWR<AdminExecutionOverview>(
         executionKey,
-        () => adminOpsApi.execution(200, jobStatus, workItemStatus),
+        () => adminOpsApi.execution(200, jobStatus, workItemStatus, jobOffset, workItemOffset),
         { refreshInterval: REFRESH_INTERVAL, revalidateOnFocus: true },
     );
 
@@ -158,17 +161,15 @@ export function AdminExecutionMonitor() {
                         <CardTitle className="flex items-center gap-2"><ServerCog className="h-5 w-5 text-primary" />{t("jobsTitle")}</CardTitle>
                         <CardDescription>{t("jobsDescription")}</CardDescription>
                     </div>
-                    <StatusFilter value={jobFilter} onChange={setJobFilter} options={jobStatusOptions} t={t} />
+                    <StatusFilter value={jobFilter} onChange={(value) => { setJobFilter(value); setJobOffset(0); }} options={jobStatusOptions} t={t} />
                 </CardHeader>
                 <CardContent>
-                    {isLoading && !data ? <ExecutionLoading /> : jobs.length ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[820px] text-left text-sm">
-                                <thead className="border-b text-xs text-muted-foreground"><tr><th className="px-3 py-3 font-medium">{t("jobType")}</th><th className="px-3 py-3 font-medium">{t("status")}</th><th className="px-3 py-3 font-medium">{t("land")}</th><th className="px-3 py-3 font-medium">{t("progress")}</th><th className="px-3 py-3 font-medium">{t("createdAt")}</th></tr></thead>
-                                <tbody>{jobs.map((job) => <JobRow key={job.id} job={job} locale={locale} t={t} />)}</tbody>
-                            </table>
-                        </div>
-                    ) : <ExecutionEmpty icon={<CircleAlert className="h-5 w-5" />} text={t("noJobs")} />}
+                    {isLoading && !data ? <ExecutionLoading /> : jobs.length ? <><div className="overflow-x-auto">
+                        <table className="w-full min-w-[820px] text-left text-sm">
+                            <thead className="border-b text-xs text-muted-foreground"><tr><th className="px-3 py-3 font-medium">{t("jobType")}</th><th className="px-3 py-3 font-medium">{t("status")}</th><th className="px-3 py-3 font-medium">{t("land")}</th><th className="px-3 py-3 font-medium">{t("progress")}</th><th className="px-3 py-3 font-medium">{t("createdAt")}</th></tr></thead>
+                            <tbody>{jobs.map((job) => <JobRow key={job.id} job={job} locale={locale} t={t} />)}</tbody>
+                        </table>
+                    </div><ExecutionPagination offset={jobOffset} rowCount={jobs.length} total={jobFilter === "all" ? data?.job_counts.all || 0 : data?.job_counts[jobFilter] || 0} hasMore={data?.job_has_more || false} onPrevious={() => setJobOffset((current) => Math.max(0, current - 200))} onNext={() => setJobOffset((current) => current + 200)} t={t} /></> : <ExecutionEmpty icon={<CircleAlert className="h-5 w-5" />} text={t("noJobs")} />}
                 </CardContent>
             </Card>
 
@@ -178,17 +179,15 @@ export function AdminExecutionMonitor() {
                         <CardTitle className="flex items-center gap-2"><PackageCheck className="h-5 w-5 text-primary" />{t("workItemsTitle")}</CardTitle>
                         <CardDescription>{t("workItemsDescription")}</CardDescription>
                     </div>
-                    <StatusFilter value={workItemFilter} onChange={setWorkItemFilter} options={workItemStatusOptions} t={t} />
+                    <StatusFilter value={workItemFilter} onChange={(value) => { setWorkItemFilter(value); setWorkItemOffset(0); }} options={workItemStatusOptions} t={t} />
                 </CardHeader>
                 <CardContent>
-                    {isLoading && !data ? <ExecutionLoading /> : workItems.length ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[900px] text-left text-sm">
-                                <thead className="border-b text-xs text-muted-foreground"><tr><th className="px-3 py-3 font-medium">{t("workItemType")}</th><th className="px-3 py-3 font-medium">{t("status")}</th><th className="px-3 py-3 font-medium">{t("worker")}</th><th className="px-3 py-3 font-medium">{t("attempts")}</th><th className="px-3 py-3 font-medium">{t("updatedAt")}</th></tr></thead>
-                                <tbody>{workItems.map((item) => <WorkItemRow key={item.id} item={item} locale={locale} t={t} />)}</tbody>
-                            </table>
-                        </div>
-                    ) : <ExecutionEmpty icon={<Clock3 className="h-5 w-5" />} text={t("noWorkItems")} />}
+                    {isLoading && !data ? <ExecutionLoading /> : workItems.length ? <><div className="overflow-x-auto">
+                        <table className="w-full min-w-[900px] text-left text-sm">
+                            <thead className="border-b text-xs text-muted-foreground"><tr><th className="px-3 py-3 font-medium">{t("workItemType")}</th><th className="px-3 py-3 font-medium">{t("status")}</th><th className="px-3 py-3 font-medium">{t("worker")}</th><th className="px-3 py-3 font-medium">{t("attempts")}</th><th className="px-3 py-3 font-medium">{t("updatedAt")}</th></tr></thead>
+                            <tbody>{workItems.map((item) => <WorkItemRow key={item.id} item={item} locale={locale} t={t} />)}</tbody>
+                        </table>
+                    </div><ExecutionPagination offset={workItemOffset} rowCount={workItems.length} total={workItemFilter === "all" ? data?.work_item_counts.all || 0 : data?.work_item_counts[workItemFilter] || 0} hasMore={data?.work_item_has_more || false} onPrevious={() => setWorkItemOffset((current) => Math.max(0, current - 200))} onNext={() => setWorkItemOffset((current) => current + 200)} t={t} /></> : <ExecutionEmpty icon={<Clock3 className="h-5 w-5" />} text={t("noWorkItems")} />}
                 </CardContent>
             </Card>
 
@@ -214,6 +213,13 @@ function StatusFilter({ value, onChange, options, t }: { value: string; onChange
 
 function statusOptions(defaults: string[], counts: Record<string, number> | undefined) {
     return Array.from(new Set([...defaults, ...Object.keys(counts || {}).filter((status) => status !== "all")])).sort();
+}
+
+function ExecutionPagination({ offset, rowCount, total, hasMore, onPrevious, onNext, t }: { offset: number; rowCount: number; total: number; hasMore: boolean; onPrevious: () => void; onNext: () => void; t: (key: string, values?: Record<string, string | number>) => string }) {
+    if (offset === 0 && !hasMore) return null;
+    const from = rowCount ? offset + 1 : 0;
+    const to = offset + rowCount;
+    return <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground"><span>{t("showingRange", { from, to, total })}</span><div className="flex gap-2"><Button variant="outline" size="sm" onClick={onPrevious} disabled={offset === 0 || rowCount === 0}><ChevronLeft className="mr-1 h-3.5 w-3.5" />{t("previous")}</Button><Button variant="outline" size="sm" onClick={onNext} disabled={!hasMore || rowCount === 0}>{t("next")}<ChevronRight className="ml-1 h-3.5 w-3.5" /></Button></div></div>;
 }
 
 function JobRow({ job, locale, t }: { job: AdminExecutionJob; locale: string; t: (key: string) => string }) {
