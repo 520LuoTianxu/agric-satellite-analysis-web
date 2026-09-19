@@ -1907,6 +1907,52 @@ export interface AdminOpsOverview {
     runs: AdminTaskRun[];
 }
 
+export interface AdminExecutionJob {
+    id: string;
+    land_id: string | null;
+    type: string;
+    status: string;
+    progress_summary: Record<string, unknown>;
+    error: string | null;
+    created_at: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+}
+
+export interface AdminExecutionWorkItem {
+    id: string;
+    type: string;
+    status: string;
+    priority: number;
+    lease_owner: string | null;
+    lease_until: string | null;
+    attempts: number;
+    progress_summary: Record<string, unknown>;
+    error: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+}
+
+export interface AdminJobDetail extends AdminExecutionJob {
+    params_json: Record<string, unknown> | null;
+    progress_json: Record<string, unknown> | null;
+}
+
+export interface AdminWorkItemDetail extends AdminExecutionWorkItem {
+    idempotency_key: string | null;
+    payload_json: Record<string, unknown>;
+    progress_json: Record<string, unknown> | null;
+    result_json: Record<string, unknown> | null;
+}
+
+export interface AdminExecutionOverview {
+    generated_at: string;
+    job_counts: Record<string, number>;
+    work_item_counts: Record<string, number>;
+    jobs: AdminExecutionJob[];
+    work_items: AdminExecutionWorkItem[];
+}
+
 export const adminOpsApi = {
     overview: (limit = 30) =>
         apiFetch<AdminOpsOverview>(`/admin/ops/overview?limit=${limit}`),
@@ -1920,6 +1966,16 @@ export const adminOpsApi = {
             method: "POST",
             body: JSON.stringify(body),
         }),
+    execution: (limit = 50, jobStatus?: string, workItemStatus?: string) => {
+        const params = new URLSearchParams({ limit: String(limit) });
+        if (jobStatus) params.set("job_status", jobStatus);
+        if (workItemStatus) params.set("work_item_status", workItemStatus);
+        return apiFetch<AdminExecutionOverview>(`/admin/ops/execution?${params.toString()}`);
+    },
+    job: (jobId: string) =>
+        apiFetch<AdminJobDetail>(`/admin/ops/jobs/${jobId}`),
+    workItem: (workItemId: string) =>
+        apiFetch<AdminWorkItemDetail>(`/admin/ops/work-items/${workItemId}`),
 };
 
 // ── Share Links ──────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { adminOpsApi, type AdminOpsOverview, type AdminTaskRun, type DownloadWorkerStatus } from "@/lib/api";
+import { AdminExecutionMonitor } from "@/components/admin/execution-monitor";
 import { cn } from "@/lib/utils";
 import { useLocale, useTranslations } from "next-intl";
 
@@ -58,7 +59,7 @@ export default function AdminOperationsPage() {
     const [notice, setNotice] = useState<string | null>(null);
     const { data, error, isLoading, mutate } = useSWR<AdminOpsOverview>(
         "/admin/ops/overview",
-        () => adminOpsApi.overview(),
+        () => adminOpsApi.overview(100),
         { refreshInterval: REFRESH_INTERVAL, revalidateOnFocus: true },
     );
 
@@ -157,6 +158,8 @@ export default function AdminOperationsPage() {
                     {data?.runs.length ? <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b text-xs text-muted-foreground"><tr><th className="px-3 py-3 font-medium">{t("task")}</th><th className="px-3 py-3 font-medium">{t("status")}</th><th className="px-3 py-3 font-medium">{t("createdAt")}</th><th className="px-3 py-3 font-medium">{t("finishedAt")}</th><th className="px-3 py-3 font-medium">{t("detail")}</th></tr></thead><tbody>{data.runs.map((run) => <RunRow key={run.id} run={run} locale={locale} t={t} />)}</tbody></table></div> : <EmptyState icon={<Clock3 className="h-5 w-5" />} text={t("noRuns")} />}
                 </CardContent>
             </Card>
+
+            <AdminExecutionMonitor />
         </div>
     );
 }
@@ -171,9 +174,19 @@ function WorkerCard({ worker, locale, t }: { worker: DownloadWorkerStatus; local
 }
 
 function RunRow({ run, locale, t }: { run: AdminTaskRun; locale: string; t: (key: string, values?: Record<string, string | number>) => string }) {
+    const [expanded, setExpanded] = useState(false);
     const statusLabel = run.status === "success" ? t("success") : run.status === "failed" ? t("failed") : run.status === "cancelled" ? t("cancelled") : run.status === "running" ? t("running") : t("queued");
     const detail = run.error || (run.result ? JSON.stringify(run.result) : run.celery_task_id || "—");
-    return <tr className="border-b last:border-0"><td className="px-3 py-3 font-medium">{run.label}</td><td className="px-3 py-3"><Badge className={runTone(run.status)}>{run.status === "success" ? <CheckCircle2 className="mr-1 h-3 w-3" /> : run.status === "failed" ? <TriangleAlert className="mr-1 h-3 w-3" /> : run.status === "cancelled" ? <Ban className="mr-1 h-3 w-3" /> : <Loader2 className="mr-1 h-3 w-3 animate-spin" />}{statusLabel}</Badge></td><td className="px-3 py-3 text-muted-foreground">{formatTime(run.created_at, locale)}</td><td className="px-3 py-3 text-muted-foreground">{formatTime(run.finished_at, locale)}</td><td className={cn("max-w-[300px] truncate px-3 py-3 text-xs", run.error ? "text-destructive" : "text-muted-foreground")} title={detail}>{detail}</td></tr>;
+    return <>
+        <tr className="border-b last:border-0">
+            <td className="px-3 py-3 font-medium"><button className="text-left hover:text-primary" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{run.label}</button></td>
+            <td className="px-3 py-3"><Badge className={runTone(run.status)}>{run.status === "success" ? <CheckCircle2 className="mr-1 h-3 w-3" /> : run.status === "failed" ? <TriangleAlert className="mr-1 h-3 w-3" /> : run.status === "cancelled" ? <Ban className="mr-1 h-3 w-3" /> : <Loader2 className="mr-1 h-3 w-3 animate-spin" />}{statusLabel}</Badge></td>
+            <td className="px-3 py-3 text-muted-foreground">{formatTime(run.created_at, locale)}</td>
+            <td className="px-3 py-3 text-muted-foreground">{formatTime(run.finished_at, locale)}</td>
+            <td className={cn("max-w-[300px] truncate px-3 py-3 text-xs", run.error ? "text-destructive" : "text-muted-foreground")} title={detail}>{detail}</td>
+        </tr>
+        {expanded && <tr className="border-b bg-muted/30"><td colSpan={5} className="px-3 py-4"><div className="grid gap-3 text-xs sm:grid-cols-2"><div><p className="mb-1 font-medium text-muted-foreground">{t("params")}</p><pre className="max-h-56 overflow-auto rounded-md border bg-background p-3 leading-relaxed">{JSON.stringify(run.params || {}, null, 2)}</pre></div><div><p className="mb-1 font-medium text-muted-foreground">{t("result")}</p><pre className="max-h-56 overflow-auto rounded-md border bg-background p-3 leading-relaxed">{run.result ? JSON.stringify(run.result, null, 2) : "—"}</pre></div><div className="sm:col-span-2"><p className="mb-1 font-medium text-muted-foreground">{t("error")}</p><p className={cn("rounded-md border bg-background p-3", run.error && "text-destructive")}>{run.error || t("noError")}</p></div><p className="text-muted-foreground">{t("taskId")}: {run.celery_task_id || "—"} · {t("triggeredBy")}: {run.triggered_by || "—"}</p></div></td></tr>}
+    </>;
 }
 
 function Loading() {
