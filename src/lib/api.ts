@@ -1745,6 +1745,10 @@ export interface OverviewChild {
     flood_alert?: number;
     weak_growth: number;
     area_mu: number;
+    /** Affected parcels / total parcels; null means a legacy snapshot predates ratio fields. */
+    drought_ratio?: number | null;
+    flood_ratio?: number | null;
+    weak_growth_ratio?: number | null;
 }
 
 export interface OverviewStats {

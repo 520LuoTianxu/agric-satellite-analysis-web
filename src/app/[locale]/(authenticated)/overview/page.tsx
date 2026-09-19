@@ -54,14 +54,20 @@ function padAdcode(level: OverviewLevel, code: string | null | undefined): strin
     return c.padStart(6, "0");
 }
 
-function geoJsonUrl(level: OverviewLevel, adcode: string | null): string {
+function geoJsonUrls(level: OverviewLevel, adcode: string | null): string[] {
     // Aliyun DataV: https://geo.datav.aliyun.com/areas_v3/bound/{adcode}_full.json
     // country→100000 (provinces), province/city adcode→cities/counties.
     const code = level === "country" || !adcode ? "100000" : adcode;
     const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
-    // 静态构建无法运行 Next API 路由；全国边界走随站点发布的缓存，其余行政区直接请求支持 CORS 的 DataV 服务。
-    if (code === "100000") return `${basePath}/geo/${code}_full.json`;
-    return `https://geo.datav.aliyun.com/areas_v3/bound/${code}_full.json`;
+    const local = `${basePath}/geo/${code}_full.json`;
+    if (code === "100000") {
+        // 全国边界随站点发布；远程地址仅作老版本静态包的兜底。
+        return [local, `https://geo.datav.aliyun.com/areas_v3/bound/${code}_full.json`];
+    }
+    const remote = `https://geo.datav.aliyun.com/areas_v3/bound/${code}_full.json`;
+    if (level !== "province") return [`${remote}?v=20260919`, remote];
+    // DataV 个别 CDN 节点会把旧缓存返回 403，带版本参数可绕过失效缓存；本地构建缓存优先避免浏览器直连。
+    return [local, `${remote}?v=20260919`, remote];
 }
 
 function pct(n: number, total: number): number {
@@ -102,13 +108,24 @@ function seasonWindow(months: number[]): { from: string; to: string } {
 }
 
 function metricProp(metric: MapMetric): string {
-    if (metric === "drought") return "drought_alert";
-    if (metric === "flood") return "flood_alert";
-    return metric;
+    if (metric === "parcel_count") return "parcel_count";
+    return `${metric}_ratio`;
 }
 
-/** Minimal choropleth: soft neutrals → gentle accent (no heavy dark fills). */
-function fillColorExpr(prop: string, highColor: string): unknown {
+const METRIC_PALETTES: Record<MapMetric, [string, string, string, string, string, string]> = {
+    drought: ["#fff7ed", "#fed7aa", "#fdba74", "#f97316", "#c2410c", "#7c2d12"],
+    flood: ["#eff6ff", "#bfdbfe", "#60a5fa", "#2563eb", "#1d4ed8", "#1e3a8a"],
+    weak_growth: ["#fffbeb", "#fde68a", "#fbbf24", "#f59e0b", "#b45309", "#78350f"],
+    parcel_count: ["#ecfdf5", "#bbf7d0", "#86efac", "#34d399", "#059669", "#047857"],
+};
+
+/** 地图灾情按受影响地块占比着色，避免大省仅因地块总量大而恒定深色。 */
+function fillColorExpr(metric: MapMetric): unknown {
+    const prop = metricProp(metric);
+    const palette = METRIC_PALETTES[metric];
+    const colorStops = metric === "parcel_count"
+        ? [[0, palette[0]], [1, palette[1]], [5, palette[2]], [20, palette[3]], [100, palette[4]], [500, palette[5]]]
+        : [[0, palette[0]], [0.02, palette[1]], [0.05, palette[2]], [0.1, palette[3]], [0.25, palette[4]], [0.5, palette[5]], [1, palette[5]]];
     return [
         "case",
         ["==", ["get", "has_data"], 0],
@@ -116,30 +133,26 @@ function fillColorExpr(prop: string, highColor: string): unknown {
         [
             "interpolate",
             ["linear"],
-            ["get", prop],
-            0,
-            "#f3f4f6",
-            1,
-            "#e5e7eb",
-            5,
-            highColor,
-            20,
-            highColor,
+            ["coalesce", ["get", prop], 0],
+            ...colorStops.flat(),
         ],
     ];
 }
 
 function metricHighColor(metric: MapMetric): string {
-    switch (metric) {
-        case "drought":
-            return "#fca5a5"; // soft rose
-        case "flood":
-            return "#93c5fd"; // soft blue
-        case "weak_growth":
-            return "#fcd34d"; // soft amber
-        case "parcel_count":
-            return "#a7f3d0"; // soft mint
-    }
+    return METRIC_PALETTES[metric][3];
+}
+
+function ratioFromProps(
+    props: Record<string, unknown>,
+    countProp: string,
+    ratioProp: string,
+): number {
+    const explicit = Number(props[ratioProp]);
+    if (Number.isFinite(explicit) && explicit >= 0) return Math.min(explicit, 1);
+    const count = Number(props[countProp] ?? 0);
+    const total = Number(props.parcel_count ?? 0);
+    return total > 0 && count > 0 ? Math.min(count / total, 1) : 0;
 }
 
 function StatBar({
@@ -458,13 +471,17 @@ export default function OverviewPage() {
             const drought = Number(props.drought_alert ?? props.drought_severe ?? 0);
             const flood = Number(props.flood_alert ?? props.flood ?? 0);
             const weak = Number(props.weak_growth ?? 0);
+            const droughtRatio = ratioFromProps(props, "drought_alert", "drought_ratio");
+            const floodRatio = ratioFromProps(props, "flood_alert", "flood_ratio");
+            const weakRatio = ratioFromProps(props, "weak_growth", "weak_growth_ratio");
+            const withRatio = (count: number, ratio: number) => `${count}（${(ratio * 100).toFixed(1)}%）`;
             return (
                 `<div style="font-weight:600;margin-bottom:6px;color:#111827">${name}</div>` +
                 row(L.parcels, String(parcels)) +
                 row(L.areaMu, area) +
-                row(L.drought, String(drought)) +
-                row(L.flood, String(flood)) +
-                row(L.weakGrowth, String(weak))
+                row(L.drought, withRatio(drought, droughtRatio)) +
+                row(L.flood, withRatio(flood, floodRatio)) +
+                row(L.weakGrowth, withRatio(weak, weakRatio))
             );
         };
 
@@ -510,14 +527,26 @@ export default function OverviewPage() {
                     (stats
                         ? padAdcode(stats.region.level, stats.region.code)
                         : padAdcode(drill.level, drill.code));
-        const fetchUrl = geoJsonUrl(fetchLevel, fetchAdcode);
-
         (async () => {
             try {
                 setMapError(null);
-                const res = await fetch(fetchUrl);
-                if (!res.ok) throw new Error(`geojson ${res.status}`);
-                const gj = await res.json();
+                let gj: GeoJSON.FeatureCollection | null = null;
+                let lastError: Error | null = null;
+                for (const url of geoJsonUrls(fetchLevel, fetchAdcode)) {
+                    try {
+                        const res = await fetch(url, { cache: "force-cache" });
+                        if (!res.ok) {
+                            lastError = new Error(`geojson ${res.status}`);
+                            continue;
+                        }
+                        gj = (await res.json()) as GeoJSON.FeatureCollection;
+                        lastError = null;
+                        break;
+                    } catch (err) {
+                        lastError = err instanceof Error ? err : new Error(String(err));
+                    }
+                }
+                if (!gj || lastError) throw lastError ?? new Error("geojson empty");
                 if (cancelled || !mapRef.current) return;
 
                 const children = stats?.children ?? [];
@@ -533,11 +562,17 @@ export default function OverviewPage() {
                         }),
                 );
 
-                const features = (gj.features || []).map((f: GeoJSON.Feature) => {
-                    const props = f.properties || {};
+                const features: GeoJSON.Feature[] = (gj.features || []).map((f: GeoJSON.Feature): GeoJSON.Feature => {
+                    const props = (f.properties || {}) as Record<string, unknown>;
                     const name = String(props.name ?? props.adname ?? "");
                     const ac = props.adcode != null ? String(props.adcode) : "";
-                    const child = childByCode.get(ac) || childByName.get(name) || null;
+                    const normalizedAc = padAdcode(
+                        props.level === "province" || props.level === "city" || props.level === "county"
+                            ? props.level
+                            : fetchLevel === "country" ? "province" : fetchLevel === "province" ? "city" : "county",
+                        ac,
+                    );
+                    const child = childByCode.get(ac) || (normalizedAc ? childByCode.get(normalizedAc) : null) || childByName.get(name) || null;
                     return {
                         ...f,
                         properties: {
@@ -550,6 +585,21 @@ export default function OverviewPage() {
                             flood: child?.flood ?? 0,
                             flood_alert: child?.flood_alert ?? child?.flood ?? 0,
                             weak_growth: child?.weak_growth ?? 0,
+                            drought_ratio: child?.drought_ratio ?? ratioFromProps(
+                                { parcel_count: child?.parcel_count ?? 0, drought_alert: child?.drought_alert ?? 0 },
+                                "drought_alert",
+                                "drought_ratio",
+                            ),
+                            flood_ratio: child?.flood_ratio ?? ratioFromProps(
+                                { parcel_count: child?.parcel_count ?? 0, flood_alert: child?.flood_alert ?? child?.flood ?? 0 },
+                                "flood_alert",
+                                "flood_ratio",
+                            ),
+                            weak_growth_ratio: child?.weak_growth_ratio ?? ratioFromProps(
+                                { parcel_count: child?.parcel_count ?? 0, weak_growth: child?.weak_growth ?? 0 },
+                                "weak_growth",
+                                "weak_growth_ratio",
+                            ),
                             has_data: child ? 1 : 0,
                         },
                     };
@@ -560,7 +610,7 @@ export default function OverviewPage() {
                 const seen = new Set<string>();
                 const labels: GeoJSON.Feature<GeoJSON.Point>[] = [];
                 for (const f of features) {
-                    const props = f.properties;
+                    const props = (f.properties || {}) as Record<string, unknown>;
                     const key = String(props.adcode ?? props.name);
                     if (!props.name || seen.has(key)) continue;
                     const anchor = props.centroid ?? props.center;
@@ -578,8 +628,7 @@ export default function OverviewPage() {
                     labels.push({ type: "Feature", properties: { name: props.name }, geometry: { type: "Point", coordinates } });
                 }
                 const labelData: GeoJSON.FeatureCollection<GeoJSON.Point> = { type: "FeatureCollection", features: labels };
-                const mProp = metricProp(metricRef.current);
-                const high = metricHighColor(metricRef.current);
+                const mapMetric = metricRef.current;
 
                 const apply = () => {
                     const m = mapRef.current;
@@ -597,7 +646,7 @@ export default function OverviewPage() {
                     if (m.getSource("overview")) {
                         (m.getSource("overview") as maplibregl.GeoJSONSource).setData(fc);
                         if (m.getLayer("overview-fill")) {
-                            m.setPaintProperty("overview-fill", "fill-color", fillColorExpr(mProp, high) as never);
+                            m.setPaintProperty("overview-fill", "fill-color", fillColorExpr(mapMetric) as never);
                             m.setPaintProperty("overview-fill", "fill-opacity", 0.55);
                         }
                     } else {
@@ -607,7 +656,7 @@ export default function OverviewPage() {
                             type: "fill",
                             source: "overview",
                             paint: {
-                                "fill-color": fillColorExpr(mProp, high) as never,
+                                "fill-color": fillColorExpr(mapMetric) as never,
                                 "fill-opacity": 0.55,
                             },
                         });
@@ -685,10 +734,8 @@ export default function OverviewPage() {
     useEffect(() => {
         const map = mapRef.current;
         if (!map || !mapReady || !map.getLayer("overview-fill")) return;
-        const prop = metricProp(metric);
-        const high = metricHighColor(metric);
         try {
-            map.setPaintProperty("overview-fill", "fill-color", stats ? fillColorExpr(prop, high) as never : "#9ca3af");
+            map.setPaintProperty("overview-fill", "fill-color", stats ? fillColorExpr(metric) as never : "#9ca3af");
             map.setPaintProperty("overview-fill", "fill-opacity", 0.55);
         } catch {
             /* ignore */
@@ -863,7 +910,7 @@ export default function OverviewPage() {
                                 style={{
                                     background: `linear-gradient(90deg, #f3f4f6, ${legendColor})`,
                                 }}
-                                title={`${t("legendLow")} → ${t("legendHigh")}`}
+                                title={`${metric === "parcel_count" ? t("parcels") : t("pctOfParcels")} · ${t("legendLow")} → ${t("legendHigh")}`}
                             />
                             <Button
                                 type="button"
