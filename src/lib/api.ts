@@ -1962,9 +1962,9 @@ export interface AdminExecutionGroup {
 }
 
 export interface AdminExecutionGroupDetail extends AdminExecutionGroup {
-    parent_job: AdminJobDetail | null;
-    jobs: AdminJobDetail[];
-    work_items: AdminWorkItemDetail[];
+    parent_job: AdminExecutionJob | null;
+    jobs: AdminExecutionJob[];
+    work_items: AdminExecutionWorkItem[];
 }
 
 export interface AdminExecutionOverview {
@@ -1973,11 +1973,7 @@ export interface AdminExecutionOverview {
     work_item_counts: Record<string, number>;
     group_counts: Record<string, number>;
     group_has_more: boolean;
-    job_has_more: boolean;
-    work_item_has_more: boolean;
     groups: AdminExecutionGroup[];
-    jobs: AdminExecutionJob[];
-    work_items: AdminExecutionWorkItem[];
 }
 
 export const adminOpsApi = {
@@ -1995,19 +1991,11 @@ export const adminOpsApi = {
         }),
     execution: (
         limit = 50,
-        jobStatus?: string,
-        workItemStatus?: string,
-        jobOffset = 0,
-        workItemOffset = 0,
         groupStatus?: string,
         groupOffset = 0,
     ) => {
         const params = new URLSearchParams({ limit: String(limit) });
-        if (jobStatus) params.set("job_status", jobStatus);
-        if (workItemStatus) params.set("work_item_status", workItemStatus);
         if (groupStatus) params.set("group_status", groupStatus);
-        if (jobOffset) params.set("job_offset", String(jobOffset));
-        if (workItemOffset) params.set("work_item_offset", String(workItemOffset));
         if (groupOffset) params.set("group_offset", String(groupOffset));
         return apiFetch<AdminExecutionOverview>(`/admin/ops/execution?${params.toString()}`);
     },
