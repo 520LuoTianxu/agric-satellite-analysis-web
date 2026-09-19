@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import useSWR from "swr";
 import {
     CheckCircle2,
@@ -33,13 +33,21 @@ import {
     type AdminExecutionJob,
     type AdminExecutionOverview,
     type AdminExecutionWorkItem,
+    type AdminJobDetail,
+    type AdminWorkItemDetail,
 } from "@/lib/api";
 import { taskTypeLabel } from "@/lib/task-type-labels";
 import { cn } from "@/lib/utils";
 import { useLocale, useTranslations } from "next-intl";
 
 const REFRESH_INTERVAL = 10_000;
-const PAGE_SIZE = 200;
+// 外层只展示父任务，仍限制单页数量，避免低配电脑一次挂载大量表格节点。
+const PAGE_SIZE = 50;
+// 子任务数量可能达到数百甚至数千，弹窗只渲染当前页，避免一次性创建大量 DOM。
+const CHILD_PAGE_SIZE = 50;
+// 单条 JSON 详情设置上限，防止异常 payload/result 把浏览器内存和布局线程拖垮。
+const MAX_JSON_CHARS = 12_000;
+const MAX_INLINE_TEXT_CHARS = 320;
 const TERMINAL_STATUSES = new Set([
     "completed",
     "succeeded",
@@ -108,8 +116,23 @@ function formatProgress(progress: Record<string, unknown>) {
     const values = Object.entries(progress);
     if (!values.length) return "—";
     return values
-        .map(([key, value]) => `${key}: ${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
+        .map(([key, value]) => `${key}: ${truncateText(formatInlineValue(value), MAX_INLINE_TEXT_CHARS)}`)
         .join(" · ");
+}
+
+function truncateText(value: string, maxLength: number) {
+    return value.length > maxLength ? `${value.slice(0, maxLength)}…` : value;
+}
+
+function formatInlineValue(value: unknown) {
+    if (typeof value === "object" && value !== null) {
+        try {
+            return JSON.stringify(value) ?? String(value);
+        } catch {
+            return String(value);
+        }
+    }
+    return String(value);
 }
 
 function summaryChips(counts: Record<string, number>, t: (key: string) => string) {
@@ -134,7 +157,7 @@ export function AdminExecutionMonitor() {
     const executionKey = `/admin/ops/execution?limit=${PAGE_SIZE}&group_status=${groupStatus || ""}&group_offset=${groupOffset}`;
     const { data, error, isLoading, mutate } = useSWR<AdminExecutionOverview>(
         executionKey,
-        () => adminOpsApi.execution(PAGE_SIZE, undefined, undefined, 0, 0, groupStatus, groupOffset),
+        () => adminOpsApi.execution(PAGE_SIZE, groupStatus, groupOffset),
         { refreshInterval: REFRESH_INTERVAL, revalidateOnFocus: true },
     );
     const detailKey = selectedGroupId
@@ -281,27 +304,192 @@ function ExecutionGroupDialog({ groupId, detail, error, isLoading, locale, t, on
 
 function ExecutionGroupDetailContent({ detail, locale, t }: { detail: AdminExecutionGroupDetail; locale: string; t: (key: string) => string }) {
     const counts = detail.child_counts;
-    return <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-5"><DetailStat label={t("children")} value={counts.total || 0} /><DetailStat label={t("terminalChildren")} value={counts.terminal || 0} /><DetailStat label={t("completedChildren")} value={counts.completed || 0} /><DetailStat label={t("failedChildren")} value={counts.failed || 0} /><DetailStat label={t("pendingChildren")} value={(counts.pending || 0) + (counts.running || 0)} /></div><div className="grid gap-3 rounded-lg border bg-muted/20 p-4 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("status")}</p><Badge className={cn("mt-1", statusClass(detail.status))}>{statusIcon(detail.status)}{statusLabel(detail.status, t)}</Badge></div><div><p className="text-muted-foreground">{t("createdAt")}</p><p className="mt-1 font-medium">{formatTime(detail.created_at, locale)}</p></div><div><p className="text-muted-foreground">{t("startedAt")}</p><p className="mt-1 font-medium">{formatTime(detail.started_at, locale)}</p></div><div><p className="text-muted-foreground">{t("finishedAt")}</p><p className="mt-1 font-medium">{formatTime(detail.finished_at, locale)}</p></div></div>{detail.error && <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"><span className="font-medium">{t("error")}：</span>{detail.error}</div>}{detail.parent_job && <ParentJobDetail detail={detail.parent_job} t={t} />}{detail.jobs.length > 0 && <div className="space-y-2"><h3 className="text-sm font-semibold">{t("childJobs")} ({detail.jobs.length})</h3><div className="space-y-2">{detail.jobs.map((job) => <ChildJobDetail key={job.id} job={job} locale={locale} t={t} />)}</div></div>}{detail.work_items.length > 0 && <div className="space-y-2"><h3 className="text-sm font-semibold">{t("childWorkItems")} ({detail.work_items.length})</h3><div className="space-y-2">{detail.work_items.map((item) => <ChildWorkItemDetail key={item.id} item={item} locale={locale} t={t} />)}</div></div>}{detail.jobs.length === 0 && detail.work_items.length === 0 && <ExecutionEmpty icon={<Clock3 className="h-5 w-5" />} text={t("noChildren")} />}</div>;
+    const [jobOffset, setJobOffset] = useState(0);
+    const [workItemOffset, setWorkItemOffset] = useState(0);
+
+    // 切换父任务时回到第一页，避免新任务沿用旧任务的分页位置而显示空白。
+    useEffect(() => {
+        setJobOffset(0);
+        setWorkItemOffset(0);
+    }, [detail.id]);
+
+    const visibleJobs = detail.jobs.slice(jobOffset, jobOffset + CHILD_PAGE_SIZE);
+    const visibleWorkItems = detail.work_items.slice(
+        workItemOffset,
+        workItemOffset + CHILD_PAGE_SIZE,
+    );
+
+    return (
+        <div className="space-y-5">
+            <div className="grid gap-3 sm:grid-cols-5">
+                <DetailStat label={t("children")} value={counts.total || 0} />
+                <DetailStat label={t("terminalChildren")} value={counts.terminal || 0} />
+                <DetailStat label={t("completedChildren")} value={counts.completed || 0} />
+                <DetailStat label={t("failedChildren")} value={counts.failed || 0} />
+                <DetailStat label={t("pendingChildren")} value={(counts.pending || 0) + (counts.running || 0)} />
+            </div>
+            <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 text-xs sm:grid-cols-4">
+                <div>
+                    <p className="text-muted-foreground">{t("status")}</p>
+                    <Badge className={cn("mt-1", statusClass(detail.status))}>
+                        {statusIcon(detail.status)}{statusLabel(detail.status, t)}
+                    </Badge>
+                </div>
+                <div><p className="text-muted-foreground">{t("createdAt")}</p><p className="mt-1 font-medium">{formatTime(detail.created_at, locale)}</p></div>
+                <div><p className="text-muted-foreground">{t("startedAt")}</p><p className="mt-1 font-medium">{formatTime(detail.started_at, locale)}</p></div>
+                <div><p className="text-muted-foreground">{t("finishedAt")}</p><p className="mt-1 font-medium">{formatTime(detail.finished_at, locale)}</p></div>
+            </div>
+            {detail.error && <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"><span className="font-medium">{t("error")}：</span>{truncateText(detail.error, MAX_INLINE_TEXT_CHARS)}</div>}
+            {detail.parent_job && <ParentJobDetail detail={detail.parent_job} t={t} />}
+            {detail.jobs.length > 0 && (
+                <div className="space-y-2">
+                    <h3 className="text-sm font-semibold">{t("childJobs")} ({detail.jobs.length})</h3>
+                    <div className="space-y-2">
+                        {visibleJobs.map((job) => <ChildJobDetail key={job.id} job={job} locale={locale} t={t} />)}
+                    </div>
+                    <ExecutionPagination
+                        offset={jobOffset}
+                        rowCount={visibleJobs.length}
+                        total={detail.jobs.length}
+                        hasMore={jobOffset + visibleJobs.length < detail.jobs.length}
+                        onPrevious={() => setJobOffset((current) => Math.max(0, current - CHILD_PAGE_SIZE))}
+                        onNext={() => setJobOffset((current) => current + CHILD_PAGE_SIZE)}
+                        t={t}
+                    />
+                </div>
+            )}
+            {detail.work_items.length > 0 && (
+                <div className="space-y-2">
+                    <h3 className="text-sm font-semibold">{t("childWorkItems")} ({detail.work_items.length})</h3>
+                    <div className="space-y-2">
+                        {visibleWorkItems.map((item) => <ChildWorkItemDetail key={item.id} item={item} locale={locale} t={t} />)}
+                    </div>
+                    <ExecutionPagination
+                        offset={workItemOffset}
+                        rowCount={visibleWorkItems.length}
+                        total={detail.work_items.length}
+                        hasMore={workItemOffset + visibleWorkItems.length < detail.work_items.length}
+                        onPrevious={() => setWorkItemOffset((current) => Math.max(0, current - CHILD_PAGE_SIZE))}
+                        onNext={() => setWorkItemOffset((current) => current + CHILD_PAGE_SIZE)}
+                        t={t}
+                    />
+                </div>
+            )}
+            {detail.jobs.length === 0 && detail.work_items.length === 0 && <ExecutionEmpty icon={<Clock3 className="h-5 w-5" />} text={t("noChildren")} />}
+        </div>
+    );
 }
 
 function DetailStat({ label, value }: { label: string; value: number }) {
     return <div className="rounded-lg border bg-background px-3 py-3"><p className="text-[11px] text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></div>;
 }
 
-function ParentJobDetail({ detail, t }: { detail: AdminExecutionJob & { params_json?: Record<string, unknown> | null; progress_json?: Record<string, unknown> | null }; t: (key: string) => string }) {
-    return <details className="rounded-lg border bg-muted/20"><summary className="cursor-pointer px-4 py-3 text-sm font-semibold">{t("parentJob")}: {taskTypeLabel(detail.type, t)} <span className="ml-2 text-xs font-normal text-muted-foreground">{detail.id}</span></summary><div className="grid gap-3 border-t p-4 lg:grid-cols-2"><JsonBlock label={t("params")} value={detail.params_json} /><JsonBlock label={t("progress")} value={detail.progress_json} /></div></details>;
+function ParentJobDetail({ detail, t }: { detail: AdminExecutionJob; t: (key: string) => string }) {
+    const [open, setOpen] = useState(false);
+    const { data, error, isLoading } = useSWR<AdminJobDetail>(
+        open ? `/admin/ops/jobs/${encodeURIComponent(detail.id)}` : null,
+        () => adminOpsApi.job(detail.id),
+        { revalidateOnFocus: false },
+    );
+
+    return (
+        <details
+            className="rounded-lg border bg-muted/20"
+            onToggle={(event) => setOpen(event.currentTarget.open)}
+        >
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+                {t("parentJob")}: {taskTypeLabel(detail.type, t)} <span className="ml-2 text-xs font-normal text-muted-foreground">{detail.id}</span>
+            </summary>
+            {open && <JobFullDetail data={data} error={error} isLoading={isLoading} t={t} />}
+        </details>
+    );
 }
 
-function ChildJobDetail({ job, locale, t }: { job: AdminExecutionJob & { params_json?: Record<string, unknown> | null; progress_json?: Record<string, unknown> | null }; locale: string; t: (key: string) => string }) {
-    return <details className="rounded-lg border bg-background"><summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"><span><span className="font-medium">{taskTypeLabel(job.type, t)}</span><span className="ml-2 text-[11px] text-muted-foreground">{job.id}</span></span><span className="flex items-center gap-3"><Badge className={statusClass(job.status)}>{statusIcon(job.status)}{statusLabel(job.status, t)}</Badge><span className="text-xs text-muted-foreground">{formatTime(job.created_at, locale)}</span></span></summary><div className="space-y-3 border-t p-4"><div className="grid gap-3 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("land")}</p><p className="mt-1 font-medium">{job.land_id || "—"}</p></div><div><p className="text-muted-foreground">{t("startedAt")}</p><p className="mt-1 font-medium">{formatTime(job.started_at, locale)}</p></div><div><p className="text-muted-foreground">{t("finishedAt")}</p><p className="mt-1 font-medium">{formatTime(job.finished_at, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", job.error && "text-destructive")}>{job.error || t("noError")}</p></div></div><p className="text-xs text-muted-foreground">{t("progress")}: {formatProgress(job.progress_summary)}</p><div className="grid gap-3 lg:grid-cols-2"><JsonBlock label={t("params")} value={job.params_json} /><JsonBlock label={t("progress")} value={job.progress_json} /></div></div></details>;
+function ChildJobDetail({ job, locale, t }: { job: AdminExecutionJob; locale: string; t: (key: string) => string }) {
+    const [open, setOpen] = useState(false);
+    const { data, error, isLoading } = useSWR<AdminJobDetail>(
+        open ? `/admin/ops/jobs/${encodeURIComponent(job.id)}` : null,
+        () => adminOpsApi.job(job.id),
+        { revalidateOnFocus: false },
+    );
+
+    return (
+        <details
+            className="rounded-lg border bg-background"
+            onToggle={(event) => setOpen(event.currentTarget.open)}
+        >
+            <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                <span><span className="font-medium">{taskTypeLabel(job.type, t)}</span><span className="ml-2 text-[11px] text-muted-foreground">{job.id}</span></span>
+                <span className="flex items-center gap-3"><Badge className={statusClass(job.status)}>{statusIcon(job.status)}{statusLabel(job.status, t)}</Badge><span className="text-xs text-muted-foreground">{formatTime(job.created_at, locale)}</span></span>
+            </summary>
+            {open && <div className="space-y-3 border-t p-4"><JobSummary job={job} locale={locale} t={t} /><JobFullDetail data={data} error={error} isLoading={isLoading} t={t} /></div>}
+        </details>
+    );
 }
 
-function ChildWorkItemDetail({ item, locale, t }: { item: AdminExecutionWorkItem & { payload_json?: Record<string, unknown>; progress_json?: Record<string, unknown> | null; result_json?: Record<string, unknown> | null }; locale: string; t: (key: string) => string }) {
-    return <details className="rounded-lg border bg-background"><summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"><span><span className="font-medium">{taskTypeLabel(item.type, t)}</span><span className="ml-2 text-[11px] text-muted-foreground">{item.id}</span></span><span className="flex items-center gap-3"><Badge className={statusClass(item.status)}>{statusIcon(item.status)}{statusLabel(item.status, t)}</Badge><span className="text-xs text-muted-foreground">{formatTime(item.updated_at, locale)}</span></span></summary><div className="space-y-3 border-t p-4"><div className="grid gap-3 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("worker")}</p><p className="mt-1 font-medium">{item.lease_owner || "—"}</p></div><div><p className="text-muted-foreground">{t("attempts")}</p><p className="mt-1 font-medium">{item.attempts}</p></div><div><p className="text-muted-foreground">{t("leaseUntil")}</p><p className="mt-1 font-medium">{formatTime(item.lease_until, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", item.error && "text-destructive")}>{item.error || t("noError")}</p></div></div><p className="text-xs text-muted-foreground">{t("progress")}: {formatProgress(item.progress_summary)}</p><div className="grid gap-3 lg:grid-cols-3"><JsonBlock label={t("payload")} value={item.payload_json} /><JsonBlock label={t("progress")} value={item.progress_json} /><JsonBlock label={t("result")} value={item.result_json} /></div></div></details>;
+function ChildWorkItemDetail({ item, locale, t }: { item: AdminExecutionWorkItem; locale: string; t: (key: string) => string }) {
+    const [open, setOpen] = useState(false);
+    const { data, error, isLoading } = useSWR<AdminWorkItemDetail>(
+        open ? `/admin/ops/work-items/${encodeURIComponent(item.id)}` : null,
+        () => adminOpsApi.workItem(item.id),
+        { revalidateOnFocus: false },
+    );
+
+    return (
+        <details
+            className="rounded-lg border bg-background"
+            onToggle={(event) => setOpen(event.currentTarget.open)}
+        >
+            <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                <span><span className="font-medium">{taskTypeLabel(item.type, t)}</span><span className="ml-2 text-[11px] text-muted-foreground">{item.id}</span></span>
+                <span className="flex items-center gap-3"><Badge className={statusClass(item.status)}>{statusIcon(item.status)}{statusLabel(item.status, t)}</Badge><span className="text-xs text-muted-foreground">{formatTime(item.updated_at, locale)}</span></span>
+            </summary>
+            {open && <div className="space-y-3 border-t p-4"><WorkItemSummary item={item} locale={locale} t={t} /><WorkItemFullDetail data={data} error={error} isLoading={isLoading} t={t} /></div>}
+        </details>
+    );
+}
+
+function JobSummary({ job, locale, t }: { job: AdminExecutionJob; locale: string; t: (key: string) => string }) {
+    return <><div className="grid gap-3 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("land")}</p><p className="mt-1 font-medium">{job.land_id || "—"}</p></div><div><p className="text-muted-foreground">{t("startedAt")}</p><p className="mt-1 font-medium">{formatTime(job.started_at, locale)}</p></div><div><p className="text-muted-foreground">{t("finishedAt")}</p><p className="mt-1 font-medium">{formatTime(job.finished_at, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", job.error && "text-destructive")}>{job.error ? truncateText(job.error, MAX_INLINE_TEXT_CHARS) : t("noError")}</p></div></div><p className="text-xs text-muted-foreground">{t("progress")}: {formatProgress(job.progress_summary)}</p></>;
+}
+
+function WorkItemSummary({ item, locale, t }: { item: AdminExecutionWorkItem; locale: string; t: (key: string) => string }) {
+    return <><div className="grid gap-3 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("worker")}</p><p className="mt-1 font-medium">{item.lease_owner || "—"}</p></div><div><p className="text-muted-foreground">{t("attempts")}</p><p className="mt-1 font-medium">{item.attempts}</p></div><div><p className="text-muted-foreground">{t("leaseUntil")}</p><p className="mt-1 font-medium">{formatTime(item.lease_until, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", item.error && "text-destructive")}>{item.error ? truncateText(item.error, MAX_INLINE_TEXT_CHARS) : t("noError")}</p></div></div><p className="text-xs text-muted-foreground">{t("progress")}: {formatProgress(item.progress_summary)}</p></>;
+}
+
+function JobFullDetail({ data, error, isLoading, t }: { data: AdminJobDetail | undefined; error: unknown; isLoading: boolean; t: (key: string) => string }) {
+    if (isLoading) return <InlineDetailLoading />;
+    if (error) return <InlineDetailError text={t("detailLoadFailed")} />;
+    if (!data) return null;
+    return <div className="grid gap-3 lg:grid-cols-2"><JsonBlock label={t("params")} value={data.params_json} /><JsonBlock label={t("progress")} value={data.progress_json} /></div>;
+}
+
+function WorkItemFullDetail({ data, error, isLoading, t }: { data: AdminWorkItemDetail | undefined; error: unknown; isLoading: boolean; t: (key: string) => string }) {
+    if (isLoading) return <InlineDetailLoading />;
+    if (error) return <InlineDetailError text={t("detailLoadFailed")} />;
+    if (!data) return null;
+    return <div className="grid gap-3 lg:grid-cols-3"><JsonBlock label={t("payload")} value={data.payload_json} /><JsonBlock label={t("progress")} value={data.progress_json} /><JsonBlock label={t("result")} value={data.result_json} /></div>;
+}
+
+function InlineDetailLoading() {
+    return <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading...</div>;
+}
+
+function InlineDetailError({ text }: { text: string }) {
+    return <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive" role="alert">{text}</div>;
 }
 
 function JsonBlock({ label, value }: { label: string; value: unknown }) {
-    return <div><p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p><pre className="max-h-64 overflow-auto rounded-md border bg-background p-3 text-[11px] leading-relaxed">{value ? JSON.stringify(value, null, 2) : "—"}</pre></div>;
+    const text = value === null || value === undefined ? "—" : truncateText(formatJson(value), MAX_JSON_CHARS);
+    return <div><p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p><pre className="max-h-64 overflow-auto rounded-md border bg-background p-3 text-[11px] leading-relaxed">{text}</pre></div>;
+}
+
+function formatJson(value: unknown) {
+    try {
+        return JSON.stringify(value, null, 2) ?? String(value);
+    } catch {
+        return String(value);
+    }
 }
 
 function ExecutionLoading() {
