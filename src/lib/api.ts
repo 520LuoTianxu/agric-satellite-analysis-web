@@ -1912,6 +1912,7 @@ export interface AdminExecutionJob {
     land_id: string | null;
     type: string;
     status: string;
+    parent_job_id: string | null;
     progress_summary: Record<string, unknown>;
     error: string | null;
     created_at: string | null;
@@ -1923,6 +1924,7 @@ export interface AdminExecutionWorkItem {
     id: string;
     type: string;
     status: string;
+    parent_job_id: string | null;
     priority: number;
     lease_owner: string | null;
     lease_until: string | null;
@@ -1945,12 +1947,35 @@ export interface AdminWorkItemDetail extends AdminExecutionWorkItem {
     result_json: Record<string, unknown> | null;
 }
 
+export interface AdminExecutionGroup {
+    id: string;
+    parent_job_id: string | null;
+    type: string;
+    status: string;
+    land_id: string | null;
+    progress_summary: Record<string, unknown>;
+    error: string | null;
+    created_at: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+    child_counts: Record<string, number>;
+}
+
+export interface AdminExecutionGroupDetail extends AdminExecutionGroup {
+    parent_job: AdminJobDetail | null;
+    jobs: AdminJobDetail[];
+    work_items: AdminWorkItemDetail[];
+}
+
 export interface AdminExecutionOverview {
     generated_at: string;
     job_counts: Record<string, number>;
     work_item_counts: Record<string, number>;
+    group_counts: Record<string, number>;
+    group_has_more: boolean;
     job_has_more: boolean;
     work_item_has_more: boolean;
+    groups: AdminExecutionGroup[];
     jobs: AdminExecutionJob[];
     work_items: AdminExecutionWorkItem[];
 }
@@ -1968,14 +1993,26 @@ export const adminOpsApi = {
             method: "POST",
             body: JSON.stringify(body),
         }),
-    execution: (limit = 50, jobStatus?: string, workItemStatus?: string, jobOffset = 0, workItemOffset = 0) => {
+    execution: (
+        limit = 50,
+        jobStatus?: string,
+        workItemStatus?: string,
+        jobOffset = 0,
+        workItemOffset = 0,
+        groupStatus?: string,
+        groupOffset = 0,
+    ) => {
         const params = new URLSearchParams({ limit: String(limit) });
         if (jobStatus) params.set("job_status", jobStatus);
         if (workItemStatus) params.set("work_item_status", workItemStatus);
+        if (groupStatus) params.set("group_status", groupStatus);
         if (jobOffset) params.set("job_offset", String(jobOffset));
         if (workItemOffset) params.set("work_item_offset", String(workItemOffset));
+        if (groupOffset) params.set("group_offset", String(groupOffset));
         return apiFetch<AdminExecutionOverview>(`/admin/ops/execution?${params.toString()}`);
     },
+    executionGroup: (groupId: string) =>
+        apiFetch<AdminExecutionGroupDetail>(`/admin/ops/execution-groups/${encodeURIComponent(groupId)}`),
     job: (jobId: string) =>
         apiFetch<AdminJobDetail>(`/admin/ops/jobs/${jobId}`),
     workItem: (workItemId: string) =>

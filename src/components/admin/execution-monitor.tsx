@@ -5,10 +5,10 @@ import useSWR from "swr";
 import {
     CheckCircle2,
     ChevronLeft,
-    ChevronDown,
     ChevronRight,
     CircleAlert,
     Clock3,
+    Layers3,
     Loader2,
     PackageCheck,
     RefreshCw,
@@ -20,18 +20,35 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import {
     adminOpsApi,
+    type AdminExecutionGroup,
+    type AdminExecutionGroupDetail,
     type AdminExecutionJob,
     type AdminExecutionOverview,
     type AdminExecutionWorkItem,
-    type AdminJobDetail,
-    type AdminWorkItemDetail,
 } from "@/lib/api";
+import { taskTypeLabel } from "@/lib/task-type-labels";
 import { cn } from "@/lib/utils";
 import { useLocale, useTranslations } from "next-intl";
 
 const REFRESH_INTERVAL = 10_000;
-const TERMINAL_STATUSES = new Set(["completed", "succeeded", "done", "success", "failed", "cancelled"]);
+const PAGE_SIZE = 200;
+const TERMINAL_STATUSES = new Set([
+    "completed",
+    "succeeded",
+    "done",
+    "success",
+    "failed",
+    "cancelled",
+    "partial",
+]);
 
 function formatTime(value: string | null, locale: string) {
     if (!value) return "—";
@@ -64,6 +81,9 @@ function statusIcon(status: string) {
     if (["failed", "cancelled"].includes(status)) {
         return <TriangleAlert className="mr-1 h-3 w-3" />;
     }
+    if (status === "partial") {
+        return <CircleAlert className="mr-1 h-3 w-3" />;
+    }
     return <Loader2 className="mr-1 h-3 w-3 animate-spin" />;
 }
 
@@ -78,6 +98,7 @@ function statusLabel(status: string, t: (key: string) => string) {
         done: "statusDone",
         failed: "statusFailed",
         cancelled: "statusCancelled",
+        partial: "statusPartial",
     };
     // 未登记的新状态也要原样展示，避免管理页把真实状态误显示成“未知”。
     return keys[status] ? t(keys[status]) : status || t("statusUnknown");
@@ -106,33 +127,43 @@ function summaryChips(counts: Record<string, number>, t: (key: string) => string
 export function AdminExecutionMonitor() {
     const t = useTranslations("adminOps");
     const locale = useLocale();
-    const [jobFilter, setJobFilter] = useState("all");
-    const [workItemFilter, setWorkItemFilter] = useState("all");
-    const [jobOffset, setJobOffset] = useState(0);
-    const [workItemOffset, setWorkItemOffset] = useState(0);
-    const jobStatus = jobFilter === "all" ? undefined : jobFilter;
-    const workItemStatus = workItemFilter === "all" ? undefined : workItemFilter;
-    const executionKey = `/admin/ops/execution?limit=200&job_status=${jobStatus || ""}&work_item_status=${workItemStatus || ""}&job_offset=${jobOffset}&work_item_offset=${workItemOffset}`;
+    const [groupFilter, setGroupFilter] = useState("all");
+    const [groupOffset, setGroupOffset] = useState(0);
+    const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+    const groupStatus = groupFilter === "all" ? undefined : groupFilter;
+    const executionKey = `/admin/ops/execution?limit=${PAGE_SIZE}&group_status=${groupStatus || ""}&group_offset=${groupOffset}`;
     const { data, error, isLoading, mutate } = useSWR<AdminExecutionOverview>(
         executionKey,
-        () => adminOpsApi.execution(200, jobStatus, workItemStatus, jobOffset, workItemOffset),
+        () => adminOpsApi.execution(PAGE_SIZE, undefined, undefined, 0, 0, groupStatus, groupOffset),
         { refreshInterval: REFRESH_INTERVAL, revalidateOnFocus: true },
     );
-
-    const jobs = useMemo(() => data?.jobs || [], [data?.jobs]);
-    const workItems = useMemo(() => data?.work_items || [], [data?.work_items]);
-    const jobStatusOptions = useMemo(
-        () => statusOptions(["pending", "running", "completed", "succeeded", "failed", "cancelled"], data?.job_counts),
-        [data?.job_counts],
+    const detailKey = selectedGroupId
+        ? `/admin/ops/execution-groups/${encodeURIComponent(selectedGroupId)}`
+        : null;
+    const { data: groupDetail, error: detailError, isLoading: detailLoading } = useSWR<AdminExecutionGroupDetail>(
+        detailKey,
+        () => adminOpsApi.executionGroup(selectedGroupId as string),
+        { revalidateOnFocus: false },
     );
-    const workItemStatusOptions = useMemo(
-        () => statusOptions(["pending", "leased", "done", "failed"], data?.work_item_counts),
-        [data?.work_item_counts],
+
+    const groups = useMemo(() => data?.groups || [], [data?.groups]);
+    const groupStatusOptions = useMemo(
+        () => statusOptions(["pending", "running", "completed", "partial", "failed", "cancelled"], data?.group_counts),
+        [data?.group_counts],
     );
 
     return (
         <section className="space-y-6">
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
+                <ExecutionSummaryCard
+                    icon={<Layers3 className="h-4 w-4" />}
+                    title={t("parentJobsSummary")}
+                    total={data?.group_counts.all || 0}
+                    detail={t("parentJobsSummaryDetail")}
+                    counts={data?.group_counts || {}}
+                    t={t}
+                    chips={summaryChips(data?.group_counts || {}, t)}
+                />
                 <ExecutionSummaryCard
                     icon={<ServerCog className="h-4 w-4" />}
                     title={t("jobsSummary")}
@@ -158,36 +189,18 @@ export function AdminExecutionMonitor() {
             <Card>
                 <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                        <CardTitle className="flex items-center gap-2"><ServerCog className="h-5 w-5 text-primary" />{t("jobsTitle")}</CardTitle>
-                        <CardDescription>{t("jobsDescription")}</CardDescription>
+                        <CardTitle className="flex items-center gap-2"><Layers3 className="h-5 w-5 text-primary" />{t("executionGroupsTitle")}</CardTitle>
+                        <CardDescription>{t("executionGroupsDescription")}</CardDescription>
                     </div>
-                    <StatusFilter value={jobFilter} onChange={(value) => { setJobFilter(value); setJobOffset(0); }} options={jobStatusOptions} t={t} />
+                    <StatusFilter value={groupFilter} onChange={(value) => { setGroupFilter(value); setGroupOffset(0); }} options={groupStatusOptions} t={t} />
                 </CardHeader>
                 <CardContent>
-                    {isLoading && !data ? <ExecutionLoading /> : jobs.length ? <><div className="overflow-x-auto">
-                        <table className="w-full min-w-[820px] text-left text-sm">
-                            <thead className="border-b text-xs text-muted-foreground"><tr><th className="px-3 py-3 font-medium">{t("jobType")}</th><th className="px-3 py-3 font-medium">{t("status")}</th><th className="px-3 py-3 font-medium">{t("land")}</th><th className="px-3 py-3 font-medium">{t("progress")}</th><th className="px-3 py-3 font-medium">{t("createdAt")}</th></tr></thead>
-                            <tbody>{jobs.map((job) => <JobRow key={job.id} job={job} locale={locale} t={t} />)}</tbody>
+                    {isLoading && !data ? <ExecutionLoading /> : groups.length ? <><div className="overflow-x-auto">
+                        <table className="w-full min-w-[980px] text-left text-sm">
+                            <thead className="border-b text-xs text-muted-foreground"><tr><th className="px-3 py-3 font-medium">{t("jobType")}</th><th className="px-3 py-3 font-medium">{t("status")}</th><th className="px-3 py-3 font-medium">{t("childProgress")}</th><th className="px-3 py-3 font-medium">{t("land")}</th><th className="px-3 py-3 font-medium">{t("progress")}</th><th className="px-3 py-3 font-medium">{t("createdAt")}</th><th className="px-3 py-3 font-medium" /></tr></thead>
+                            <tbody>{groups.map((group) => <ExecutionGroupRow key={group.id} group={group} locale={locale} t={t} onOpen={() => setSelectedGroupId(group.id)} />)}</tbody>
                         </table>
-                    </div><ExecutionPagination offset={jobOffset} rowCount={jobs.length} total={jobFilter === "all" ? data?.job_counts.all || 0 : data?.job_counts[jobFilter] || 0} hasMore={data?.job_has_more || false} onPrevious={() => setJobOffset((current) => Math.max(0, current - 200))} onNext={() => setJobOffset((current) => current + 200)} t={t} /></> : <ExecutionEmpty icon={<CircleAlert className="h-5 w-5" />} text={t("noJobs")} />}
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                        <CardTitle className="flex items-center gap-2"><PackageCheck className="h-5 w-5 text-primary" />{t("workItemsTitle")}</CardTitle>
-                        <CardDescription>{t("workItemsDescription")}</CardDescription>
-                    </div>
-                    <StatusFilter value={workItemFilter} onChange={(value) => { setWorkItemFilter(value); setWorkItemOffset(0); }} options={workItemStatusOptions} t={t} />
-                </CardHeader>
-                <CardContent>
-                    {isLoading && !data ? <ExecutionLoading /> : workItems.length ? <><div className="overflow-x-auto">
-                        <table className="w-full min-w-[900px] text-left text-sm">
-                            <thead className="border-b text-xs text-muted-foreground"><tr><th className="px-3 py-3 font-medium">{t("workItemType")}</th><th className="px-3 py-3 font-medium">{t("status")}</th><th className="px-3 py-3 font-medium">{t("worker")}</th><th className="px-3 py-3 font-medium">{t("attempts")}</th><th className="px-3 py-3 font-medium">{t("updatedAt")}</th></tr></thead>
-                            <tbody>{workItems.map((item) => <WorkItemRow key={item.id} item={item} locale={locale} t={t} />)}</tbody>
-                        </table>
-                    </div><ExecutionPagination offset={workItemOffset} rowCount={workItems.length} total={workItemFilter === "all" ? data?.work_item_counts.all || 0 : data?.work_item_counts[workItemFilter] || 0} hasMore={data?.work_item_has_more || false} onPrevious={() => setWorkItemOffset((current) => Math.max(0, current - 200))} onNext={() => setWorkItemOffset((current) => current + 200)} t={t} /></> : <ExecutionEmpty icon={<Clock3 className="h-5 w-5" />} text={t("noWorkItems")} />}
+                    </div><ExecutionPagination offset={groupOffset} rowCount={groups.length} total={groupFilter === "all" ? data?.group_counts.all || 0 : data?.group_counts[groupFilter] || 0} hasMore={data?.group_has_more || false} onPrevious={() => setGroupOffset((current) => Math.max(0, current - PAGE_SIZE))} onNext={() => setGroupOffset((current) => current + PAGE_SIZE)} t={t} /></> : <ExecutionEmpty icon={<CircleAlert className="h-5 w-5" />} text={t("noExecutionGroups")} />}
                 </CardContent>
             </Card>
 
@@ -197,6 +210,16 @@ export function AdminExecutionMonitor() {
                     {t("refreshExecution")}
                 </Button>
             </div>
+
+            <ExecutionGroupDialog
+                groupId={selectedGroupId}
+                detail={groupDetail}
+                error={detailError}
+                isLoading={detailLoading}
+                locale={locale}
+                t={t}
+                onClose={() => setSelectedGroupId(null)}
+            />
         </section>
     );
 }
@@ -222,47 +245,63 @@ function ExecutionPagination({ offset, rowCount, total, hasMore, onPrevious, onN
     return <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground"><span>{t("showingRange", { from, to, total })}</span><div className="flex gap-2"><Button variant="outline" size="sm" onClick={onPrevious} disabled={offset === 0 || rowCount === 0}><ChevronLeft className="mr-1 h-3.5 w-3.5" />{t("previous")}</Button><Button variant="outline" size="sm" onClick={onNext} disabled={!hasMore || rowCount === 0}>{t("next")}<ChevronRight className="ml-1 h-3.5 w-3.5" /></Button></div></div>;
 }
 
-function JobRow({ job, locale, t }: { job: AdminExecutionJob; locale: string; t: (key: string) => string }) {
-    const [expanded, setExpanded] = useState(false);
-    const { data, error, isLoading } = useSWR<AdminJobDetail>(expanded ? `admin-job-${job.id}` : null, () => adminOpsApi.job(job.id), { revalidateOnFocus: false });
-    return <>
-        <tr className="border-b last:border-0">
-            <td className="px-3 py-3"><button className="flex items-center gap-2 text-left font-medium hover:text-primary" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}<span>{job.type}</span></button><p className="mt-1 max-w-[270px] truncate text-[11px] text-muted-foreground" title={job.id}>{job.id}</p></td>
-            <td className="px-3 py-3"><Badge className={statusClass(job.status)}>{statusIcon(job.status)}{statusLabel(job.status, t)}</Badge></td>
-            <td className="px-3 py-3 text-muted-foreground">{job.land_id || "—"}</td>
-            <td className="max-w-[340px] px-3 py-3 text-xs text-muted-foreground" title={formatProgress(job.progress_summary)}>{formatProgress(job.progress_summary)}</td>
-            <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">{formatTime(job.created_at, locale)}</td>
-        </tr>
-        {expanded && <tr className="border-b bg-muted/30"><td colSpan={5} className="px-3 py-4"><ExecutionDetail detail={data} error={error} isLoading={isLoading} locale={locale} t={t} kind="job" /></td></tr>}
-    </>;
+function ExecutionGroupRow({ group, locale, t, onOpen }: { group: AdminExecutionGroup; locale: string; t: (key: string) => string; onOpen: () => void }) {
+    return <tr className="border-b last:border-0 hover:bg-muted/30">
+        <td className="px-3 py-3"><button className="text-left font-medium hover:text-primary" onClick={onOpen}><span className="block">{taskTypeLabel(group.type, t)}</span><span className="mt-1 block max-w-[300px] truncate text-[11px] font-normal text-muted-foreground" title={group.parent_job_id || group.id}>{group.parent_job_id || group.id}</span></button></td>
+        <td className="px-3 py-3"><Badge className={statusClass(group.status)}>{statusIcon(group.status)}{statusLabel(group.status, t)}</Badge></td>
+        <td className="px-3 py-3"><ChildProgress counts={group.child_counts} t={t} /></td>
+        <td className="px-3 py-3 text-muted-foreground">{group.land_id || "—"}</td>
+        <td className="max-w-[300px] px-3 py-3 text-xs text-muted-foreground" title={formatProgress(group.progress_summary)}>{formatProgress(group.progress_summary)}</td>
+        <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">{formatTime(group.created_at, locale)}</td>
+        <td className="px-3 py-3"><Button variant="ghost" size="sm" onClick={onOpen}>{t("viewDetails")}</Button></td>
+    </tr>;
 }
 
-function WorkItemRow({ item, locale, t }: { item: AdminExecutionWorkItem; locale: string; t: (key: string) => string }) {
-    const [expanded, setExpanded] = useState(false);
-    const { data, error, isLoading } = useSWR<AdminWorkItemDetail>(expanded ? `admin-work-item-${item.id}` : null, () => adminOpsApi.workItem(item.id), { revalidateOnFocus: false });
-    return <>
-        <tr className="border-b last:border-0">
-            <td className="px-3 py-3"><button className="flex items-center gap-2 text-left font-medium hover:text-primary" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}<span>{item.type}</span></button><p className="mt-1 max-w-[270px] truncate text-[11px] text-muted-foreground" title={item.id}>{item.id}</p></td>
-            <td className="px-3 py-3"><Badge className={statusClass(item.status)}>{statusIcon(item.status)}{statusLabel(item.status, t)}</Badge></td>
-            <td className="px-3 py-3 text-muted-foreground">{item.lease_owner || "—"}</td>
-            <td className="px-3 py-3 text-muted-foreground">{item.attempts}</td>
-            <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">{formatTime(item.updated_at, locale)}</td>
-        </tr>
-        {expanded && <tr className="border-b bg-muted/30"><td colSpan={5} className="px-3 py-4"><ExecutionDetail detail={data} error={error} isLoading={isLoading} locale={locale} t={t} kind="workItem" /></td></tr>}
-    </>;
+function ChildProgress({ counts, t }: { counts: Record<string, number>; t: (key: string) => string }) {
+    const total = counts.total || 0;
+    if (!total) return <span className="text-xs text-muted-foreground">{t("noChildren")}</span>;
+    return <div className="min-w-[175px] space-y-1"><div className="flex items-center justify-between gap-3 text-xs"><span className="font-medium">{counts.completed || 0} / {total}</span><span className="text-muted-foreground">{t("terminal")}: {counts.terminal || 0}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-success" style={{ width: `${Math.min(100, ((counts.terminal || 0) / total) * 100)}%` }} /></div><div className="flex flex-wrap gap-x-2 text-[11px] text-muted-foreground"><span>{t("failedChildren")}: {counts.failed || 0}</span><span>{t("pendingChildren")}: {(counts.pending || 0) + (counts.running || 0)}</span></div></div>;
 }
 
-function ExecutionDetail({ detail, error, isLoading, locale, t, kind }: { detail: AdminJobDetail | AdminWorkItemDetail | undefined; error: unknown; isLoading: boolean; locale: string; t: (key: string) => string; kind: "job" | "workItem" }) {
-    if (isLoading) return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{t("loadingDetail")}</div>;
-    if (error || !detail) return <div className="text-sm text-destructive">{t("detailLoadFailed")}</div>;
-    const jobDetail = detail as AdminJobDetail;
-    const workItemDetail = detail as AdminWorkItemDetail;
-    const data = kind === "job" ? { params: jobDetail.params_json, progress: jobDetail.progress_json } : { payload: workItemDetail.payload_json, progress: workItemDetail.progress_json, result: workItemDetail.result_json };
-    const startTime = kind === "job" ? jobDetail.started_at : workItemDetail.created_at;
-    const endTime = kind === "job" ? jobDetail.finished_at : workItemDetail.updated_at;
-    const startLabel = kind === "job" ? t("startedAt") : t("createdAt");
-    const endLabel = kind === "job" ? t("finishedAt") : t("updatedAt");
-    return <div className="space-y-3"><div className="grid gap-3 text-xs sm:grid-cols-3"><div><p className="text-muted-foreground">{startLabel}</p><p className="mt-1 font-medium">{formatTime(startTime, locale)}</p></div><div><p className="text-muted-foreground">{endLabel}</p><p className="mt-1 font-medium">{formatTime(endTime, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", detail.error && "text-destructive")}>{detail.error || t("noError")}</p></div></div><div className="grid gap-3 lg:grid-cols-3">{Object.entries(data).map(([key, value]) => <div key={key}><p className="mb-1 text-xs font-medium text-muted-foreground">{t(key === "params" ? "params" : key === "payload" ? "payload" : key === "result" ? "result" : "progress")}</p><pre className="max-h-72 overflow-auto rounded-md border bg-background p-3 text-[11px] leading-relaxed">{value ? JSON.stringify(value, null, 2) : "—"}</pre></div>)}</div>{kind === "workItem" && <p className="text-xs text-muted-foreground">{t("attempts")}: {(detail as AdminWorkItemDetail).attempts} · {t("leaseOwner")}: {(detail as AdminWorkItemDetail).lease_owner || "—"} · {t("leaseUntil")}: {formatTime((detail as AdminWorkItemDetail).lease_until, locale)}</p>}</div>;
+function ExecutionGroupDialog({ groupId, detail, error, isLoading, locale, t, onClose }: { groupId: string | null; detail: AdminExecutionGroupDetail | undefined; error: unknown; isLoading: boolean; locale: string; t: (key: string, values?: Record<string, string | number>) => string; onClose: () => void }) {
+    return <Dialog open={Boolean(groupId)} onOpenChange={(open) => { if (!open) onClose(); }}>
+        <DialogContent className="flex h-[min(90vh,56rem)] w-[min(96vw,86rem)] max-w-[96vw] flex-col gap-0 overflow-hidden p-0">
+            <DialogHeader className="shrink-0 space-y-1 border-b px-5 py-4 pr-12 text-left">
+                <DialogTitle>{detail ? taskTypeLabel(detail.type, t) : t("groupDetailTitle")}</DialogTitle>
+                <DialogDescription>{detail ? `${statusLabel(detail.status, t)} · ${detail.parent_job_id || detail.id}` : t("loadingDetail")}</DialogDescription>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                {isLoading && <ExecutionLoading />}
+                {Boolean(error) && <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">{t("detailLoadFailed")}</div>}
+                {detail && !error && <ExecutionGroupDetailContent detail={detail} locale={locale} t={t} />}
+            </div>
+        </DialogContent>
+    </Dialog>;
+}
+
+function ExecutionGroupDetailContent({ detail, locale, t }: { detail: AdminExecutionGroupDetail; locale: string; t: (key: string) => string }) {
+    const counts = detail.child_counts;
+    return <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-5"><DetailStat label={t("children")} value={counts.total || 0} /><DetailStat label={t("terminalChildren")} value={counts.terminal || 0} /><DetailStat label={t("completedChildren")} value={counts.completed || 0} /><DetailStat label={t("failedChildren")} value={counts.failed || 0} /><DetailStat label={t("pendingChildren")} value={(counts.pending || 0) + (counts.running || 0)} /></div><div className="grid gap-3 rounded-lg border bg-muted/20 p-4 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("status")}</p><Badge className={cn("mt-1", statusClass(detail.status))}>{statusIcon(detail.status)}{statusLabel(detail.status, t)}</Badge></div><div><p className="text-muted-foreground">{t("createdAt")}</p><p className="mt-1 font-medium">{formatTime(detail.created_at, locale)}</p></div><div><p className="text-muted-foreground">{t("startedAt")}</p><p className="mt-1 font-medium">{formatTime(detail.started_at, locale)}</p></div><div><p className="text-muted-foreground">{t("finishedAt")}</p><p className="mt-1 font-medium">{formatTime(detail.finished_at, locale)}</p></div></div>{detail.error && <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"><span className="font-medium">{t("error")}：</span>{detail.error}</div>}{detail.parent_job && <ParentJobDetail detail={detail.parent_job} t={t} />}{detail.jobs.length > 0 && <div className="space-y-2"><h3 className="text-sm font-semibold">{t("childJobs")} ({detail.jobs.length})</h3><div className="space-y-2">{detail.jobs.map((job) => <ChildJobDetail key={job.id} job={job} locale={locale} t={t} />)}</div></div>}{detail.work_items.length > 0 && <div className="space-y-2"><h3 className="text-sm font-semibold">{t("childWorkItems")} ({detail.work_items.length})</h3><div className="space-y-2">{detail.work_items.map((item) => <ChildWorkItemDetail key={item.id} item={item} locale={locale} t={t} />)}</div></div>}{detail.jobs.length === 0 && detail.work_items.length === 0 && <ExecutionEmpty icon={<Clock3 className="h-5 w-5" />} text={t("noChildren")} />}</div>;
+}
+
+function DetailStat({ label, value }: { label: string; value: number }) {
+    return <div className="rounded-lg border bg-background px-3 py-3"><p className="text-[11px] text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></div>;
+}
+
+function ParentJobDetail({ detail, t }: { detail: AdminExecutionJob & { params_json?: Record<string, unknown> | null; progress_json?: Record<string, unknown> | null }; t: (key: string) => string }) {
+    return <details className="rounded-lg border bg-muted/20"><summary className="cursor-pointer px-4 py-3 text-sm font-semibold">{t("parentJob")}: {taskTypeLabel(detail.type, t)} <span className="ml-2 text-xs font-normal text-muted-foreground">{detail.id}</span></summary><div className="grid gap-3 border-t p-4 lg:grid-cols-2"><JsonBlock label={t("params")} value={detail.params_json} /><JsonBlock label={t("progress")} value={detail.progress_json} /></div></details>;
+}
+
+function ChildJobDetail({ job, locale, t }: { job: AdminExecutionJob & { params_json?: Record<string, unknown> | null; progress_json?: Record<string, unknown> | null }; locale: string; t: (key: string) => string }) {
+    return <details className="rounded-lg border bg-background"><summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"><span><span className="font-medium">{taskTypeLabel(job.type, t)}</span><span className="ml-2 text-[11px] text-muted-foreground">{job.id}</span></span><span className="flex items-center gap-3"><Badge className={statusClass(job.status)}>{statusIcon(job.status)}{statusLabel(job.status, t)}</Badge><span className="text-xs text-muted-foreground">{formatTime(job.created_at, locale)}</span></span></summary><div className="space-y-3 border-t p-4"><div className="grid gap-3 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("land")}</p><p className="mt-1 font-medium">{job.land_id || "—"}</p></div><div><p className="text-muted-foreground">{t("startedAt")}</p><p className="mt-1 font-medium">{formatTime(job.started_at, locale)}</p></div><div><p className="text-muted-foreground">{t("finishedAt")}</p><p className="mt-1 font-medium">{formatTime(job.finished_at, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", job.error && "text-destructive")}>{job.error || t("noError")}</p></div></div><p className="text-xs text-muted-foreground">{t("progress")}: {formatProgress(job.progress_summary)}</p><div className="grid gap-3 lg:grid-cols-2"><JsonBlock label={t("params")} value={job.params_json} /><JsonBlock label={t("progress")} value={job.progress_json} /></div></div></details>;
+}
+
+function ChildWorkItemDetail({ item, locale, t }: { item: AdminExecutionWorkItem & { payload_json?: Record<string, unknown>; progress_json?: Record<string, unknown> | null; result_json?: Record<string, unknown> | null }; locale: string; t: (key: string) => string }) {
+    return <details className="rounded-lg border bg-background"><summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"><span><span className="font-medium">{taskTypeLabel(item.type, t)}</span><span className="ml-2 text-[11px] text-muted-foreground">{item.id}</span></span><span className="flex items-center gap-3"><Badge className={statusClass(item.status)}>{statusIcon(item.status)}{statusLabel(item.status, t)}</Badge><span className="text-xs text-muted-foreground">{formatTime(item.updated_at, locale)}</span></span></summary><div className="space-y-3 border-t p-4"><div className="grid gap-3 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("worker")}</p><p className="mt-1 font-medium">{item.lease_owner || "—"}</p></div><div><p className="text-muted-foreground">{t("attempts")}</p><p className="mt-1 font-medium">{item.attempts}</p></div><div><p className="text-muted-foreground">{t("leaseUntil")}</p><p className="mt-1 font-medium">{formatTime(item.lease_until, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", item.error && "text-destructive")}>{item.error || t("noError")}</p></div></div><p className="text-xs text-muted-foreground">{t("progress")}: {formatProgress(item.progress_summary)}</p><div className="grid gap-3 lg:grid-cols-3"><JsonBlock label={t("payload")} value={item.payload_json} /><JsonBlock label={t("progress")} value={item.progress_json} /><JsonBlock label={t("result")} value={item.result_json} /></div></div></details>;
+}
+
+function JsonBlock({ label, value }: { label: string; value: unknown }) {
+    return <div><p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p><pre className="max-h-64 overflow-auto rounded-md border bg-background p-3 text-[11px] leading-relaxed">{value ? JSON.stringify(value, null, 2) : "—"}</pre></div>;
 }
 
 function ExecutionLoading() {
