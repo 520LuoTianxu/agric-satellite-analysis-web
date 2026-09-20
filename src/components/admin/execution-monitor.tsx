@@ -147,6 +147,13 @@ function summaryChips(counts: Record<string, number>, t: (key: string) => string
         ));
 }
 
+function countStatuses(items: Array<{ status: string }>) {
+    return items.reduce<Record<string, number>>((counts, item) => {
+        counts[item.status] = (counts[item.status] || 0) + 1;
+        return counts;
+    }, {});
+}
+
 export function AdminExecutionMonitor() {
     const t = useTranslations("adminOps");
     const locale = useLocale();
@@ -306,6 +313,7 @@ function ExecutionGroupDetailContent({ detail, locale, t }: { detail: AdminExecu
     const counts = detail.child_counts;
     const [jobOffset, setJobOffset] = useState(0);
     const [workItemOffset, setWorkItemOffset] = useState(0);
+    const workItemStatusCounts = useMemo(() => countStatuses(detail.work_items), [detail.work_items]);
 
     // 切换父任务时回到第一页，避免新任务沿用旧任务的分页位置而显示空白。
     useEffect(() => {
@@ -328,6 +336,15 @@ function ExecutionGroupDetailContent({ detail, locale, t }: { detail: AdminExecu
                 <DetailStat label={t("failedChildren")} value={counts.failed || 0} />
                 <DetailStat label={t("pendingChildren")} value={(counts.pending || 0) + (counts.running || 0)} />
             </div>
+            {detail.work_items.length > 0 && (
+                <div className="rounded-lg border border-primary/20 bg-primary-subtle/30 px-4 py-3 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold">{t("downloadWorkerWorkItems")}: {detail.work_items.length}</span>
+                        <div className="flex flex-wrap gap-2">{summaryChips(workItemStatusCounts, t)}</div>
+                    </div>
+                    <p className="mt-2 text-muted-foreground">{t("downloadWorkerWorkItemsHint")}</p>
+                </div>
+            )}
             <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 text-xs sm:grid-cols-4">
                 <div>
                     <p className="text-muted-foreground">{t("status")}</p>
@@ -341,6 +358,23 @@ function ExecutionGroupDetailContent({ detail, locale, t }: { detail: AdminExecu
             </div>
             {detail.error && <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"><span className="font-medium">{t("error")}：</span>{truncateText(detail.error, MAX_INLINE_TEXT_CHARS)}</div>}
             {detail.parent_job && <ParentJobDetail detail={detail.parent_job} t={t} />}
+            {detail.work_items.length > 0 && (
+                <div className="space-y-2">
+                    <h3 className="text-sm font-semibold">{t("downloadWorkerWorkItems")} ({detail.work_items.length})</h3>
+                    <div className="space-y-2">
+                        {visibleWorkItems.map((item) => <ChildWorkItemDetail key={item.id} item={item} locale={locale} t={t} />)}
+                    </div>
+                    <ExecutionPagination
+                        offset={workItemOffset}
+                        rowCount={visibleWorkItems.length}
+                        total={detail.work_items.length}
+                        hasMore={workItemOffset + visibleWorkItems.length < detail.work_items.length}
+                        onPrevious={() => setWorkItemOffset((current) => Math.max(0, current - CHILD_PAGE_SIZE))}
+                        onNext={() => setWorkItemOffset((current) => current + CHILD_PAGE_SIZE)}
+                        t={t}
+                    />
+                </div>
+            )}
             {detail.jobs.length > 0 && (
                 <div className="space-y-2">
                     <h3 className="text-sm font-semibold">{t("childJobs")} ({detail.jobs.length})</h3>
@@ -354,23 +388,6 @@ function ExecutionGroupDetailContent({ detail, locale, t }: { detail: AdminExecu
                         hasMore={jobOffset + visibleJobs.length < detail.jobs.length}
                         onPrevious={() => setJobOffset((current) => Math.max(0, current - CHILD_PAGE_SIZE))}
                         onNext={() => setJobOffset((current) => current + CHILD_PAGE_SIZE)}
-                        t={t}
-                    />
-                </div>
-            )}
-            {detail.work_items.length > 0 && (
-                <div className="space-y-2">
-                    <h3 className="text-sm font-semibold">{t("childWorkItems")} ({detail.work_items.length})</h3>
-                    <div className="space-y-2">
-                        {visibleWorkItems.map((item) => <ChildWorkItemDetail key={item.id} item={item} locale={locale} t={t} />)}
-                    </div>
-                    <ExecutionPagination
-                        offset={workItemOffset}
-                        rowCount={visibleWorkItems.length}
-                        total={detail.work_items.length}
-                        hasMore={workItemOffset + visibleWorkItems.length < detail.work_items.length}
-                        onPrevious={() => setWorkItemOffset((current) => Math.max(0, current - CHILD_PAGE_SIZE))}
-                        onNext={() => setWorkItemOffset((current) => current + CHILD_PAGE_SIZE)}
                         t={t}
                     />
                 </div>
@@ -442,9 +459,10 @@ function ChildWorkItemDetail({ item, locale, t }: { item: AdminExecutionWorkItem
         >
             <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
                 <span><span className="font-medium">{taskTypeLabel(item.type, t)}</span><span className="ml-2 text-[11px] text-muted-foreground">{item.id}</span></span>
-                <span className="flex items-center gap-3"><Badge className={statusClass(item.status)}>{statusIcon(item.status)}{statusLabel(item.status, t)}</Badge><span className="text-xs text-muted-foreground">{formatTime(item.updated_at, locale)}</span></span>
+                <span className="flex flex-wrap items-center justify-end gap-3"><span className="text-xs text-muted-foreground">{t("worker")}: {item.lease_owner || "—"}</span><span className="text-xs text-muted-foreground">{t("attempts")}: {item.attempts}</span><Badge className={statusClass(item.status)}>{statusIcon(item.status)}{statusLabel(item.status, t)}</Badge><span className="text-xs text-muted-foreground">{formatTime(item.updated_at, locale)}</span></span>
             </summary>
             {open && <div className="space-y-3 border-t p-4"><WorkItemSummary item={item} locale={locale} t={t} /><WorkItemFullDetail data={data} error={error} isLoading={isLoading} t={t} /></div>}
+            {!open && item.error && <p className="border-t px-4 py-2 text-xs text-destructive">{t("error")}：{truncateText(item.error, MAX_INLINE_TEXT_CHARS)}</p>}
         </details>
     );
 }

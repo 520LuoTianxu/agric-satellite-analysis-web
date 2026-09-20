@@ -1596,6 +1596,8 @@
     "parentJob": "Parent job",
     "childJobs": "Child jobs",
     "childWorkItems": "Child work items",
+    "downloadWorkerWorkItems": "Download-worker claims",
+    "downloadWorkerWorkItemsHint": "All Work Items dispatched to download workers are collected here; expand an item to inspect its owner, lease, retries, error, and full payload.",
     "taskTypeUnknown": "Unknown task",
     "taskTypeOverviewDaily": "Daily national overview",
     "taskTypeSatelliteBatch": "Satellite batch processing",
