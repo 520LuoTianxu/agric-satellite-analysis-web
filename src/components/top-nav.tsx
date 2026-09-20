@@ -16,7 +16,6 @@ const NAV_ITEMS = [
     { href: "/overview" as const, labelKey: "overview" as const },
     { href: "/farms" as const, labelKey: "projectRemoteSensing" as const },
     { href: "/alerts" as const, labelKey: "alerts" as const },
-    { href: "/admin/ops" as const, labelKey: "operations" as const },
 ];
 
 /** 左上角品牌图标使用 OSS 公共资源，避免静态站点重复打包图片文件。 */
