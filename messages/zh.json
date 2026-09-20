@@ -1596,6 +1596,8 @@
     "parentJob": "父 Job",
     "childJobs": "子 Jobs",
     "childWorkItems": "子 Work Items",
+    "downloadWorkerWorkItems": "下载机认领任务",
+    "downloadWorkerWorkItemsHint": "这里汇总已派发给下载机的 Work Item；展开可查看认领人、租约、重试次数、错误和完整负载。",
     "taskTypeUnknown": "未知任务",
     "taskTypeOverviewDaily": "全国态势每日汇总",
     "taskTypeSatelliteBatch": "卫星数据分块处理",

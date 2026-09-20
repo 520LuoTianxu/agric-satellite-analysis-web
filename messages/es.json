@@ -1596,6 +1596,8 @@
     "parentJob": "Job principal",
     "childJobs": "Jobs hijos",
     "childWorkItems": "Work items hijos",
+    "downloadWorkerWorkItems": "Tareas reclamadas por descargadores",
+    "downloadWorkerWorkItemsHint": "Aquí se agrupan todos los Work Items enviados a los descargadores; expande uno para revisar propietario, arrendamiento, reintentos, error y payload completo.",
     "taskTypeUnknown": "Tarea desconocida",
     "taskTypeOverviewDaily": "Resumen nacional diario",
     "taskTypeSatelliteBatch": "Procesamiento de lotes satelitales",
