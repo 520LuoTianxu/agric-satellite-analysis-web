@@ -2,7 +2,6 @@
 .env
 .env.local
 .env.*.local
-.env.prod
 
 # Next.js and Node outputs
 node_modules/
