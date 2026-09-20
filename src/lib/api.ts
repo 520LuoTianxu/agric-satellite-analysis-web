@@ -790,6 +790,45 @@ export interface AssessmentGenerateBody {
     hr_base_id?: string | number;
 }
 
+export interface AssessmentBatchBody {
+    land_ids: Array<string | number>;
+    crop_type?: string;
+    date_from?: string;
+    years?: number;
+    sensors?: Array<"S1" | "S2">;
+    force?: boolean;
+}
+
+export interface AssessmentBatchReport {
+    job_id: string;
+    land_id: string;
+    status: string;
+    progress_json: Record<string, any> | null;
+    error: string | null;
+}
+
+export interface AssessmentBatchGroup {
+    anchor_land_id: string;
+    land_ids: string[];
+    aggregation_bbox: [number, number, number, number];
+    download_bbox: [number, number, number, number];
+    oversized: boolean;
+    job_ids: string[];
+}
+
+export interface AssessmentBatchResponse {
+    batch_id: string;
+    status: string;
+    land_ids: string[];
+    date_from: string;
+    date_to: string;
+    group_count: number;
+    satellite_job_count: number;
+    report_job_count: number;
+    groups: AssessmentBatchGroup[];
+    reports: AssessmentBatchReport[];
+}
+
 async function readPdfResponse(res: Response, errorMessage: string): Promise<Uint8Array> {
     if (!res.ok) {
         let detail = res.statusText;
@@ -837,6 +876,13 @@ export const assessmentApi = {
             method: "POST",
             body: JSON.stringify(body || {}),
         }),
+    generateBatch: (body: AssessmentBatchBody) =>
+        apiFetch<AssessmentBatchResponse>("/lands/assessment-reports/batch", {
+            method: "POST",
+            body: JSON.stringify(body),
+        }),
+    getBatch: (batchId: string) =>
+        apiFetch<AssessmentBatchResponse>(`/lands/assessment-reports/batch/${encodeURIComponent(batchId)}`),
     latestMeta: (landId: string) =>
         apiFetch<NdviJob>(`/lands/${landId}/assessment-report/latest/meta`),
     latestScorecard: (landId: string) =>
