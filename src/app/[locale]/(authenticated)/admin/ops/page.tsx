@@ -7,6 +7,7 @@ import { Activity, Ban, CheckCircle2, Clock3, Cpu, Loader2, Play, RefreshCw, Ser
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { adminOpsApi, type AdminOpsOverview, type AdminTaskRun, type DownloadWorkerStatus } from "@/lib/api";
 import { AdminExecutionMonitor } from "@/components/admin/execution-monitor";
 import { cn } from "@/lib/utils";
@@ -57,6 +58,10 @@ export default function AdminOperationsPage() {
     const locale = useLocale();
     const [triggering, setTriggering] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
+    const [smartLandList, setSmartLandList] = useState("");
+    const [smartFromLandId, setSmartFromLandId] = useState("");
+    const [smartToLandId, setSmartToLandId] = useState("");
+    const [smartYears, setSmartYears] = useState("3");
     const { data, error, isLoading, mutate } = useSWR<AdminOpsOverview>(
         "/admin/ops/overview",
         () => adminOpsApi.overview(100),
@@ -78,6 +83,43 @@ export default function AdminOperationsPage() {
         setNotice(null);
         try {
             await adminOpsApi.trigger({ task_key: taskKey });
+            setNotice(t("triggered"));
+            await mutate();
+        } catch (triggerError) {
+            setNotice(triggerError instanceof Error ? triggerError.message : t("triggerFailed"));
+        } finally {
+            setTriggering(null);
+        }
+    }
+
+    async function triggerSmartBackfill() {
+        const landIds = smartLandList
+            .split(/[\s,，]+/)
+            .map((value) => value.trim())
+            .filter(Boolean);
+        const hasList = landIds.length > 0;
+        const hasRange = Boolean(smartFromLandId.trim() || smartToLandId.trim());
+        if (hasList === hasRange || (hasRange && (!smartFromLandId.trim() || !smartToLandId.trim()))) {
+            setNotice(t("smartSelectionRequired"));
+            return;
+        }
+        const years = Number(smartYears);
+        if (!Number.isInteger(years) || years < 1 || years > 10) {
+            setNotice(t("smartYearsInvalid"));
+            return;
+        }
+        setTriggering("smart-land-backfill");
+        setNotice(null);
+        try {
+            await adminOpsApi.trigger({
+                task_key: "smart-land-backfill",
+                ...(hasList ? { landIdList: landIds } : {
+                    from_land_id: smartFromLandId.trim(),
+                    to_land_id: smartToLandId.trim(),
+                }),
+                years,
+                sensors: ["S1", "S2"],
+            });
             setNotice(t("triggered"));
             await mutate();
         } catch (triggerError) {
@@ -140,10 +182,32 @@ export default function AdminOperationsPage() {
                                 <p className="mt-1 text-sm text-muted-foreground">{task.description}</p>
                                 <p className="mt-2 text-xs text-muted-foreground">{task.schedule}</p>
                             </div>
-                            <Button size="sm" className="shrink-0" onClick={() => trigger(task.key)} disabled={triggering !== null}>
-                                {triggering === task.key ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-                                {t("runNow")}
-                            </Button>
+                            {task.key === "smart-land-backfill" ? (
+                                <div className="w-full max-w-3xl space-y-3 rounded-md border bg-muted/20 p-3 sm:w-[560px]">
+                                    <p className="text-xs text-muted-foreground">{t("smartBackfillHint")}</p>
+                                    <textarea
+                                        className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                                        value={smartLandList}
+                                        onChange={(event) => setSmartLandList(event.target.value)}
+                                        placeholder={t("landIdListPlaceholder")}
+                                        aria-label={t("landIdList")}
+                                    />
+                                    <div className="grid gap-2 sm:grid-cols-3">
+                                        <Input value={smartFromLandId} onChange={(event) => setSmartFromLandId(event.target.value)} placeholder={t("fromLandId")} aria-label={t("fromLandId")} />
+                                        <Input value={smartToLandId} onChange={(event) => setSmartToLandId(event.target.value)} placeholder={t("toLandId")} aria-label={t("toLandId")} />
+                                        <Input type="number" min={1} max={10} value={smartYears} onChange={(event) => setSmartYears(event.target.value)} placeholder={t("years")} aria-label={t("years")} />
+                                    </div>
+                                    <Button size="sm" onClick={triggerSmartBackfill} disabled={triggering !== null || !task.enabled}>
+                                        {triggering === task.key ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                                        {t("runNow")}
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button size="sm" className="shrink-0" onClick={() => trigger(task.key)} disabled={triggering !== null}>
+                                    {triggering === task.key ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                                    {t("runNow")}
+                                </Button>
+                            )}
                         </div>
                     ))}
                 </CardContent>
