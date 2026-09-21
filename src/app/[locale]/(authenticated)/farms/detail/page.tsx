@@ -29,6 +29,7 @@ const SELECT_CLASS = "h-10 min-w-0 rounded-md border bg-background px-2 text-xs 
 
 function FarmDetailPageContent() {
     const t = useTranslations("projectMonitoring");
+    const tInsights = useTranslations("parcelInsights");
     const tRules = useTranslations("alertRules");
     const searchParams = useSearchParams();
     const groupId = searchParams.get("groupId") || "";
@@ -162,6 +163,7 @@ function FarmDetailPageContent() {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" asChild><Link href={`/insights?groupId=${encodeURIComponent(groupId)}`}>{tInsights("title")}</Link></Button>
                     <div className="hidden flex-wrap gap-1 xl:flex">
                         {group.status != null && <Badge variant="secondary">{groupStatusLabel(group.status)}</Badge>}
                         {group.signStatus != null && <Badge variant="outline">{signStatusLabel(group)}</Badge>}

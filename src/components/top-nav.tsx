@@ -13,6 +13,7 @@ import { RemoteSensingOnboarding } from "@/components/remote-sensing-onboarding"
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
+    { href: "/insights" as const, labelKey: "parcelInsights" as const },
     { href: "/overview" as const, labelKey: "overview" as const },
     { href: "/farms" as const, labelKey: "projectRemoteSensing" as const },
     { href: "/alerts" as const, labelKey: "alerts" as const },

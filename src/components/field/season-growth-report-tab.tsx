@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import PhenologyPicker from "./phenology-picker";
 
 interface SeasonGrowthReportTabProps {
     landId: string;
@@ -40,20 +41,16 @@ export default function SeasonGrowthReportTab({
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
     const [downloading, setDownloading] = useState(false);
-    const [startDate, setStartDate] = useState(() => {
-        const year = new Date().getFullYear();
-        return `${year}-06-01`;
-    });
-    const [endDate, setEndDate] = useState(() => {
-        const year = new Date().getFullYear();
-        return `${year}-09-30`;
-    });
+    const [startDate, setStartDate] = useState("");
+    const [endDate, setEndDate] = useState("");
     const [crop, setCrop] = useState("");
     const [label, setLabel] = useState("");
     const [files, setFiles] = useState<File[]>([]);
     const [uploading, setUploading] = useState(false);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => { setStartDate(""); setEndDate(""); }, [landId]);
 
     const stopPoll = useCallback(() => {
         if (pollRef.current) {
@@ -196,6 +193,13 @@ export default function SeasonGrowthReportTab({
                 <Skeleton className="h-24 w-full" />
             ) : (
                 <>
+                    <PhenologyPicker landId={landId}
+                        onSelect={window => { setStartDate(window.start_date!); setEndDate(window.end_date!); }}
+                        onLoaded={data => {
+                            const windows = data.windows.filter(window => window.start_date && window.end_date);
+                            const last = windows[windows.length - 1];
+                            if (last) { setStartDate(current => current || last.start_date!); setEndDate(current => current || last.end_date!); }
+                        }} />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="text-xs space-y-1">
                             <span className="text-muted-foreground">{t("startDate")}</span>
