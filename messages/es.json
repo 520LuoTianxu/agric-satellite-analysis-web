@@ -1550,6 +1550,7 @@
     "noJobs": "Aún no hay jobs.",
     "workItemType": "Tipo de work item",
     "worker": "Worker",
+    "lastClaimedBy": "Último descargador",
     "attempts": "Intentos",
     "updatedAt": "Actualizado",
     "noWorkItems": "Aún no hay work items.",

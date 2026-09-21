@@ -1550,6 +1550,7 @@
     "noJobs": "No jobs yet.",
     "workItemType": "Work-item type",
     "worker": "Worker",
+    "lastClaimedBy": "Last claimed by",
     "attempts": "Attempts",
     "updatedAt": "Updated",
     "noWorkItems": "No work items yet.",

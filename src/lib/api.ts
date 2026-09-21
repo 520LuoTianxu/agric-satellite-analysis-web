@@ -1977,6 +1977,7 @@ export interface AdminExecutionWorkItem {
     parent_job_id: string | null;
     priority: number;
     lease_owner: string | null;
+    last_claimed_by: string | null;
     lease_until: string | null;
     attempts: number;
     progress_summary: Record<string, unknown>;
