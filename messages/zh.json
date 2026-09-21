@@ -1550,6 +1550,7 @@
     "noJobs": "还没有 Job 记录。",
     "workItemType": "工作项类型",
     "worker": "处理机",
+    "lastClaimedBy": "最近领取机",
     "attempts": "尝试次数",
     "updatedAt": "更新时间",
     "noWorkItems": "还没有 Work Item 记录。",
