@@ -16,6 +16,8 @@ import {
     type IndexType,
 } from "@/lib/api";
 import { useTranslations } from "next-intl";
+import { monthsInWindows, type Phenology } from "@/lib/parcel-insights";
+import PhenologyPicker from "./phenology-picker";
 import {
     rasterizeAgriPixels,
     rasterizeAgriLonLatPixels,
@@ -36,7 +38,6 @@ import {
 import {
     classifyDroughtSeries,
     classifyFloodSeries,
-    isDroughtSeason,
     isFloodDayClass,
     isFloodWatchClass,
     isSpringFloodMonth,
@@ -493,6 +494,14 @@ export default function AgriTimeseriesPanel({
     const [cropCatalog, setCropCatalog] = useState<CropOption[]>([]);
     /** Growing-season windows for this pull (rotation = multi; intercrop = crops length 2). */
     const [seasonWindows, setSeasonWindows] = useState<SeasonWindowDraft[]>([]);
+    const [inferredPhenology, setInferredPhenology] = useState<Phenology | null>(null);
+    // 分析窗口来自有效影像或用户选择；未识别出窗口时不回退到夏玉米日历。
+    // 日期窗比月份集合更严格，避免把同月的休耕期或其他年份误判为本茬旱情。
+    const isWithinSeason = useCallback((day: string) => seasonWindows.some(window =>
+        window.start_date && window.end_date && window.start_date <= day && day <= window.end_date
+    ), [seasonWindows]);
+    const seasonMonths = useMemo(() => monthsInWindows(seasonWindows), [seasonWindows]);
+    const peakMonths = useMemo(() => Array.from(new Set((inferredPhenology?.windows ?? []).map(window => Number(window.peak_date?.slice(5, 7))).filter(Boolean))), [inferredPhenology]);
     const [harvestResult, setHarvestResult] = useState<HarvestDetectResult | null>(null);
     const [harvestLoading, setHarvestLoading] = useState(false);
     const [harvestError, setHarvestError] = useState(false);
@@ -561,29 +570,8 @@ export default function AgriTimeseriesPanel({
                 const hit =
                     list.find((c) => c.key === key) ||
                     list.find((c) => c.name_zh === cropType) ||
-                    list.find((c) => c.key === "corn") ||
-                    list[0] ||
                     null;
                 setCropOption(hit);
-                if (hit) {
-                    setSeasonWindows((prev) => {
-                        if (prev.length) return prev;
-                        const y = new Date().getFullYear();
-                        const months = hit.season_months?.length ? hit.season_months : [6, 7, 8, 9];
-                        const sm = Math.min(...months);
-                        const em = Math.max(...months);
-                        const endDay = em === 2 ? 28 : [4, 6, 9, 11].includes(em) ? 30 : 31;
-                        return [
-                            {
-                                id: newWindowId(),
-                                start_date: `${y}-${String(sm).padStart(2, "0")}-01`,
-                                end_date: `${y}-${String(em).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`,
-                                crops: [hit.key],
-                                label: hit.season_label_zh || hit.name_zh || hit.name,
-                            },
-                        ];
-                    });
-                }
             })
             .catch(() => {
                 if (!cancelled) {
@@ -595,6 +583,8 @@ export default function AgriTimeseriesPanel({
             cancelled = true;
         };
     }, [cropType]);
+
+    useEffect(() => { setSeasonWindows([]); setInferredPhenology(null); }, [landId]);
 
     useEffect(() => {
         if (!landId) return;
@@ -721,22 +711,6 @@ export default function AgriTimeseriesPanel({
             return;
         }
         setRefreshDateFrom(defaultRsDateFrom());
-        if (!seasonWindows.length && cropOption?.key) {
-            const y = yearFromIso(defaultRsDateFrom());
-            const months = cropOption.season_months?.length ? cropOption.season_months : [6, 7, 8, 9];
-            const sm = Math.min(...months);
-            const em = Math.max(...months);
-            const endDay = em === 2 ? 28 : [4, 6, 9, 11].includes(em) ? 30 : 31;
-            setSeasonWindows([
-                {
-                    id: newWindowId(),
-                    start_date: `${y}-${String(sm).padStart(2, "0")}-01`,
-                    end_date: `${y}-${String(em).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`,
-                    crops: [cropOption.key],
-                    label: cropOption.season_label_zh || cropOption.name_zh || cropOption.name,
-                },
-            ]);
-        }
         setRefreshDateOpen(true);
     };
 
@@ -783,12 +757,12 @@ export default function AgriTimeseriesPanel({
                 label: "夏玉米",
             };
         } else {
-            const key = cropOption?.key || "corn";
+            const key = cropOption?.key;
             draft = {
                 id: newWindowId(),
-                start_date: `${y}-06-01`,
-                end_date: `${y}-09-30`,
-                crops: [key],
+                start_date: "",
+                end_date: "",
+                crops: key ? [key] : [],
                 label: "",
             };
         }
@@ -815,7 +789,7 @@ export default function AgriTimeseriesPanel({
         setHarvestLoading(true);
         setHarvestError(false);
         try {
-            const w = seasonWindows[0];
+            const w = seasonWindows[seasonWindows.length - 1];
             const res = await agriApi.harvestDetect(landId, {
                 start_date: w?.start_date,
                 end_date: w?.end_date,
@@ -954,7 +928,7 @@ export default function AgriTimeseriesPanel({
                           withGrid(res.items) ??
                           official[0] ??
                           res.items[0]);
-                if (index === "drought" && !isDroughtSeason(date, cropOption?.season_months ?? [6, 7, 8, 9])) {
+                if (index === "drought" && !isWithinSeason(date)) {
                     cachedHeatmapRef.current = { date, index, img: null };
                     setHeatmapMeta(null);
                     publishHeatmap(null);
@@ -1048,7 +1022,7 @@ export default function AgriTimeseriesPanel({
                 }
             }
         },
-        [landId, publishHeatmap, t, cropOption?.season_months],
+        [landId, publishHeatmap, t, isWithinSeason],
     );
     loadHeatmapRef.current = loadHeatmap;
 
@@ -1184,24 +1158,15 @@ export default function AgriTimeseriesPanel({
         return recentDates;
     }, [recentDates, selectedDate, allDates]);
 
-    const seasonMonths = useMemo(
-        () => cropOption?.season_months ?? [6, 7, 8, 9],
-        [cropOption?.season_months],
-    );
-    const peakMonths = useMemo(
-        () => cropOption?.peak_months ?? [7, 8],
-        [cropOption?.peak_months],
-    );
-
     const droughtByDate = useMemo(() => {
         const s2 = scenes.filter((s) => s.sensor === "S2");
         const classified = classifyDroughtSeries(s2, seasonMonths);
         const out: Record<string, AgriDroughtClass> = {};
         for (const [date, cls] of classified) {
-            if (isDroughtDayClass(cls)) out[date] = cls;
+            if (isWithinSeason(date) && isDroughtDayClass(cls)) out[date] = cls;
         }
         return out;
-    }, [scenes, seasonMonths]);
+    }, [scenes, seasonMonths, isWithinSeason]);
 
     const floodByDate = useMemo(() => {
         const s1 = scenes.filter((s) => s.sensor === "S1");
@@ -1482,6 +1447,15 @@ export default function AgriTimeseriesPanel({
                 </div>
             </CardHeader>
             <CardContent className="p-3 space-y-3">
+                <PhenologyPicker landId={landId}
+                    onLoaded={data => {
+                        setInferredPhenology(data);
+                        setSeasonWindows(current => current.length ? current : data.windows.slice(-MAX_SEASON_WINDOWS).map(window => ({
+                            id: newWindowId(), start_date: window.start_date || window.observed_start || "",
+                            end_date: window.end_date || window.observed_end || "", crops: cropOption?.key ? [cropOption.key] : [], label: "遥感观测窗口",
+                        })));
+                    }}
+                    onSelect={window => setSeasonWindows([{ id: newWindowId(), start_date: window.start_date!, end_date: window.end_date!, crops: cropOption?.key ? [cropOption.key] : [], label: "遥感观测窗口" }])} />
                 <IndexExplainer index={series} />
                 <Dialog open={refreshDateOpen} onOpenChange={setRefreshDateOpen}>
                     <DialogContent className="sm:max-w-lg">
@@ -1755,7 +1729,7 @@ export default function AgriTimeseriesPanel({
                                         size="sm"
                                         variant="outline"
                                         className="h-7 shrink-0 text-[11px]"
-                                        disabled={!landId || harvestLoading}
+                                        disabled={!landId || harvestLoading || !seasonWindows.length}
                                         title={t("harvestDetectHint")}
                                         onClick={() => void runHarvestDetect()}
                                     >

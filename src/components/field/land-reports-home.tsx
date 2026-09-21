@@ -20,6 +20,7 @@ const LandReportTab = dynamic(() => import("./land-report-tab"), {
 /** 首页以地块侧栏选择报告，URL 保存选择以支持刷新和生成完成后的跳转。 */
 export default function LandReportsHome() {
     const t = useTranslations("landReportsHome");
+    const tInsights = useTranslations("parcelInsights");
     const router = useRouter();
     const params = useSearchParams();
     const requestedId = params.get("fieldId") || "";
@@ -113,7 +114,7 @@ export default function LandReportsHome() {
                     <div className="mx-auto max-w-5xl">
                         <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-background p-4">
                             <div><h2 className="font-semibold">{land.land_name || land.land_id}</h2><p className="text-xs text-muted-foreground">{land.group_name}</p></div>
-                            <Button variant="outline" size="sm" asChild><Link href={`/farms/fields/detail?fieldId=${encodeURIComponent(land.land_id)}&farmId=${encodeURIComponent(land.farm_id || "")}&groupId=${encodeURIComponent(land.group_id || "")}`}>{t("viewLand")}</Link></Button>
+                            <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" asChild><Link href={`/insights?fieldId=${encodeURIComponent(land.land_id)}`}>{tInsights("title")}</Link></Button><Button variant="outline" size="sm" asChild><Link href={`/farms/fields/detail?fieldId=${encodeURIComponent(land.land_id)}&farmId=${encodeURIComponent(land.farm_id || "")}&groupId=${encodeURIComponent(land.group_id || "")}`}>{t("viewLand")}</Link></Button></div>
                         </div>
                         <LandReportTab key={land.land_id} landId={land.land_id} groupId={land.group_id} cropType={land.crop_type}
                             onCropBound={key => setLand(previous => previous ? { ...previous, crop_type: key } : previous)} />
