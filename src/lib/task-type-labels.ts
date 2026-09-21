@@ -21,6 +21,7 @@ const TASK_TYPE_KEYS: Record<string, string> = {
     "daily-satellite": "taskTypeDailySatellite",
     "daily-weather": "taskTypeDailyWeather",
     "mysql-land-sync": "taskTypeMysqlLandSync",
+    "smart_land_backfill": "taskTypeSmartLandBackfill",
     "ndvi": "taskTypeNdvi",
     "evi": "taskTypeEvi",
     "savi": "taskTypeSavi",
