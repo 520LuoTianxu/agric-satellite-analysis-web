@@ -2035,6 +2035,12 @@ export const adminOpsApi = {
         as_of?: string;
         window_days?: number;
         crop?: string;
+        landIdList?: Array<string | number>;
+        from_land_id?: string | number;
+        to_land_id?: string | number;
+        years?: number;
+        sensors?: Array<"S1" | "S2">;
+        force?: boolean;
     }) =>
         apiFetch<AdminTaskRun>("/admin/ops/task-runs", {
             method: "POST",
