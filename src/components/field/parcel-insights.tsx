@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Download, Loader2, Search, Sprout, X } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { landsApi, type LandParcel } from "@/lib/api";
-import { parcelInsightsApi, type InsightEvent, type InsightsHistory, type InsightsRequest, type InsightsSnapshot, type InsightLand } from "@/lib/parcel-insights";
+import { parcelInsightsApi, type InsightEvent, type InsightsHistory, type InsightsRequest, type InsightsSnapshot, type InsightLand, type Phenology, type PhenologyWindow } from "@/lib/parcel-insights";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InsightsCurve, InsightsSpatial } from "./insights-visuals";
+import { PhenologyCandidates } from "./phenology-candidates";
 
 type View = "compare" | "checkup" | "history" | "progress" | "service";
 type Selected = { land_id: string; land_name: string; crop_type: string | null };
@@ -48,12 +49,16 @@ export default function ParcelInsights() {
     const [downloading, setDownloading] = useState(false);
     const [error, setError] = useState("");
     const [inferBusy, setInferBusy] = useState<string | null>(null);
+    const [inferences, setInferences] = useState<Record<string, { data?: Phenology; error?: string }>>({});
+    const inferenceRequest = useRef<AbortController | null>(null);
     const [history, setHistory] = useState<InsightsHistory | null>(null);
     const [historyOffset, setHistoryOffset] = useState(0);
     const [historyError, setHistoryError] = useState(false);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyRevision, setHistoryRevision] = useState(0);
     const [openHistory, setOpenHistory] = useState(false);
+
+    useEffect(() => () => { inferenceRequest.current?.abort(); }, []);
 
     useEffect(() => { const timer = setTimeout(() => { setQuery(search.trim()); setPage(0); }, 300); return () => clearTimeout(timer); }, [search]);
     useEffect(() => {
@@ -83,26 +88,54 @@ export default function ParcelInsights() {
     }, [openHistory, historyOffset, historyRevision]);
 
     const toggleLand = (land: Selected) => {
+        if (inferBusy === land.land_id) { inferenceRequest.current?.abort(); setInferBusy(null); }
+        setInferences(current => { const next = { ...current }; delete next[land.land_id]; return next; });
         setSelected(current => current.some(item => item.land_id === land.land_id) ? current.filter(item => item.land_id !== land.land_id) : current.length < 20 ? [...current, land] : current);
         setSeasons(current => { const next = { ...current }; delete next[land.land_id]; return next; });
         setEvents(current => current.filter(item => item.land_id !== land.land_id && item.control_land_id !== land.land_id));
         setEvent(current => current.land_id === land.land_id || current.control_land_id === land.land_id ? { ...current, land_id: "", control_land_id: null } : current);
     };
+    const clearInferences = () => {
+        // 条件变化后丢弃旧结果并取消在途请求，避免旧区间的响应回填到新表单。
+        inferenceRequest.current?.abort();
+        setInferBusy(null); setInferences({});
+    };
     const setAnalysisMode = (next: "historical" | "recent") => {
+        clearInferences();
         setMode(next); setResult(null); setError(""); setSeasons({}); setEvents([]);
         if (next === "recent") { setEnd(today()); setStart(new Date(Date.parse(`${today()}T00:00:00Z`) - 90 * 86400000).toISOString().slice(0, 10)); }
         else { setStart(`${new Date().getFullYear() - 1}-01-01`); setEnd(`${new Date().getFullYear() - 1}-12-31`); }
     };
+    const applyWindow = (land: Selected, window: PhenologyWindow) => {
+        // 识别边界缺失时使用首末观测日期作为可执行的代理窗口，结果区会明确提示这不是精确播种或收获日期。
+        setSeasons(current => ({ ...current, [land.land_id]: {
+            start_date: window.start_date || window.observed_start || "",
+            end_date: window.end_date || window.observed_end || "",
+            crop: current[land.land_id]?.crop ?? land.crop_type ?? "",
+        } }));
+    };
     const inferWindow = async (land: Selected) => {
-        setInferBusy(land.land_id); setError("");
+        inferenceRequest.current?.abort();
+        const controller = new AbortController();
+        inferenceRequest.current = controller;
+        setInferBusy(land.land_id);
+        setInferences(current => ({ ...current, [land.land_id]: {} }));
         try {
-            const data = await parcelInsightsApi.phenology(land.land_id, start, end);
+            const data = await parcelInsightsApi.phenology(land.land_id, start, end, controller.signal);
+            if (controller.signal.aborted) return;
+            if ((data.land_id && data.land_id !== land.land_id) || (data.start_date && data.start_date !== start) || (data.end_date && data.end_date !== end)) {
+                throw new Error(t("inferenceMismatch"));
+            }
+            // 优先填入唯一完整周期；只有一段不完整周期时也用首末观测日期补齐代理窗口，多个周期由用户点选。
+            setInferences(current => ({ ...current, [land.land_id]: { data } }));
             const complete = data.windows.filter(window => window.start_date && window.end_date);
-            if (complete.length === 1) {
-                setSeasons(current => ({ ...current, [land.land_id]: { start_date: complete[0].start_date!, end_date: complete[0].end_date!, crop: land.crop_type || "" } }));
-            } else setError(complete.length > 1 ? t("multipleSeasons") : data.note);
-        } catch (err) { setError(err instanceof Error ? err.message : t("loadFailed")); }
-        finally { setInferBusy(null); }
+            if (complete.length === 1) applyWindow(land, complete[0]);
+            else if (data.windows.length === 1) applyWindow(land, data.windows[0]);
+        } catch (err) {
+            if (!controller.signal.aborted) setInferences(current => ({ ...current, [land.land_id]: { error: err instanceof Error ? err.message : t("loadFailed") } }));
+        } finally {
+            if (inferenceRequest.current === controller) setInferBusy(null);
+        }
     };
     const analyze = async () => {
         setError(""); setBusy(true);
@@ -115,6 +148,7 @@ export default function ParcelInsights() {
         finally { setBusy(false); }
     };
     const openSnapshot = async (id: string) => {
+        clearInferences();
         setBusy(true); setError("");
         try {
             const data = await parcelInsightsApi.get(id);
@@ -133,6 +167,7 @@ export default function ParcelInsights() {
         finally { setDownloading(false); }
     };
     const names = Object.fromEntries((result?.items ?? []).map(item => [item.land_id, item.land_name]));
+    const incompleteSeason = Object.values(seasons).some(window => !window.start_date || !window.end_date);
 
     return <div className="mx-auto w-full max-w-[1600px] space-y-5 p-4 md:p-7">
         <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-medium tracking-widest text-primary">{t("eyebrow")}</p><h1 className="mt-2 text-2xl font-semibold">{t("title")}</h1><p className="mt-2 max-w-3xl text-sm text-muted-foreground">{t("description")}</p></div><Button variant="outline" onClick={() => setOpenHistory(value => !value)}>{t("savedReports")}</Button></header>
@@ -149,12 +184,40 @@ export default function ParcelInsights() {
             <div className="min-w-0 space-y-4">
                 <section className="rounded-xl border bg-background p-4 md:p-5">
                     <div className="mb-4 flex flex-wrap gap-2">{selected.map(land => <button type="button" key={land.land_id} onClick={() => toggleLand(land)} className="flex max-w-full items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 text-xs text-primary" aria-label={`${t("remove")} ${land.land_name}`}><span className="truncate">{land.land_name}</span><X className="h-3 w-3 shrink-0" /></button>)}</div>
-                    <div className="grid gap-3 sm:grid-cols-3"><label className="space-y-1 text-xs">{t("start")}<Input type="date" value={start} min="2015-01-01" max={end} onChange={e => setStart(e.target.value)} /></label><label className="space-y-1 text-xs">{t("end")}<Input type="date" value={end} min={start} max={mode === "historical" ? previousDay() : today()} onChange={e => setEnd(e.target.value)} /></label><label className="space-y-1 text-xs">{t("referenceYear")}<Input type="number" min="2015" max={Number(start.slice(0, 4)) - 1} value={reference} placeholder={t("optional")} onChange={e => setReference(e.target.value)} /></label></div>
+                    <div className="grid gap-3 sm:grid-cols-3"><label className="space-y-1 text-xs">{t("start")}<Input type="date" value={start} min="2015-01-01" max={end} onChange={e => { clearInferences(); setStart(e.target.value); }} /></label><label className="space-y-1 text-xs">{t("end")}<Input type="date" value={end} min={start} max={mode === "historical" ? previousDay() : today()} onChange={e => { clearInferences(); setEnd(e.target.value); }} /></label><label className="space-y-1 text-xs">{t("referenceYear")}<Input type="number" min="2015" max={Number(start.slice(0, 4)) - 1} value={reference} placeholder={t("optional")} onChange={e => setReference(e.target.value)} /></label></div>
                     <p className="mt-3 text-xs text-muted-foreground">{mode === "historical" ? t("historicalHint") : t("recentHint")}</p>
-                    <details className="mt-4 rounded-lg bg-muted/30 p-3"><summary className="cursor-pointer text-sm font-medium">{t("seasonSettings")}</summary><p className="mt-2 text-xs text-muted-foreground">{t("seasonHint")}</p><div className="mt-3 space-y-4">{selected.map(land => <div key={land.land_id} className="space-y-2"><div className="flex flex-wrap items-center justify-between gap-2"><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!seasons[land.land_id]} onChange={e => setSeasons(current => { const next = { ...current }; if (e.target.checked) next[land.land_id] = { start_date: start, end_date: end, crop: land.crop_type || "" }; else delete next[land.land_id]; return next; })} />{land.land_name} · {t("manualWindow")}</label><Button size="sm" variant="ghost" disabled={inferBusy !== null || !start || !end} onClick={() => void inferWindow(land)}>{inferBusy === land.land_id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sprout className="mr-1 h-3 w-3" />}{t("inferAndReview")}</Button></div>{seasons[land.land_id] && <div className="grid gap-2 sm:grid-cols-3"><Input aria-label={`${land.land_name} ${t("start")}`} type="date" min={start} max={end} value={seasons[land.land_id].start_date} onChange={e => setSeasons(current => ({ ...current, [land.land_id]: { ...current[land.land_id], start_date: e.target.value } }))} /><Input aria-label={`${land.land_name} ${t("end")}`} type="date" min={start} max={end} value={seasons[land.land_id].end_date} onChange={e => setSeasons(current => ({ ...current, [land.land_id]: { ...current[land.land_id], end_date: e.target.value } }))} /><Input aria-label={`${land.land_name} ${t("crop")}`} placeholder={t("crop")} value={seasons[land.land_id].crop} onChange={e => setSeasons(current => ({ ...current, [land.land_id]: { ...current[land.land_id], crop: e.target.value } }))} /></div>}</div>)}</div></details>
+                    <details className="mt-4 rounded-lg bg-muted/30 p-3">
+                        <summary className="cursor-pointer text-sm font-medium">{t("seasonSettings")}</summary>
+                        <p className="mt-2 text-xs text-muted-foreground">{t("seasonHint")}</p>
+                        <div className="mt-3 space-y-4">{selected.map(land => <div key={land.land_id} className="space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <label className="flex items-center gap-2 text-xs">
+                                    <input type="checkbox" disabled={busy || inferBusy === land.land_id} checked={!!seasons[land.land_id]} onChange={e => setSeasons(current => {
+                                        const next = { ...current };
+                                        if (e.target.checked) next[land.land_id] = { start_date: start, end_date: end, crop: land.crop_type || "" };
+                                        else delete next[land.land_id];
+                                        return next;
+                                    })} />{land.land_name} · {t("manualWindow")}
+                                </label>
+                                <Button size="sm" variant="ghost" disabled={busy || inferBusy !== null || !start || !end} onClick={() => void inferWindow(land)}>
+                                    {inferBusy === land.land_id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sprout className="mr-1 h-3 w-3" />}{t("inferAndReview")}
+                                </Button>
+                            </div>
+                            {seasons[land.land_id] && <>
+                                <div className="grid gap-2 sm:grid-cols-3">
+                                    <Input aria-label={`${land.land_name} ${t("start")}`} aria-invalid={!seasons[land.land_id].start_date} disabled={busy || inferBusy === land.land_id} type="date" min={start} max={end} value={seasons[land.land_id].start_date} onChange={e => setSeasons(current => ({ ...current, [land.land_id]: { ...current[land.land_id], start_date: e.target.value } }))} />
+                                    <Input aria-label={`${land.land_name} ${t("end")}`} aria-invalid={!seasons[land.land_id].end_date} disabled={busy || inferBusy === land.land_id} type="date" min={start} max={end} value={seasons[land.land_id].end_date} onChange={e => setSeasons(current => ({ ...current, [land.land_id]: { ...current[land.land_id], end_date: e.target.value } }))} />
+                                    <Input aria-label={`${land.land_name} ${t("crop")}`} disabled={busy || inferBusy === land.land_id} placeholder={t("crop")} value={seasons[land.land_id].crop} onChange={e => setSeasons(current => ({ ...current, [land.land_id]: { ...current[land.land_id], crop: e.target.value } }))} />
+                                </div>
+                                {(!seasons[land.land_id].start_date || !seasons[land.land_id].end_date) && <p className="text-xs text-amber-700 dark:text-amber-400">{t("completeDatesHint")}</p>}
+                            </>}
+                            {inferences[land.land_id]?.error && <p role="alert" className="text-xs text-destructive">{land.land_name} · {inferences[land.land_id].error}</p>}
+                            {inferences[land.land_id]?.data && <PhenologyCandidates landName={land.land_name} data={inferences[land.land_id].data!} selected={seasons[land.land_id]} disabled={busy || inferBusy !== null} onSelect={window => applyWindow(land, window)} />}
+                        </div>)}</div>
+                    </details>
                     <details className="mt-3 rounded-lg bg-muted/30 p-3"><summary className="cursor-pointer text-sm font-medium">{t("serviceSettings")} ({events.length})</summary><p className="mt-2 text-xs text-muted-foreground">{t("serviceHint")}</p><div className="mt-3 grid gap-2 sm:grid-cols-3"><label className="text-xs">{t("targetLand")}<select className={SELECT} value={event.land_id} onChange={e => setEvent(current => ({ ...current, land_id: e.target.value, control_land_id: null }))}><option value="">{t("select")}</option>{selected.map(land => <option key={land.land_id} value={land.land_id}>{land.land_name}</option>)}</select></label><label className="text-xs">{t("eventDate")}<Input type="date" min={start} max={end} value={event.date} onChange={e => setEvent(current => ({ ...current, date: e.target.value }))} /></label><label className="text-xs">{t("action")}<Input maxLength={100} value={event.action} onChange={e => setEvent(current => ({ ...current, action: e.target.value }))} placeholder={t("actionExample")} /></label><label className="text-xs">{t("controlLand")}<select className={SELECT} value={event.control_land_id || ""} onChange={e => setEvent(current => ({ ...current, control_land_id: e.target.value || null }))}><option value="">{t("none")}</option>{selected.filter(land => land.land_id !== event.land_id).map(land => <option key={land.land_id} value={land.land_id}>{land.land_name}</option>)}</select></label><label className="text-xs">{t("eventDays")}<Input type="number" min={7} max={60} value={event.window_days} onChange={e => setEvent(current => ({ ...current, window_days: Number(e.target.value) }))} /></label><label className="text-xs">{t("eventNote")}<Input maxLength={1000} value={event.note} onChange={e => setEvent(current => ({ ...current, note: e.target.value }))} /></label></div><Button className="mt-3" size="sm" variant="outline" disabled={!selected.some(land => land.land_id === event.land_id) || !event.date || !event.action.trim() || events.length >= 30} onClick={() => { setEvents(current => [...current, { ...event }]); setEvent(current => ({ ...current, action: "", note: "" })); }}>{t("addEvent")}</Button><ul className="mt-2 space-y-2 text-xs">{events.map((item, index) => <li key={index} className="flex items-center justify-between gap-2"><span>{selected.find(land => land.land_id === item.land_id)?.land_name} · {item.date} · {item.action}</span><Button size="sm" variant="ghost" onClick={() => setEvents(current => current.filter((_, i) => i !== index))}>{t("remove")}</Button></li>)}</ul></details>
                     {mode === "historical" && <details className="mt-3 rounded-lg bg-muted/30 p-3"><summary className="cursor-pointer text-sm font-medium">{t("reportSettings")}</summary><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs">{t("reportTitle")}<Input maxLength={100} value={title} onChange={e => setTitle(e.target.value)} /></label><label className="text-xs">{t("brand")}<Input maxLength={80} value={brand} onChange={e => setBrand(e.target.value)} /></label></div></details>}
-                    <div className="mt-4 flex flex-wrap items-center gap-3"><Button disabled={busy || !selected.length || !start || !end} onClick={() => void analyze()}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{mode === "historical" ? t("generate") : t("analyzeRecent")}</Button><span className="text-xs text-muted-foreground">{t("snapshotHint")}</span></div>
+                    <div className="mt-4 flex flex-wrap items-center gap-3"><Button disabled={busy || inferBusy !== null || incompleteSeason || !selected.length || !start || !end} onClick={() => void analyze()}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{mode === "historical" ? t("generate") : t("analyzeRecent")}</Button><span className="text-xs text-muted-foreground">{incompleteSeason ? t("completeDatesHint") : t("snapshotHint")}</span></div>
                 </section>
                 {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error}</p>}
                 {result ? <section className="space-y-4" aria-label={t("results")}>

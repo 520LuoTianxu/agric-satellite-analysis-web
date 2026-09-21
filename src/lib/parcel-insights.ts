@@ -13,6 +13,9 @@ export interface PhenologyWindow {
     end_interval?: string[] | null;
 }
 export interface Phenology {
+    land_id?: string;
+    start_date?: string;
+    end_date?: string;
     status: "detected" | "insufficient_data" | "no_distinct_cycle";
     windows: PhenologyWindow[];
     observation_count: number;
@@ -67,11 +70,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const parcelInsightsApi = {
-    phenology: (landId: string, start?: string, end?: string) => {
+    phenology: (landId: string, start?: string, end?: string, signal?: AbortSignal) => {
         const query = new URLSearchParams();
         if (start) query.set("start_date", start);
         if (end) query.set("end_date", end);
-        return request<Phenology>(`/lands/${encodeURIComponent(landId)}/phenology?${query}`);
+        return request<Phenology>(`/lands/${encodeURIComponent(landId)}/phenology?${query}`, { signal });
     },
     analyze: (body: InsightsRequest) => request<InsightsSnapshot>("/parcel-insights", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     history: (offset = 0) => request<InsightsHistory>(`/parcel-insights?limit=10&offset=${offset}`),
