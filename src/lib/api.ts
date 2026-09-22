@@ -1104,6 +1104,13 @@ export const scoutingApi = {
 
 // ── Weather ──────────────────────────────────────────────────────
 
+export interface WeatherBackfillOptions {
+    days?: number;
+    years?: number;
+    date_from?: string;
+    date_to?: string;
+}
+
 export const weatherApi = {
     get: (landId: string, startDate: string, endDate: string, includeForecast = true) =>
         apiFetch<WeatherResponse>(
@@ -1111,11 +1118,14 @@ export const weatherApi = {
         ),
     summary: (landId: string, days = 30) =>
         apiFetch<WeatherSummary>(`/lands/${landId}/weather/summary?days=${days}`),
-    backfill: (landId: string, days = 90) =>
-        apiFetch<{ land_id: string; status: string; message: string }>(
+    backfill: (landId: string, options: WeatherBackfillOptions | number = {}) => {
+        // 保留旧的 days 数字参数兼容性，新调用方可直接提交日期窗口。
+        const body = typeof options === "number" ? { days: options } : options;
+        return apiFetch<{ land_id: string; status: string; message: string }>(
             `/lands/${landId}/weather/backfill`,
-            { method: "POST", body: JSON.stringify({ days }) },
-        ),
+            { method: "POST", body: JSON.stringify(body) },
+        );
+    },
 };
 
 // ── Share Types ──────────────────────────────────────────────────
