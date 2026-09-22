@@ -7,15 +7,35 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { Loader2, RefreshCw, CloudOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land-schedule-filter";
 import ForecastBar from "@/components/field/forecast-bar";
 import WeatherChart from "@/components/charts/weather-chart";
 import WaterBalanceChart from "@/components/charts/water-balance-chart";
 import SoilMoistureGauge from "@/components/field/soil-moisture-gauge";
 
-type RangeOption = "30d" | "90d" | "season";
+type RangeOption = "30d" | "90d" | "season" | "1y" | "2y" | "3y" | "5y" | "custom";
 
-function getDateRange(range: RangeOption): { start: string; end: string } {
+const MAX_WEATHER_HISTORY_YEARS = 5;
+
+function formatDateInputValue(value: Date): string {
+    // 与遥感面板沿用 UTC 日期口径，确保两条任务链在跨午夜时仍提交同一窗口。
+    return value.toISOString().slice(0, 10);
+}
+
+function todayInputValue(): string {
+    return formatDateInputValue(new Date());
+}
+
+function dateYearsAgo(years: number): string {
+    const value = new Date();
+    value.setFullYear(value.getFullYear() - years);
+    return formatDateInputValue(value);
+}
+
+// 展示窗口和手动回填共用这组日期，预设年限与遥感页的最长历史范围保持一致。
+function getDateRange(range: RangeOption, customStartDate: string): { start: string; end: string } {
     const end = new Date();
     const start = new Date();
     switch (range) {
@@ -28,10 +48,24 @@ function getDateRange(range: RangeOption): { start: string; end: string } {
         case "season":
             start.setDate(end.getDate() - 180);
             break;
+        case "1y":
+            start.setFullYear(end.getFullYear() - 1);
+            break;
+        case "2y":
+            start.setFullYear(end.getFullYear() - 2);
+            break;
+        case "3y":
+            start.setFullYear(end.getFullYear() - 3);
+            break;
+        case "5y":
+            start.setFullYear(end.getFullYear() - MAX_WEATHER_HISTORY_YEARS);
+            break;
+        case "custom":
+            return { start: customStartDate, end: formatDateInputValue(end) };
     }
     return {
-        start: start.toISOString().split("T")[0],
-        end: end.toISOString().split("T")[0],
+        start: formatDateInputValue(start),
+        end: formatDateInputValue(end),
     };
 }
 
@@ -47,6 +81,7 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
     const oversizedLand = isOversizedLand(areaMu);
 
     const [range, setRange] = useState<RangeOption>("30d");
+    const [customStartDate, setCustomStartDate] = useState(() => dateYearsAgo(2));
     const [loading, setLoading] = useState(true);
     const [backfilling, setBackfilling] = useState(false);
     const [fetchProgress, setFetchProgress] = useState(false);
@@ -59,14 +94,24 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
             { value: "30d", label: t("range30d") },
             { value: "90d", label: t("range90d") },
             { value: "season", label: t("rangeSeason") },
+            { value: "1y", label: t("range1y") },
+            { value: "2y", label: t("range2y") },
+            { value: "3y", label: t("range3y") },
+            { value: "5y", label: t("range5y") },
+            { value: "custom", label: t("rangeCustom") },
         ],
         [t],
+    );
+
+    const selectedWindow = useMemo(
+        () => getDateRange(range, customStartDate),
+        [customStartDate, range],
     );
 
     const loadWeather = useCallback(async () => {
         setLoading(true);
         try {
-            const { start, end } = getDateRange(range);
+            const { start, end } = selectedWindow;
             const res = await weatherApi.get(landId, start, end, true);
             setData(res.data);
             setForecast(res.forecast);
@@ -76,7 +121,7 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
         } finally {
             setLoading(false);
         }
-    }, [landId, range]);
+    }, [landId, selectedWindow]);
 
     useEffect(() => {
         loadWeather();
@@ -90,12 +135,17 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
         setBackfilling(true);
         setFetchProgress(true);
         try {
-            await weatherApi.backfill(landId, 90);
+            // 手动天气拉取与当前展示窗口使用同一组起止日期，避免只补 90 天却
+            // 让多年图表继续显示空白；自定义日期也会原样传给后端任务链路。
+            await weatherApi.backfill(landId, {
+                date_from: selectedWindow.start,
+                date_to: selectedWindow.end,
+            });
             toast.success(t("backfillStarted"));
             // Lightweight progress: silently reload a few times, then stop spinner
             let attempts = 0;
             const maxAttempts = 12;
-            const { start, end } = getDateRange(range);
+            const { start, end } = selectedWindow;
             const poll = async () => {
                 attempts += 1;
                 try {
@@ -129,35 +179,7 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
         );
     }
 
-    if (data.length === 0 && forecast.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-                {oversizedLand && (
-                    <div role="alert" className="w-full flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-subtle px-3 py-2 text-left text-xs text-warning">
-                        <span>{t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) })}</span>
-                    </div>
-                )}
-                <CloudOff className="h-8 w-8 text-muted-foreground/50" />
-                <div>
-                    <p className="text-sm font-medium">{t("noWeatherData")}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{t("noWeatherDataDesc")}</p>
-                </div>
-                <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleBackfill}
-                    disabled={oversizedLand || backfilling || fetchProgress}
-                >
-                    {backfilling || fetchProgress ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                    )}
-                    {t("fetchWeather")}
-                </Button>
-            </div>
-        );
-    }
+    const hasWeatherContent = data.length > 0 || forecast.length > 0;
 
     return (
         <div className="space-y-4">
@@ -176,8 +198,8 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                 </div>
             )}
             {/* Range selector */}
-            <div className="flex items-center justify-between">
-                <div className="flex gap-1 rounded-lg border bg-surface-2 p-0.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1 rounded-lg border bg-surface-2 p-0.5">
                     {rangeOptions.map((opt) => (
                         <button
                             key={opt.value}
@@ -192,23 +214,45 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                         </button>
                     ))}
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs"
-                    onClick={() => { void handleBackfill(); }}
-                    disabled={oversizedLand || backfilling || fetchProgress}
-                    title={t("refresh")}
-                >
-                    {backfilling || fetchProgress ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                        <RefreshCw className="h-3.5 w-3.5" />
-                    )}
-                    {t("refresh")}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                        <Label htmlFor="weather-start-date" className="text-[11px] text-muted-foreground whitespace-nowrap">
+                            {t("startDate")}
+                        </Label>
+                        <Input
+                            id="weather-start-date"
+                            type="date"
+                            value={customStartDate}
+                            min={dateYearsAgo(MAX_WEATHER_HISTORY_YEARS)}
+                            max={todayInputValue()}
+                            disabled={range !== "custom"}
+                            onChange={(event) => {
+                                setCustomStartDate(event.target.value);
+                                setRange("custom");
+                            }}
+                            className="h-8 w-[132px] text-xs"
+                        />
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
+                        onClick={() => { void handleBackfill(); }}
+                        disabled={oversizedLand || backfilling || fetchProgress}
+                        title={t("refresh")}
+                    >
+                        {backfilling || fetchProgress ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                            <RefreshCw className="h-3.5 w-3.5" />
+                        )}
+                        {t("refresh")}
+                    </Button>
+                </div>
             </div>
 
+            {hasWeatherContent ? (
+                <>
             {/* Unified weather stats grid */}
             {summary && (() => {
                 const latest = data.length > 0 ? data[data.length - 1] : null;
@@ -354,6 +398,29 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                             );
                         })}
                     </div>
+                </div>
+            )}
+                </>
+            ) : (
+                <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+                    <CloudOff className="h-8 w-8 text-muted-foreground/50" />
+                    <div>
+                        <p className="text-sm font-medium">{t("noWeatherData")}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{t("noWeatherDataDesc")}</p>
+                    </div>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { void handleBackfill(); }}
+                        disabled={oversizedLand || backfilling || fetchProgress}
+                    >
+                        {backfilling || fetchProgress ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                        )}
+                        {t("fetchWeather")}
+                    </Button>
                 </div>
             )}
         </div>
