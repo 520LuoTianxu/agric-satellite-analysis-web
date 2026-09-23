@@ -62,8 +62,8 @@ export default function AdminOperationsPage() {
     const [smartFromLandId, setSmartFromLandId] = useState("");
     const [smartToLandId, setSmartToLandId] = useState("");
     const [smartYears, setSmartYears] = useState("3");
-    const [virtualAreaLandList, setVirtualAreaLandList] = useState("");
-    const [virtualAreaYears, setVirtualAreaYears] = useState("5");
+    const [satelliteHistoryLandList, setSatelliteHistoryLandList] = useState("");
+    const [satelliteHistoryYears, setSatelliteHistoryYears] = useState("5");
     const { data, error, isLoading, mutate } = useSWR<AdminOpsOverview>(
         "/admin/ops/overview",
         () => adminOpsApi.overview(100),
@@ -131,23 +131,24 @@ export default function AdminOperationsPage() {
         }
     }
 
-    async function triggerVirtualArea(taskKey: "virtual-area-initialize" | "virtual-area-history") {
-        const landIds = virtualAreaLandList
+    async function triggerSatelliteHistoryBackfill() {
+        const landIds = satelliteHistoryLandList
             .split(/[\s,，]+/)
             .map((value) => value.trim())
             .filter(Boolean);
-        const years = Number(virtualAreaYears);
-        if (taskKey === "virtual-area-history" && (!Number.isInteger(years) || years < 1 || years > 10)) {
-            setNotice(t("virtualAreaYearsInvalid"));
+        const years = Number(satelliteHistoryYears);
+        if (!Number.isInteger(years) || years < 1 || years > 10) {
+            setNotice(t("satelliteHistoryYearsInvalid"));
             return;
         }
-        setTriggering(taskKey);
+        setTriggering("satellite-history-backfill");
         setNotice(null);
         try {
             await adminOpsApi.trigger({
-                task_key: taskKey,
+                task_key: "satellite-history-backfill",
                 ...(landIds.length ? { landIdList: landIds } : {}),
-                ...(taskKey === "virtual-area-history" ? { years, sensors: ["S1", "S2"] } : {}),
+                years,
+                sensors: ["S1", "S2"],
             });
             setNotice(t("triggered"));
             await mutate();
@@ -231,20 +232,18 @@ export default function AdminOperationsPage() {
                                         {t("runNow")}
                                     </Button>
                                 </div>
-                            ) : task.key === "virtual-area-initialize" || task.key === "virtual-area-history" ? (
+                            ) : task.key === "satellite-history-backfill" ? (
                                 <div className="w-full max-w-3xl space-y-3 rounded-md border bg-muted/20 p-3 sm:w-[560px]">
-                                    <p className="text-xs text-muted-foreground">{t("virtualAreaHint")}</p>
+                                    <p className="text-xs text-muted-foreground">{t("satelliteHistoryHint")}</p>
                                     <textarea
                                         className="min-h-16 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                                        value={virtualAreaLandList}
-                                        onChange={(event) => setVirtualAreaLandList(event.target.value)}
-                                        placeholder={t("virtualAreaLandListPlaceholder")}
+                                        value={satelliteHistoryLandList}
+                                        onChange={(event) => setSatelliteHistoryLandList(event.target.value)}
+                                        placeholder={t("satelliteHistoryLandListPlaceholder")}
                                         aria-label={t("landIdList")}
                                     />
-                                    {task.key === "virtual-area-history" && (
-                                        <Input type="number" min={1} max={10} value={virtualAreaYears} onChange={(event) => setVirtualAreaYears(event.target.value)} placeholder={t("years")} aria-label={t("years")} />
-                                    )}
-                                    <Button size="sm" onClick={() => triggerVirtualArea(task.key as "virtual-area-initialize" | "virtual-area-history")} disabled={triggering !== null}>
+                                    <Input type="number" min={1} max={10} value={satelliteHistoryYears} onChange={(event) => setSatelliteHistoryYears(event.target.value)} placeholder={t("years")} aria-label={t("years")} />
+                                    <Button size="sm" onClick={triggerSatelliteHistoryBackfill} disabled={triggering !== null || !task.enabled}>
                                         {triggering === task.key ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                                         {t("runNow")}
                                     </Button>
