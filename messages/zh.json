@@ -393,7 +393,12 @@
     "placeholderAgriLandId": "例如：25107",
     "agriLandIdHint": "填写后写入 agri:<id> 标签，用于遥感 HTTP 回填",
     "cdfinanceGroupId": "中和农信项目组ID（可选）",
-    "placeholderCdfinanceGroupId": "例如：7694"
+    "placeholderCdfinanceGroupId": "例如：7694",
+    "boundaryChecking": "正在检查当前地图中的建筑和居民区…",
+    "boundaryUnavailable": "当前没有可用的 OSM 建筑矢量数据，无法自动检查；请目视核对边界。",
+    "boundaryClear": "当前已加载的地图数据中未发现建筑或居民区重叠；地图要素可能不完整。",
+    "boundaryBuildingWarning": "边界与地图中的 {count} 处建筑轮廓重叠，请确认没有把房屋圈入地块。",
+    "boundaryResidentialWarning": "边界与地图标记的居民区重叠，请确认没有把房区圈入农田。"
   },
   "fieldDetail": {
     "backToFarm": "返回项目",
@@ -999,6 +1004,11 @@
   "alertRules": {
     "ndvi_drop": "NDVI 下降",
     "ndvi_threshold": "NDVI 偏低",
+    "weak_growth": "作物长势偏弱",
+    "drought_risk": "干旱风险",
+    "flood_risk": "洪涝风险",
+    "boundary_building_overlap": "边界覆盖建筑",
+    "boundary_residential_overlap": "边界覆盖居民区",
     "evi_drop": "EVI 下降",
     "evi_threshold": "EVI 偏低",
     "savi_drop": "SAVI 下降",

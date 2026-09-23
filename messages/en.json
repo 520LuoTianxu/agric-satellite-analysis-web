@@ -393,7 +393,12 @@
     "placeholderAgriLandId": "e.g. 25107",
     "agriLandIdHint": "Saved as agri:<id> tag; enables RS HTTP backfill",
     "cdfinanceGroupId": "CDFinance group ID (optional)",
-    "placeholderCdfinanceGroupId": "e.g. 7694"
+    "placeholderCdfinanceGroupId": "e.g. 7694",
+    "boundaryChecking": "Checking buildings and residential areas in the current map…",
+    "boundaryUnavailable": "OSM building vectors are unavailable, so the boundary cannot be checked automatically. Please review it on the map.",
+    "boundaryClear": "No mapped building or residential overlap was found; map features may be incomplete.",
+    "boundaryBuildingWarning": "The boundary overlaps {count} mapped building footprints. Check that no houses were included.",
+    "boundaryResidentialWarning": "The boundary overlaps a mapped residential area. Check that it does not include housing."
   },
   "fieldDetail": {
     "backToFarm": "Back to project",
@@ -999,6 +1004,11 @@
   "alertRules": {
     "ndvi_drop": "NDVI drop",
     "ndvi_threshold": "Low NDVI",
+    "weak_growth": "Weak crop growth",
+    "drought_risk": "Drought risk",
+    "flood_risk": "Flood risk",
+    "boundary_building_overlap": "Building inside boundary",
+    "boundary_residential_overlap": "Residential area inside boundary",
     "evi_drop": "EVI drop",
     "evi_threshold": "Low EVI",
     "savi_drop": "SAVI drop",
