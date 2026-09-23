@@ -1584,7 +1584,40 @@ export interface AgriLandScenesSummary {
     sensors: AgriSensorSceneSummary[];
 }
 
+export interface AgriProjectAreaAsset {
+    tile_id: string;
+    sensor: AgriSensor;
+    scene_date: string;
+    scene_id: string;
+    asset_kind: "pixel_json" | "preview_png" | string;
+    oss_key: string;
+    format: string;
+    compression: string | null;
+    grid_json: Record<string, unknown>;
+    checksum: string | null;
+    byte_size: number | null;
+    status: string;
+    error: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+    download_url: string | null;
+}
+
 export const agriApi = {
+    projectAreaAssets: (
+        tileId: string,
+        opts: { sensor?: AgriSensor; from?: string; to?: string; assetKind?: "pixel_json" | "preview_png" } = {},
+    ) => {
+        const params = new URLSearchParams();
+        if (opts.sensor) params.set("sensor", opts.sensor);
+        if (opts.from) params.set("from", opts.from);
+        if (opts.to) params.set("to", opts.to);
+        if (opts.assetKind) params.set("asset_kind", opts.assetKind);
+        const query = params.toString();
+        return apiFetch<AgriProjectAreaAsset[]>(
+            `/agri/project-areas/${encodeURIComponent(tileId)}/assets${query ? `?${query}` : ""}`,
+        );
+    },
     overviewDaily: (opts: { level?: OverviewLevel; code?: string; name?: string; as_of?: string } = {}) => {
         const params = new URLSearchParams();
         for (const [key, value] of Object.entries(opts)) if (value) params.set(key, value);
@@ -1966,6 +1999,39 @@ export interface AdminOpsOverview {
     tasks: ScheduledTask[];
     runs: AdminTaskRun[];
 }
+
+export interface VirtualAreaOperation {
+    status: string;
+    parent_job_id: string;
+    land_count: number;
+    new_area_count?: number;
+    matched_land_count?: number;
+    area_count: number;
+    job_count?: number;
+    queued_job_ids: string[];
+    failed_job_ids: string[];
+    area_ids: string[];
+    date_from?: string | null;
+    date_to?: string | null;
+}
+
+export const virtualAreasApi = {
+    initialize: (landIds?: string[]) =>
+        apiFetch<VirtualAreaOperation>("/admin/virtual-project-areas/initialize", {
+            method: "POST",
+            body: JSON.stringify(landIds?.length ? { landIdList: landIds } : {}),
+        }),
+    historyBackfill: (options: { landIds?: string[]; years?: number; force?: boolean } = {}) =>
+        apiFetch<VirtualAreaOperation>("/admin/virtual-project-areas/history-backfill", {
+            method: "POST",
+            body: JSON.stringify({
+                ...(options.landIds?.length ? { landIdList: options.landIds } : {}),
+                years: options.years ?? 5,
+                sensors: ["S1", "S2"],
+                force: options.force ?? false,
+            }),
+        }),
+};
 
 export interface AdminExecutionJob {
     id: string;

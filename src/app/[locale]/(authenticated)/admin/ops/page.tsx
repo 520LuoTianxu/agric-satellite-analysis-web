@@ -62,6 +62,8 @@ export default function AdminOperationsPage() {
     const [smartFromLandId, setSmartFromLandId] = useState("");
     const [smartToLandId, setSmartToLandId] = useState("");
     const [smartYears, setSmartYears] = useState("3");
+    const [virtualAreaLandList, setVirtualAreaLandList] = useState("");
+    const [virtualAreaYears, setVirtualAreaYears] = useState("5");
     const { data, error, isLoading, mutate } = useSWR<AdminOpsOverview>(
         "/admin/ops/overview",
         () => adminOpsApi.overview(100),
@@ -119,6 +121,33 @@ export default function AdminOperationsPage() {
                 }),
                 years,
                 sensors: ["S1", "S2"],
+            });
+            setNotice(t("triggered"));
+            await mutate();
+        } catch (triggerError) {
+            setNotice(triggerError instanceof Error ? triggerError.message : t("triggerFailed"));
+        } finally {
+            setTriggering(null);
+        }
+    }
+
+    async function triggerVirtualArea(taskKey: "virtual-area-initialize" | "virtual-area-history") {
+        const landIds = virtualAreaLandList
+            .split(/[\s,，]+/)
+            .map((value) => value.trim())
+            .filter(Boolean);
+        const years = Number(virtualAreaYears);
+        if (taskKey === "virtual-area-history" && (!Number.isInteger(years) || years < 1 || years > 10)) {
+            setNotice(t("virtualAreaYearsInvalid"));
+            return;
+        }
+        setTriggering(taskKey);
+        setNotice(null);
+        try {
+            await adminOpsApi.trigger({
+                task_key: taskKey,
+                ...(landIds.length ? { landIdList: landIds } : {}),
+                ...(taskKey === "virtual-area-history" ? { years, sensors: ["S1", "S2"] } : {}),
             });
             setNotice(t("triggered"));
             await mutate();
@@ -198,6 +227,24 @@ export default function AdminOperationsPage() {
                                         <Input type="number" min={1} max={10} value={smartYears} onChange={(event) => setSmartYears(event.target.value)} placeholder={t("years")} aria-label={t("years")} />
                                     </div>
                                     <Button size="sm" onClick={triggerSmartBackfill} disabled={triggering !== null || !task.enabled}>
+                                        {triggering === task.key ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                                        {t("runNow")}
+                                    </Button>
+                                </div>
+                            ) : task.key === "virtual-area-initialize" || task.key === "virtual-area-history" ? (
+                                <div className="w-full max-w-3xl space-y-3 rounded-md border bg-muted/20 p-3 sm:w-[560px]">
+                                    <p className="text-xs text-muted-foreground">{t("virtualAreaHint")}</p>
+                                    <textarea
+                                        className="min-h-16 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                                        value={virtualAreaLandList}
+                                        onChange={(event) => setVirtualAreaLandList(event.target.value)}
+                                        placeholder={t("virtualAreaLandListPlaceholder")}
+                                        aria-label={t("landIdList")}
+                                    />
+                                    {task.key === "virtual-area-history" && (
+                                        <Input type="number" min={1} max={10} value={virtualAreaYears} onChange={(event) => setVirtualAreaYears(event.target.value)} placeholder={t("years")} aria-label={t("years")} />
+                                    )}
+                                    <Button size="sm" onClick={() => triggerVirtualArea(task.key as "virtual-area-initialize" | "virtual-area-history")} disabled={triggering !== null}>
                                         {triggering === task.key ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                                         {t("runNow")}
                                     </Button>
