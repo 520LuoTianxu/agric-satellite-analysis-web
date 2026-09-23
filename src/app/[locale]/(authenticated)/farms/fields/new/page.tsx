@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState, useCallback } from "react";
+import React, { Suspense, useState, useCallback, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
 import dynamic from "next/dynamic";
@@ -18,6 +18,7 @@ import { wgs84ToGcj02 } from "@/lib/coordinate-transform";
 import { MAP_CHROME } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 import { formatAreaMu } from "@/lib/area";
+import { inspectBoundaryMap, type BoundaryMapReview } from "@/lib/boundary-review";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Dynamic imports - these need browser APIs
@@ -55,9 +56,30 @@ function NewFieldPageContent() {
     const [mapInstance, setMapInstance] = useState<maplibregl.Map | null>(null);
     const [mapStyle, setMapStyle] = useState<MapStyleId>("satellite");
 
+    const [boundaryReview, setBoundaryReview] = useState<BoundaryMapReview | null>(null);
+
     const handleGeomChange = useCallback((geom: GeoJSON.Geometry | null) => {
         setGeometry(geom);
     }, []);
+
+    useEffect(() => {
+        if (!geometry || !mapInstance) {
+            setBoundaryReview(null);
+            return;
+        }
+        let cancelled = false;
+        const inspect = () => {
+            if (!cancelled) setBoundaryReview(inspectBoundaryMap(mapInstance, geometry));
+        };
+        inspect();
+        mapInstance.on("idle", inspect);
+        const retry = window.setTimeout(inspect, 1000);
+        return () => {
+            cancelled = true;
+            mapInstance.off("idle", inspect);
+            window.clearTimeout(retry);
+        };
+    }, [geometry, mapInstance]);
 
     const handleLocationSelect = useCallback((lngLat: [number, number]) => {
         // Nominatim 返回 WGS84；搜索结果定位到高德底图前转换成 GCJ-02。
@@ -99,6 +121,15 @@ function NewFieldPageContent() {
             return;
         }
 
+        const currentReview = mapInstance ? inspectBoundaryMap(mapInstance, geometry) : boundaryReview;
+        setBoundaryReview(currentReview);
+        if (currentReview?.status === "checked" && currentReview.buildingCount > 0) {
+            toast.warning(t("boundaryBuildingWarning", { count: currentReview.buildingCount }));
+        }
+        if (currentReview?.status === "checked" && currentReview.residentialOverlap) {
+            toast.warning(t("boundaryResidentialWarning"));
+        }
+
         setSaving(true);
         try {
             const land = await landsApi.create({
@@ -106,6 +137,15 @@ function NewFieldPageContent() {
                 farm_id: farmId,
                 land_name: name.trim(),
                 boundary_geojson: geometry,
+                ...(currentReview?.status === "checked"
+                    ? {
+                        boundary_review: {
+                            source: "osm_pmtiles",
+                            building_count: currentReview.buildingCount,
+                            residential_overlap: currentReview.residentialOverlap,
+                        },
+                    }
+                    : {}),
                 crop_type: cropType.trim(),
                 season: season.trim() || undefined,
                 group_id: cdfinanceGroupId.trim() || undefined,
@@ -235,6 +275,25 @@ function NewFieldPageContent() {
                                     {geometry ? <Check className="h-4 w-4" aria-hidden="true" /> : <TriangleAlert className="h-4 w-4" aria-hidden="true" />}
                                     {geometry ? t("polygonDrawn") : t("drawPolygon")}
                                 </div>
+
+                                {geometry && (
+                                    <div
+                                        role={boundaryReview?.status === "checked" && (boundaryReview.buildingCount > 0 || boundaryReview.residentialOverlap) ? "alert" : undefined}
+                                        className={`space-y-1 rounded-lg p-2.5 text-xs ${boundaryReview?.status === "checked" && (boundaryReview.buildingCount > 0 || boundaryReview.residentialOverlap) ? "border border-warning/40 bg-warning-subtle text-warning" : "bg-muted text-muted-foreground"}`}
+                                    >
+                                        {!boundaryReview && <p>{t("boundaryChecking")}</p>}
+                                        {boundaryReview?.status === "unavailable" && <p>{t("boundaryUnavailable")}</p>}
+                                        {boundaryReview?.status === "checked" && boundaryReview.buildingCount === 0 && !boundaryReview.residentialOverlap && (
+                                            <p>{t("boundaryClear")}</p>
+                                        )}
+                                        {boundaryReview?.status === "checked" && boundaryReview.buildingCount > 0 && (
+                                            <p>{t("boundaryBuildingWarning", { count: boundaryReview.buildingCount })}</p>
+                                        )}
+                                        {boundaryReview?.status === "checked" && boundaryReview.residentialOverlap && (
+                                            <p>{t("boundaryResidentialWarning")}</p>
+                                        )}
+                                    </div>
+                                )}
 
                                 <Button
                                     type="submit"

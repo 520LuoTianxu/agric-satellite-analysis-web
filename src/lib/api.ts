@@ -606,6 +606,11 @@ export const landsApi = {
         farm_id?: string;
         land_name: string;
         boundary_geojson: GeoJSON.Geometry;
+        boundary_review?: {
+            source: "osm_pmtiles";
+            building_count: number;
+            residential_overlap: boolean;
+        };
         tile_id?: string;
         group_id?: string;
         group_name?: string;
@@ -622,8 +627,14 @@ export const landsApi = {
         crop_type?: string;
         season?: string;
         tags_json?: string[];
-    }) =>
-        apiFetch<LandParcel>("/lands", { method: "POST", body: JSON.stringify(data) }),
+    }) => {
+        const session = getAlertSession();
+        return apiFetch<LandParcel>("/lands", {
+            method: "POST",
+            headers: session ? { "Hr-Base-Id": session.baseId } : undefined,
+            body: JSON.stringify(data),
+        });
+    },
     update: (landId: string, data: {
         land_name?: string;
         boundary_geojson?: GeoJSON.Geometry;
@@ -1070,6 +1081,18 @@ export const alertsApi = {
         if (indexType) params.set("index_type", indexType);
         return alertFetch<Paginated<Alert>>(`/alerts?${params}`);
     },
+    // 地块详情加载时让 API 用主库最新遥感与天气数据补算预警。
+    evaluateForLand: (landId: string) =>
+        alertFetch<{
+            land_id: string;
+            status: string;
+            created?: number;
+            removed_open?: number;
+            reason?: string;
+        }>(
+            `/lands/${encodeURIComponent(landId)}/alerts/evaluate`,
+            { method: "POST" },
+        ),
     listForFarm: (farmId: string, limit = 50) =>
         alertFetch<Paginated<Alert>>(`/alerts?farm_id=${farmId}&limit=${limit}`),
     update: (alertId: string, data: { status: string }) =>

@@ -450,15 +450,23 @@ function FieldDetailPageContent() {
     // Alerts
     const [openAlertCount, setOpenAlertCount] = useState(0);
 
-    // Fetch alert count independently (so badge shows without opening alerts tab)
+    // 打开地块时先按最新卫星观测补算预警，再取数量，保证页签角标和预警列表一致。
     useEffect(() => {
         if (!landId) return;
         let cancelled = false;
-        alertsApi.listForLand(landId, 200).then((res) => {
-            if (!cancelled) {
-                setOpenAlertCount(res.items.filter((a) => a.status === "open").length);
+        const refreshAlerts = async () => {
+            // 补算失败时仍读取已有预警，避免短时故障让页面显示为零。
+            await alertsApi.evaluateForLand(landId).catch(() => undefined);
+            try {
+                const res = await alertsApi.listForLand(landId, 200);
+                if (!cancelled) {
+                    setOpenAlertCount(res.items.filter((a) => a.status === "open").length);
+                }
+            } catch {
+                // 保留静默行为，避免预警服务暂时不可用时阻断地块页面。
             }
-        }).catch(() => { });
+        };
+        void refreshAlerts();
         return () => { cancelled = true; };
     }, [landId]);
 
