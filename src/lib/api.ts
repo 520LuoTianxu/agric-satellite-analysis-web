@@ -2023,39 +2023,6 @@ export interface AdminOpsOverview {
     runs: AdminTaskRun[];
 }
 
-export interface VirtualAreaOperation {
-    status: string;
-    parent_job_id: string;
-    land_count: number;
-    new_area_count?: number;
-    matched_land_count?: number;
-    area_count: number;
-    job_count?: number;
-    queued_job_ids: string[];
-    failed_job_ids: string[];
-    area_ids: string[];
-    date_from?: string | null;
-    date_to?: string | null;
-}
-
-export const virtualAreasApi = {
-    initialize: (landIds?: string[]) =>
-        apiFetch<VirtualAreaOperation>("/admin/virtual-project-areas/initialize", {
-            method: "POST",
-            body: JSON.stringify(landIds?.length ? { landIdList: landIds } : {}),
-        }),
-    historyBackfill: (options: { landIds?: string[]; years?: number; force?: boolean } = {}) =>
-        apiFetch<VirtualAreaOperation>("/admin/virtual-project-areas/history-backfill", {
-            method: "POST",
-            body: JSON.stringify({
-                ...(options.landIds?.length ? { landIdList: options.landIds } : {}),
-                years: options.years ?? 5,
-                sensors: ["S1", "S2"],
-                force: options.force ?? false,
-            }),
-        }),
-};
-
 export interface AdminExecutionJob {
     id: string;
     land_id: string | null;
