@@ -843,8 +843,17 @@ export function classifyFloodScene(
     return "dry";
 }
 
-export function classifyFloodSeries(scenes: SarSceneLike[]): Map<string, AgriFloodClass> {
-    const valid = scenes.filter((s) => finiteNum(s.vv_avg) != null);
+export function classifyFloodSeries(
+    scenes: SarSceneLike[],
+    asOfDate?: string,
+): Map<string, AgriFloodClass> {
+    // 回看单个历史日期时，排除之后的场景，避免未来影像回写过去的洪涝标签。
+    const valid = scenes.filter(
+        (s) =>
+            finiteNum(s.vv_avg) != null &&
+            (asOfDate == null ||
+                (Boolean(s.date) && String(s.date) <= asOfDate)),
+    );
     const groups = new Map<string, SarSceneLike[]>();
     const calibrationGroups = new Map<string, SarSceneLike[]>();
     for (const s of valid) {
