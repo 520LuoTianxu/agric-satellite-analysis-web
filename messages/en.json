@@ -17,6 +17,9 @@
     "failedLoadOrgs": "Failed to load workspaces. Please refresh the page.",
     "delete": "Delete"
   },
+  "appShell": {
+    "skipToMain": "Skip to main content"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "farms": "Projects",
@@ -412,6 +415,10 @@
     "tabWeather": "Weather",
     "tabSoil": "Soil",
     "tabSeasonGrowth": "Season growth",
+    "hidePanel": "Collapse analysis sidebar",
+    "showPanel": "Expand analysis sidebar",
+    "resizePanel": "Resize analysis sidebar",
+    "resizePanelHint": "Drag to resize. Use the left/right arrow keys to adjust, Shift for larger steps, Home/End for the minimum/maximum, and Enter or Space to restore the default width.",
     "projectLandSelect": "Project field",
     "projectLandsLoading": "Loading project fields…",
     "searchProjectLand": "Search project fields by name or ID",

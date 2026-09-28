@@ -17,6 +17,9 @@
     "failedLoadOrgs": "工作区加载失败，请刷新页面。",
     "delete": "删除"
   },
+  "appShell": {
+    "skipToMain": "跳到主要内容"
+  },
   "nav": {
     "dashboard": "仪表盘",
     "farms": "项目",
@@ -412,6 +415,10 @@
     "tabWeather": "气象",
     "tabSoil": "土壤",
     "tabSeasonGrowth": "生育期长势",
+    "hidePanel": "收起分析侧栏",
+    "showPanel": "展开分析侧栏",
+    "resizePanel": "调整分析侧栏宽度",
+    "resizePanelHint": "拖动调整宽度；使用左右方向键微调，按住 Shift 可加大步长，Home/End 调至最窄/最宽，Enter 或空格恢复默认宽度。",
     "projectLandSelect": "项目地块",
     "projectLandsLoading": "正在加载项目地块…",
     "searchProjectLand": "搜索项目地块名称或编号",

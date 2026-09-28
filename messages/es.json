@@ -17,6 +17,9 @@
     "failedLoadOrgs": "No se pudieron cargar los espacios de trabajo. Actualiza la página.",
     "delete": "Eliminar"
   },
+  "appShell": {
+    "skipToMain": "Saltar al contenido principal"
+  },
   "nav": {
     "dashboard": "Panel",
     "farms": "Proyectos",
@@ -412,6 +415,10 @@
     "tabWeather": "Clima",
     "tabSoil": "Suelo",
     "tabSeasonGrowth": "Crecimiento de temporada",
+    "hidePanel": "Contraer el panel de análisis",
+    "showPanel": "Expandir el panel de análisis",
+    "resizePanel": "Cambiar el ancho del panel de análisis",
+    "resizePanelHint": "Arrastra para cambiar el ancho. Usa las flechas izquierda/derecha para ajustar, Shift para pasos mayores, Inicio/Fin para el mínimo/máximo y Enter o Espacio para restaurar el ancho predeterminado.",
     "projectLandSelect": "Campo del proyecto",
     "projectLandsLoading": "Cargando campos del proyecto…",
     "searchProjectLand": "Buscar campos del proyecto por nombre o ID",
