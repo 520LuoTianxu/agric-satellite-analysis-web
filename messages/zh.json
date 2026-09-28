@@ -1078,6 +1078,7 @@
     "title": "长势分析",
     "subtitle": "查看地块长势与历史变化{scenes}",
     "scenesCount": " · 共 {total} 景",
+    "historyWindowPartial": "当前仅载入各传感器的最新记录（{sensors}），更早影像未载入。",
     "loading": "正在加载卫星影像…",
     "loadFailed": "数据加载失败，请重试",
     "empty": "暂无遥感影像。可点击“更新影像”获取数据；天气和土壤信息仍可查看。",

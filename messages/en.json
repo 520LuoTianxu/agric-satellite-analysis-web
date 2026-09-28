@@ -1078,6 +1078,7 @@
     "title": "Growth analysis",
     "subtitle": "Field growth and history{scenes}",
     "scenesCount": " · {total} scenes",
+    "historyWindowPartial": "Only the newest records are loaded ({sensors}); earlier imagery is not loaded.",
     "loading": "Loading agri scenes…",
     "loadFailed": "Unable to load data. Please retry.",
     "empty": "No satellite imagery yet. Select Update imagery to fetch data. Weather and soil remain available.",

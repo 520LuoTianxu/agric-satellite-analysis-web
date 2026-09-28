@@ -1068,6 +1068,7 @@
     "title": "Análisis del crecimiento",
     "subtitle": "Crecimiento e historial del campo{scenes}",
     "scenesCount": " · {total} escenas",
+    "historyWindowPartial": "Solo se cargan los registros más recientes ({sensors}); las imágenes anteriores no están cargadas.",
     "loading": "Cargando escenas agri…",
     "loadFailed": "No se pudieron cargar los datos. Reintenta.",
     "empty": "Aún no hay imágenes. Selecciona Actualizar imágenes para obtener datos. El clima y el suelo siguen disponibles.",

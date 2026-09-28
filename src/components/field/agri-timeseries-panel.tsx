@@ -1471,6 +1471,20 @@ export default function AgriTimeseriesPanel({
     }, [landId, scenes, loadDayGradeShares]);
 
     const total = summary?.total ?? 0;
+    const loadedSceneCounts = useMemo(
+        () => scenes.reduce((counts, scene) => {
+            counts[scene.sensor] += 1;
+            return counts;
+        }, { S1: 0, S2: 0 }),
+        [scenes],
+    );
+    const partialSceneCounts = useMemo(
+        () => (summary?.sensors ?? [])
+            .filter((sensor) => loadedSceneCounts[sensor.sensor] < sensor.count)
+            .map((sensor) => `${sensor.sensor} ${loadedSceneCounts[sensor.sensor]}/${sensor.count}`)
+            .join(" · "),
+        [summary, loadedSceneCounts],
+    );
 
     if (!landId) return null;
     if (!loading && hasMonitoringData && total === 0) return null;
@@ -1536,6 +1550,11 @@ export default function AgriTimeseriesPanel({
                                     </Badge>
                                 ))}
                             </div>
+                        )}
+                        {partialSceneCounts && (
+                            <p role="status" aria-live="polite" className="max-w-[16rem] text-right text-[9px] leading-tight text-muted-foreground">
+                                {t("historyWindowPartial", { sensors: partialSceneCounts })}
+                            </p>
                         )}
                     </div>
                 </div>
