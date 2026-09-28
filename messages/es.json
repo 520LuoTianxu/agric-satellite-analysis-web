@@ -1164,7 +1164,7 @@
       "cire": "Ofrece una señal relativa de clorofila, no una medición directa ni una recomendación de fertilización.",
       "vv": "La retrodispersión radar co-polarizada de Sentinel-1 indica intensidad de señal, no una puntuación del cultivo.",
       "vh": "La retrodispersión radar cruzada de Sentinel-1; compárala con VV y observaciones de varias fechas.",
-      "drought": "Usa indicadores ópticos para señalar posible estrés hídrico; confirma con tendencias, lluvia y revisión en campo.",
+      "drought": "Usa indicadores ópticos para señalar posible estrés hídrico; confirma con tendencias, lluvia y revisión en campo. Los niveles usan referencias del mismo mes entre las escenas de temporada cargadas; al añadir imágenes pueden cambiar etiquetas anteriores.",
       "flood": "La clasificación por fecha necesita al menos 3 observaciones comparables. Con menos, no se marca la fecha como seca ni como inundación confirmada: las señales parecidas al agua quedan en observación y las demás sin clasificar. VV/VH de una sola escena no confirma una inundación. Cada fecha usa solo las escenas cargadas de ese día y anteriores; cargar imágenes más antiguas puede completar la referencia, mientras que las posteriores no cambian etiquetas previas.",
       "savi": "Índice de vegetación que reduce el efecto del suelo cuando las plantas son escasas o el suelo está expuesto.",
       "ndwi": "Resalta posibles aguas superficiales; no mide la humedad del suelo.",
