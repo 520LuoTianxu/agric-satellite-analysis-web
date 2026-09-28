@@ -56,6 +56,7 @@ export const WATCH_VV_MAX = -15;
 export const WATCH_VV_DROP = -2;
 export const WATCH_VH_MAX = -20;
 export const FLOOD_VV_SEVERE = -20;
+/** Minimum comparable scenes required before a date can be labeled dry or confirmed flood. */
 export const MIN_ORBIT_SAMPLES = 3;
 export const VV_VH_DIFF_PCTL = 40;
 export const FLOOD_SPRING_MONTHS = [3, 4, 5] as const;
@@ -837,6 +838,8 @@ export function classifyFloodScene(
     const watchDrop = drop != null && drop <= WATCH_VV_DROP;
     const watchVh = vhF != null && vhF <= WATCH_VH_MAX;
     if (watchVv && (watchDrop || watchVh || helper || lowVv)) return "watch";
+    // 没有足够同口径观测时无法证明“干燥”；静态水体候选仍可保留为关注。
+    if (baselineVv == null || !Number.isFinite(baselineVv)) return null;
     return "dry";
 }
 
@@ -865,7 +868,10 @@ export function classifyFloodSeries(scenes: SarSceneLike[]): Map<string, AgriFlo
             if (vv != null && vh != null) diffs.push(vv - vh);
         }
         if (vvs.length >= MIN_ORBIT_SAMPLES) {
-            baselines.set(key, { vv: median(vvs), p40: percentile(diffs, VV_VH_DIFF_PCTL) });
+            baselines.set(key, {
+                vv: median(vvs),
+                p40: diffs.length >= MIN_ORBIT_SAMPLES ? percentile(diffs, VV_VH_DIFF_PCTL) : null,
+            });
         } else {
             // 轨道样本不足时仅回退到同定标尺度的其他轨道，避免新旧产品数值混算。
             const calibrationRows = calibrationGroups.get(floodCalibrationGroupKey(rows[0]!)) ?? [];
@@ -878,15 +884,13 @@ export function classifyFloodSeries(scenes: SarSceneLike[]): Map<string, AgriFlo
                 const vh = finiteNum(row.vh_avg);
                 if (vv != null && vh != null) compatibleDiff.push(vv - vh);
             }
+            // “不足3景则取全部中位数”会让1-2景也产生确认分级；样本不够时保留未知。
             baselines.set(key, {
-                vv:
-                    compatibleVv.length >= MIN_ORBIT_SAMPLES
-                        ? median(compatibleVv)
-                        : median(vvs),
+                vv: compatibleVv.length >= MIN_ORBIT_SAMPLES ? median(compatibleVv) : null,
                 p40:
                     compatibleDiff.length >= MIN_ORBIT_SAMPLES
                         ? percentile(compatibleDiff, VV_VH_DIFF_PCTL)
-                        : percentile(diffs, VV_VH_DIFF_PCTL),
+                        : null,
             });
         }
     }

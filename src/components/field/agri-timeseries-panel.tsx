@@ -1425,6 +1425,22 @@ export default function AgriTimeseriesPanel({
         return classifyFloodSeries(s1);
     }, [scenes]);
 
+    const floodUnclassifiedDates = useMemo(() => {
+        const dates = new Set(
+            scenes
+                .filter(
+                    (scene) =>
+                        scene.sensor === "S1" &&
+                        typeof scene.vv_avg === "number" &&
+                        Number.isFinite(scene.vv_avg) &&
+                        Boolean(scene.date),
+                )
+                .map((scene) => scene.date),
+        );
+        for (const date of floodByDate.keys()) dates.delete(date);
+        return dates;
+    }, [scenes, floodByDate]);
+
     const droughtEventMarks = useMemo(
         () =>
             Object.entries(droughtByDate)
@@ -2049,7 +2065,11 @@ export default function AgriTimeseriesPanel({
                                     ? ` · ${t("droughtDaysCount", { drought: droughtDayCount, clear: clearS2Count })}`
                                     : ""}
                                 {series === "flood"
-                                    ? ` · ${t("floodDaysCount", { flood: floodDayCount, watch: floodWatchCount })}`
+                                    ? ` · ${t("floodDaysCount", {
+                                          flood: floodDayCount,
+                                          watch: floodWatchCount,
+                                          unknown: floodUnclassifiedDates.size,
+                                      })}`
                                     : ""}
                             </p>
                         )}
@@ -2175,6 +2195,11 @@ export default function AgriTimeseriesPanel({
                                 )}
                                 {series === "flood" && selectedDate && isSpringFloodMonth(selectedDate)
                                     ? ` · ${t("floodSpringNote")}`
+                                    : ""}
+                                {series === "flood" &&
+                                selectedDate &&
+                                floodUnclassifiedDates.has(selectedDate)
+                                    ? ` · ${t("floodBaselineUnavailable")}`
                                     : ""}
                                 {heatmapLoading ? (
                                     <span role="status" aria-live="polite">{t("rendering")}</span>
@@ -2326,6 +2351,11 @@ export default function AgriTimeseriesPanel({
                                                                   : t("floodChip_moderate")}
                                                         </span>
                                                     )}
+                                                    {series === "flood" && floodUnclassifiedDates.has(date) && (
+                                                        <span className="rounded px-0.5 text-[9px] font-medium bg-muted text-muted-foreground">
+                                                            {t("floodChip_unknown")}
+                                                        </span>
+                                                    )}
                                                     {active && chipCloud != null && (
                                                         <span
                                                             className={cn(
@@ -2380,11 +2410,15 @@ export default function AgriTimeseriesPanel({
                                                                             : t("floodChip_moderate")
                                                                   }`
                                                                 : "";
+                                                        const floodUnknownBit =
+                                                            series === "flood" && floodUnclassifiedDates.has(date)
+                                                                ? ` · ${t("floodChip_unknown")}`
+                                                                : "";
                                                         const cloudBit =
                                                             pct != null
                                                                 ? ` · ${formatCloudCoverLabel(pct, cloud?.source, t)}`
                                                                 : "";
-                                                        const label = `${date}${cloudBit}${droughtBit}${floodBit}`;
+                                                        const label = `${date}${cloudBit}${droughtBit}${floodBit}${floodUnknownBit}`;
                                                         return (
                                                             <SelectItem
                                                                 key={date}
