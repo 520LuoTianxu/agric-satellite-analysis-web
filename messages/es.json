@@ -587,6 +587,7 @@
     "hideWeatherOverlay": "Ocultar capa meteorológica",
     "showOverlay": "Mostrar capa de {index}",
     "hideOverlay": "Ocultar capa de {index}",
+    "layerListTitle": "Capas",
     "runAnalysis": "Ejecutar análisis",
     "indicesToCompute": "Índices a calcular",
     "saviLFactor": "Factor L de SAVI",

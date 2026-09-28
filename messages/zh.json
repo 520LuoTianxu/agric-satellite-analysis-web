@@ -592,6 +592,7 @@
     "hideWeatherOverlay": "隐藏气象叠加层",
     "showOverlay": "显示 {index} 叠加层",
     "hideOverlay": "隐藏 {index} 叠加层",
+    "layerListTitle": "图层",
     "runAnalysis": "运行分析",
     "indicesToCompute": "要计算的指数",
     "saviLFactor": "SAVI 土壤校正强度",

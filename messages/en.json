@@ -592,6 +592,7 @@
     "hideWeatherOverlay": "Hide weather overlay",
     "showOverlay": "Show {index} overlay",
     "hideOverlay": "Hide {index} overlay",
+    "layerListTitle": "Layers",
     "runAnalysis": "Run analysis",
     "indicesToCompute": "Indices to compute",
     "saviLFactor": "SAVI L factor",

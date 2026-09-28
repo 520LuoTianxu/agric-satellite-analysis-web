@@ -287,7 +287,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
                     <CardHeader className="pb-2 pt-3 px-3">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-xs font-semibold">
-                                {config.label} Layers
+                                {config.label} {tMon("layerListTitle")}
                                 <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 tabular-nums">
                                     {layers.length}
                                 </Badge>

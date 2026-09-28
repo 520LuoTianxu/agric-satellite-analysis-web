@@ -303,7 +303,7 @@ function PreviewFrame({
                     {overlaySrc ? (
                         <PreviewImg
                             src={overlaySrc}
-                            alt={`${alt}叠加`}
+                            alt={`${alt} ${t("overlaySuffix")}`}
                             className="absolute inset-0 opacity-60 pointer-events-none"
                             onFailed={onOverlayFailed ?? (() => undefined)}
                         />
