@@ -56,14 +56,24 @@ function ZoomableScene({
     active: boolean;
 }) {
     const viewportRef = useRef<HTMLDivElement>(null);
+    const transformElementRef = useRef<HTMLDivElement>(null);
     const transformRef = useRef({ scale: 1, x: 0, y: 0 });
+    const scaleRef = useRef(1);
     const dragRef = useRef<{ x: number; y: number } | null>(null);
-    const [, setTick] = useState(0);
+    const [scale, setScale] = useState(1);
     const t = useTranslations("agriPanel");
 
     const apply = useCallback((next: { scale: number; x: number; y: number }) => {
         transformRef.current = next;
-        setTick((n) => n + 1);
+        // 拖动只更新合成层变换，避免每个 pointermove 都触发整张预览树的 React 重渲染。
+        if (transformElementRef.current) {
+            transformElementRef.current.style.transform =
+                `translate3d(${next.x}px, ${next.y}px, 0) scale(${next.scale})`;
+        }
+        if (scaleRef.current !== next.scale) {
+            scaleRef.current = next.scale;
+            setScale(next.scale);
+        }
     }, []);
 
     const reset = useCallback(() => apply({ scale: 1, x: 0, y: 0 }), [apply]);
@@ -124,7 +134,7 @@ function ZoomableScene({
         return () => el.removeEventListener("wheel", onWheel);
     }, [active, apply]);
 
-    const { scale, x, y } = transformRef.current;
+    const { x, y } = transformRef.current;
 
     return (
         <div
@@ -226,9 +236,10 @@ function ZoomableScene({
                 </Button>
             </div>
             <div
+                ref={transformElementRef}
                 className="relative flex h-full w-full items-center justify-center"
                 style={{
-                    transform: `translate(${x}px, ${y}px) scale(${scale})`,
+                    transform: `translate3d(${x}px, ${y}px, 0) scale(${scale})`,
                     transformOrigin: "0 0",
                 }}
             >
