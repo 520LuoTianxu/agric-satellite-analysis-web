@@ -96,6 +96,7 @@ const NdviGradeSharesChart = dynamic(
 );
 
 type SeriesKey = AgriHeatIndex;
+type SceneHistoryCursor = { date: string; sceneId: string };
 type HeatmapMeta = {
     pixels: number;
     date: string;
@@ -332,6 +333,12 @@ const RECENT_DATE_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 const RECENT_DATE_CHIP_CAP = 14;
 const PRIMARY_SERIES_KEYS: SeriesKey[] = ["ndvi", "drought", "flood"];
 
+function compareAgriScenesChronologically(a: AgriSceneProduct, b: AgriSceneProduct): number {
+    return a.date.localeCompare(b.date)
+        || a.sensor.localeCompare(b.sensor)
+        || a.scene_id.localeCompare(b.scene_id);
+}
+
 function seriesIsAvailable(key: SeriesKey, scenes: AgriSceneProduct[]): boolean {
     const meta = SERIES_META[key];
     const hasSensor = scenes.some((s) => s.sensor === meta.sensor);
@@ -515,10 +522,14 @@ export default function AgriTimeseriesPanel({
     const backfillPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [summary, setSummary] = useState<AgriLandScenesSummary | null>(null);
     const [scenes, setScenes] = useState<AgriSceneProduct[]>([]);
+    const [sceneCursors, setSceneCursors] = useState<Record<"S1" | "S2", SceneHistoryCursor | null>>({ S1: null, S2: null });
+    const [loadingEarlierSensor, setLoadingEarlierSensor] = useState<"S1" | "S2" | null>(null);
+    const [loadEarlierError, setLoadEarlierError] = useState(false);
     const [cropOption, setCropOption] = useState<CropOption | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [seriesInternal, setSeriesInternal] = useState<SeriesKey>("ndvi");
+    const earlierScenesRequestRef = useRef<AbortController | null>(null);
     const series = modeProp ?? seriesInternal;
     const setSeries = useCallback(
         (next: SeriesKey) => {
@@ -539,6 +550,9 @@ export default function AgriTimeseriesPanel({
     /** Shared with NdviChart + stacked grade shares — hide cloudy/unrealistic dates. */
     const [onlyRealistic, setOnlyRealistic] = useState(true);
     const gradeSharesFetchKeyRef = useRef<string | null>(null);
+    const initialGradeSharesRangeRef = useRef<{ from: string; to: string } | null>(null);
+    const gradeSharesLoadedRangesRef = useRef(new Set<string>());
+    const gradeSharesRequestsRef = useRef(new Map<string, Promise<boolean>>());
     /** Request generation rejects stale results; the request ref de-duplicates and aborts pixel downloads. */
     const heatmapLoadGenRef = useRef(0);
     const heatmapRequestRef = useRef<{ key: string; controller: AbortController } | null>(null);
@@ -562,6 +576,8 @@ export default function AgriTimeseriesPanel({
         heatmapLoadGenRef.current += 1;
         heatmapRequestRef.current?.controller.abort();
         heatmapRequestRef.current = null;
+        earlierScenesRequestRef.current?.abort();
+        earlierScenesRequestRef.current = null;
     }, []);
 
     useEffect(() => {
@@ -599,6 +615,14 @@ export default function AgriTimeseriesPanel({
 
     useEffect(() => {
         if (!landId) return;
+        earlierScenesRequestRef.current?.abort();
+        earlierScenesRequestRef.current = null;
+        setLoadingEarlierSensor(null);
+        setLoadEarlierError(false);
+        setSceneCursors({ S1: null, S2: null });
+        initialGradeSharesRangeRef.current = null;
+        gradeSharesLoadedRangesRef.current.clear();
+        gradeSharesRequestsRef.current.clear();
         let cancelled = false;
         const controller = new AbortController();
         setLoading(true);
@@ -629,7 +653,25 @@ export default function AgriTimeseriesPanel({
                 setSummary(sum);
                 const s2Items = reverseDescScenesPage(s2Desc.items);
                 const s1Items = reverseDescScenesPage(s1Desc.items);
-                const all = [...s2Items, ...s1Items];
+                const initialGradeDates = s2Items
+                    .filter((scene) => typeof scene.ndvi_avg === "number")
+                    .map((scene) => scene.date)
+                    .sort();
+                initialGradeSharesRangeRef.current = initialGradeDates.length ? {
+                    from: initialGradeDates[0]!,
+                    to: initialGradeDates[initialGradeDates.length - 1]!,
+                } : null;
+                const all = [...s2Items, ...s1Items].sort(compareAgriScenesChronologically);
+                setSceneCursors({
+                    S2: s2Desc.items.length ? {
+                        date: s2Desc.items[s2Desc.items.length - 1]!.date,
+                        sceneId: s2Desc.items[s2Desc.items.length - 1]!.scene_id,
+                    } : null,
+                    S1: s1Desc.items.length ? {
+                        date: s1Desc.items[s1Desc.items.length - 1]!.date,
+                        sceneId: s1Desc.items[s1Desc.items.length - 1]!.scene_id,
+                    } : null,
+                });
                 setScenes(all);
                 const hasS2 = sum.sensors.some((s) => s.sensor === "S2" && s.count > 0);
                 const nextSeries: SeriesKey = modeProp ?? (hasS2 ? "ndvi" : "vv");
@@ -651,6 +693,8 @@ export default function AgriTimeseriesPanel({
         return () => {
             cancelled = true;
             controller.abort();
+            earlierScenesRequestRef.current?.abort();
+            earlierScenesRequestRef.current = null;
             // Do NOT clear heatmap here — React Strict Mode remount races with loadHeatmap
             // and can wipe a just-loaded overlay. Clear only when enabled flips false or unmount via land change handled by next effect.
         };
@@ -1088,16 +1132,20 @@ export default function AgriTimeseriesPanel({
 
     /** One bulk API call — server aggregates lonlat_v1 pixels (no include_pixels loop). */
     const loadDayGradeShares = useCallback(
-        async (from?: string, to?: string, signal?: AbortSignal) => {
-            if (!landId) return;
-            try {
-                const res = await agriApi.ndviDayGradeShares(landId, {
-                    from,
-                    to,
-                    limit: 500,
-                    signal,
-                });
-                if (signal?.aborted) return;
+        async (from?: string, to?: string, signal?: AbortSignal): Promise<boolean> => {
+            if (!landId) return false;
+            const rangeKey = `${landId}:${from ?? ""}:${to ?? ""}`;
+            if (gradeSharesLoadedRangesRef.current.has(rangeKey)) return true;
+            const inFlight = gradeSharesRequestsRef.current.get(rangeKey);
+            if (inFlight) return inFlight;
+
+            const request = agriApi.ndviDayGradeShares(landId, {
+                from,
+                to,
+                limit: 500,
+                signal,
+            }).then((res) => {
+                if (signal?.aborted) return false;
                 const next: Record<string, DayGradeShare> = {};
                 for (const item of res.items ?? []) {
                     const d = String(item.date).slice(0, 10);
@@ -1120,12 +1168,132 @@ export default function AgriTimeseriesPanel({
                     };
                 }
                 setDayGradeByDate((prev) => ({ ...prev, ...next }));
-            } catch {
-                /* ignore — stacked chart stays empty until retry / heatmap fill */
-            }
+                gradeSharesLoadedRangesRef.current.add(rangeKey);
+                return true;
+            }).catch(() => false).finally(() => {
+                if (gradeSharesRequestsRef.current.get(rangeKey) === request) {
+                    gradeSharesRequestsRef.current.delete(rangeKey);
+                }
+            });
+            gradeSharesRequestsRef.current.set(rangeKey, request);
+            return request;
         },
         [landId],
     );
+
+    const loadEarlierScenes = useCallback(async (sensor: "S1" | "S2") => {
+        if (!landId || earlierScenesRequestRef.current) return;
+        const sensorScenes = scenes.filter((scene) => scene.sensor === sensor);
+        const cursor = sceneCursors[sensor];
+        if (!sensorScenes.length || !cursor) return;
+        const controller = new AbortController();
+        earlierScenesRequestRef.current = controller;
+        setLoadingEarlierSensor(sensor);
+        setLoadEarlierError(false);
+        try {
+            const page = await agriApi.scenes(landId, {
+                sensor,
+                limit: 500,
+                order: "desc",
+                beforeDate: cursor.date,
+                beforeSceneId: cursor.sceneId,
+                signal: controller.signal,
+            });
+            if (controller.signal.aborted) return;
+
+            const pageScenes = reverseDescScenesPage(page.items);
+            const existingKeys = new Set(scenes.map((scene) => (
+                `${scene.sensor}:${scene.date}:${scene.scene_id}`
+            )));
+            const uniquePageScenes = pageScenes.filter((scene) => {
+                const key = `${scene.sensor}:${scene.date}:${scene.scene_id}`;
+                if (existingKeys.has(key)) return false;
+                existingKeys.add(key);
+                return true;
+            });
+
+            // 时序行可能按景分页，但图一分级按天选景；先完整拿到本页日期的分级结果，再扩展可见历史。
+            if (sensor === "S2") {
+                const initialGradeRange = initialGradeSharesRangeRef.current;
+                if (initialGradeRange) {
+                    const loadedGradesReady = await loadDayGradeShares(
+                        initialGradeRange.from,
+                        initialGradeRange.to,
+                        controller.signal,
+                    );
+                    if (!loadedGradesReady && !controller.signal.aborted) {
+                        throw new Error("当前 NDVI 日分级数据加载失败");
+                    }
+                }
+                const gradeDates = uniquePageScenes
+                    .filter((scene) => typeof scene.ndvi_avg === "number")
+                    .map((scene) => scene.date)
+                    .sort();
+                if (gradeDates.length) {
+                    const gradesLoaded = await loadDayGradeShares(
+                        gradeDates[0],
+                        gradeDates[gradeDates.length - 1],
+                        controller.signal,
+                    );
+                    if (!gradesLoaded && !controller.signal.aborted) {
+                        throw new Error("NDVI 日分级数据加载失败");
+                    }
+                }
+            }
+            if (controller.signal.aborted) return;
+
+            const lastPageScene = page.items[page.items.length - 1];
+            if (lastPageScene) {
+                setSceneCursors((current) => ({
+                    ...current,
+                    [sensor]: { date: lastPageScene.date, sceneId: lastPageScene.scene_id },
+                }));
+            }
+            setSummary((current) => {
+                if (!current) return current;
+                const previousCount = current.sensors.find((item) => item.sensor === sensor)?.count ?? 0;
+                return {
+                    ...current,
+                    total: Math.max(0, current.total + page.total - previousCount),
+                    sensors: current.sensors.map((item) => (
+                        item.sensor === sensor ? { ...item, count: page.total } : item
+                    )),
+                };
+            });
+
+            if (!uniquePageScenes.length) {
+                // 游标之后无旧数据通常表示载入窗口期间有新场景入库，重载最新页以对齐总数。
+                if (page.total > sensorScenes.length) setReloadKey((key) => key + 1);
+                return;
+            }
+
+            const mergedScenes = [...scenes, ...uniquePageScenes].sort(compareAgriScenesChronologically);
+            const mergedS2Dates = mergedScenes
+                .filter((scene) => scene.sensor === "S2" && typeof scene.ndvi_avg === "number")
+                .map((scene) => scene.date)
+                .sort();
+            // 新旧页的图一分级分别请求；标记扩展后的窗口，避免 state 更新后再重复拉整段历史。
+            if (mergedS2Dates.length) {
+                gradeSharesFetchKeyRef.current = `${landId}:${mergedS2Dates[0]}:${mergedS2Dates[mergedS2Dates.length - 1]}`;
+            }
+            setScenes(mergedScenes);
+
+            if (
+                page.items.length < page.limit
+                && sensorScenes.length + uniquePageScenes.length < page.total
+            ) {
+                // 页尾与服务端总数不吻合说明分页期间数据发生变化，回到最新窗口校准列表。
+                setReloadKey((key) => key + 1);
+            }
+        } catch {
+            if (!controller.signal.aborted) setLoadEarlierError(true);
+        } finally {
+            if (earlierScenesRequestRef.current === controller) {
+                earlierScenesRequestRef.current = null;
+                setLoadingEarlierSensor(null);
+            }
+        }
+    }, [landId, loadDayGradeShares, sceneCursors, scenes]);
 
     const selectDateExplicit = useCallback(
         (date: string) => {
@@ -1458,6 +1626,7 @@ export default function AgriTimeseriesPanel({
         // 地块或统计日期窗口改变时停止旧聚合请求，防止同日期键把前一块地的分级结果写入当前图表。
         const controller = new AbortController();
         let settled = false;
+        const gradeSharesRequests = gradeSharesRequestsRef.current;
         void loadDayGradeShares(from, to, controller.signal).finally(() => {
             settled = true;
         });
@@ -1466,6 +1635,7 @@ export default function AgriTimeseriesPanel({
             // 被新窗口取代的请求不能留下已占用的去重键，否则新请求会被误判为重复。
             if (!settled && gradeSharesFetchKeyRef.current === fetchKey) {
                 gradeSharesFetchKeyRef.current = null;
+                gradeSharesRequests.delete(fetchKey);
             }
         };
     }, [landId, scenes, loadDayGradeShares]);
@@ -1478,13 +1648,15 @@ export default function AgriTimeseriesPanel({
         }, { S1: 0, S2: 0 }),
         [scenes],
     );
-    const partialSceneCounts = useMemo(
-        () => (summary?.sensors ?? [])
-            .filter((sensor) => loadedSceneCounts[sensor.sensor] < sensor.count)
-            .map((sensor) => `${sensor.sensor} ${loadedSceneCounts[sensor.sensor]}/${sensor.count}`)
-            .join(" · "),
+    const partialSensors = useMemo(
+        () => (summary?.sensors ?? []).filter(
+            (sensor) => loadedSceneCounts[sensor.sensor] < sensor.count,
+        ),
         [summary, loadedSceneCounts],
     );
+    const partialSceneCounts = partialSensors
+        .map((sensor) => `${sensor.sensor} ${loadedSceneCounts[sensor.sensor]}/${sensor.count}`)
+        .join(" · ");
 
     if (!landId) return null;
     if (!loading && hasMonitoringData && total === 0) return null;
@@ -1552,9 +1724,36 @@ export default function AgriTimeseriesPanel({
                             </div>
                         )}
                         {partialSceneCounts && (
-                            <p role="status" aria-live="polite" className="max-w-[16rem] text-right text-[9px] leading-tight text-muted-foreground">
-                                {t("historyWindowPartial", { sensors: partialSceneCounts })}
-                            </p>
+                            <div className="max-w-[20rem] space-y-1 text-right">
+                                <p role="status" aria-live="polite" className="text-[9px] leading-tight text-muted-foreground">
+                                    {t("historyWindowPartial", { sensors: partialSceneCounts })}
+                                </p>
+                                <div className="flex flex-wrap justify-end gap-1">
+                                    {partialSensors.map((sensor) => (
+                                        <Button
+                                            key={sensor.sensor}
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-6 px-1.5 text-[9px]"
+                                            disabled={loading || !sceneCursors[sensor.sensor] || loadingEarlierSensor !== null}
+                                            aria-label={`${t("loadEarlier")} ${sensor.sensor}`}
+                                            onClick={() => void loadEarlierScenes(sensor.sensor)}
+                                        >
+                                            {loadingEarlierSensor === sensor.sensor ? (
+                                                <Loader2 className="mr-1 h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                                            ) : null}
+                                            {loadingEarlierSensor === sensor.sensor ? t("loadingEarlier") : t("loadEarlier")}
+                                            <span className="ml-1 tabular-nums">{sensor.sensor}</span>
+                                        </Button>
+                                    ))}
+                                </div>
+                                {loadEarlierError ? (
+                                    <p role="alert" className="text-[9px] leading-tight text-destructive">
+                                        {t("loadEarlierFailed")}
+                                    </p>
+                                ) : null}
+                            </div>
                         )}
                     </div>
                 </div>

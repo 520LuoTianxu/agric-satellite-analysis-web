@@ -1801,6 +1801,9 @@ export const agriApi = {
             to?: string;
             limit?: number;
             offset?: number;
+            /** Stable descending keyset cursor from the final item on the previous page. */
+            beforeDate?: string;
+            beforeSceneId?: string;
             /** asc (default) oldest-first; desc newest-first (timeseries should reverse client-side). */
             order?: "asc" | "desc";
             /** If 1, prefer DB lonlat_v1 pixels (pixels_lonlat); grid pixel_data is fallback. */
@@ -1812,6 +1815,8 @@ export const agriApi = {
         if (opts.sensor) params.set("sensor", opts.sensor);
         if (opts.from) params.set("from", opts.from);
         if (opts.to) params.set("to", opts.to);
+        if (opts.beforeDate != null) params.set("before_date", opts.beforeDate);
+        if (opts.beforeSceneId != null) params.set("before_scene_id", opts.beforeSceneId);
         if (opts.includePixels != null) params.set("include_pixels", String(opts.includePixels));
         if (opts.order) params.set("order", opts.order);
         params.set("limit", String(opts.limit ?? 200));
