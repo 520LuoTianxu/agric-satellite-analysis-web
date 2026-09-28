@@ -42,6 +42,8 @@ import {
     opticalTooltipFields,
     pickOfficialOptical,
     pickOpticalForNdvi,
+    s1CalibrationEpochForScene,
+    s1PlatformForScene,
     sceneCloudDisplay,
     sceneCloudPct,
 } from "@/lib/agri-classify";
@@ -108,6 +110,9 @@ type HeatmapMeta = {
     algorithmVersion: string | null;
     gridSpacingM: { x: number; y: number } | null;
     radiometricCalibration: AgriSceneProduct["radiometric_calibration"];
+    platform: string | null;
+    processingVersion: string | null;
+    calibrationEpoch: string | null;
 };
 
 const SERIES_META: Record<
@@ -1092,6 +1097,14 @@ export default function AgriTimeseriesPanel({
                               algorithmVersion: scene.algorithm_version ?? null,
                               radiometricCalibration:
                                   scene.radiometric_calibration ?? null,
+                              platform:
+                                  scene.sensor === "S1" ? s1PlatformForScene(scene) : null,
+                              processingVersion:
+                                  scene.radiometric_calibration?.processing_version ?? null,
+                              calibrationEpoch:
+                                  scene.sensor === "S1"
+                                      ? s1CalibrationEpochForScene(scene)
+                                      : null,
                               gridSpacingM:
                                   Number.isFinite(scene.analysis_grid?.cell_size_m?.x) &&
                                   Number.isFinite(scene.analysis_grid?.cell_size_m?.y)
@@ -2202,8 +2215,32 @@ export default function AgriTimeseriesPanel({
                                             {t("stacItemMeta", { id: heatmapMeta.stacItemId })}
                                         </p>
                                     )}
+                                    {heatmapMeta.platform && (
+                                        <p>{t("s1PlatformMeta", { platform: heatmapMeta.platform })}</p>
+                                    )}
                                     {heatmapMeta.algorithmVersion && (
                                         <p>{t("algorithmVersionMeta", { version: heatmapMeta.algorithmVersion })}</p>
+                                    )}
+                                    {heatmapMeta.processingVersion && (
+                                        <p>
+                                            {t("s1ProcessingVersionMeta", {
+                                                version: heatmapMeta.processingVersion,
+                                            })}
+                                        </p>
+                                    )}
+                                    {heatmapMeta.calibrationEpoch && (
+                                        <p>
+                                            {heatmapMeta.calibrationEpoch ===
+                                            "s1c-auxcal-pre-2026-02-03"
+                                                ? t("s1CalibrationEpochPre")
+                                                : heatmapMeta.calibrationEpoch ===
+                                                    "s1c-auxcal-post-2026-02-03"
+                                                  ? t("s1CalibrationEpochPost")
+                                                  : t("s1CalibrationEpochUnknown")}
+                                        </p>
+                                    )}
+                                    {heatmapMeta.calibrationEpoch?.startsWith("s1c-auxcal-") && (
+                                        <p>{t("s1CalibrationEpochScope")}</p>
                                     )}
                                     {heatmapMeta.radiometricCalibration && (
                                         <>

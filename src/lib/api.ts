@@ -1578,6 +1578,10 @@ export interface AgriSceneProduct {
         polarizations?: Record<string, string>;
         fallback_scale?: number | null;
         thermal_noise_correction?: string;
+        platform?: string;
+        processing_version?: string;
+        calibration_epoch?: string;
+        acquisition_datetime?: string;
     } | null;
     /** Per-band valid parcel pixel fraction and the method used to calculate it. */
     quality_metrics?: Record<

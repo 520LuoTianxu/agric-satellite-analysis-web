@@ -92,13 +92,24 @@ export type OpticalSceneLike = {
 export type SarSceneLike = {
     date?: string | null;
     scene_id?: string | null;
+    stac_item_id?: string | null;
     relative_orbit?: number | null;
+    platform?: string | null;
+    processing_version?: string | null;
+    calibration_epoch?: string | null;
+    acquisition_datetime?: string | null;
+    calibration_method?: string | null;
+    calibration_scale?: number | null;
     vv_avg?: number | null;
     vh_avg?: number | null;
     sensor?: string | null;
     radiometric_calibration?: {
         method?: string;
         fallback_scale?: number | null;
+        platform?: string;
+        processing_version?: string;
+        calibration_epoch?: string;
+        acquisition_datetime?: string;
     } | null;
 };
 
@@ -113,13 +124,89 @@ export type OpticalTooltipFields = {
     mayBeUnreliable: boolean;
 };
 
-const S1_ORBIT_OFFSET: Record<string, number> = { S1A: 73, S1B: 27, S1C: 172 };
+const S1_ORBIT_OFFSET: Record<string, number> = { S1A: 73, S1B: 27, S1C: 172, S1D: 42 };
 const S1_ID_RE =
-    /^(S1[ABC])_IW_GRD[HM]?_1S[DS][VH]_\d{8}T\d{6}_\d{8}T\d{6}_(\d{6})/i;
+    /^(S1[ABCD])_IW_GRD[HM]?_1S[DS][VH]_(\d{8}T\d{6})_\d{8}T\d{6}_(\d{6})/i;
+const S1C_CALIBRATION_CUTOFF_UTC = Date.UTC(2026, 1, 3, 15, 14);
+const S1C_CALIBRATION_EPOCH_PRE = "s1c-auxcal-pre-2026-02-03";
+const S1C_CALIBRATION_EPOCH_POST = "s1c-auxcal-post-2026-02-03";
+const S1C_CALIBRATION_EPOCH_UNKNOWN = "s1c-auxcal-transition-unknown";
+
+export function parseS1Platform(
+    platform: string | null | undefined,
+    sceneId?: string | null,
+): string | null {
+    const normalized = String(platform ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (/^S1[ABCD]$/.test(normalized)) return normalized;
+    if (/^SENTINEL1[ABCD]$/.test(normalized)) return `S1${normalized.slice(-1)}`;
+    const match = S1_ID_RE.exec(String(sceneId ?? "").trim());
+    return match?.[1]?.toUpperCase() ?? null;
+}
+
+function parseS1AcquisitionDateTime(scene: SarSceneLike): Date | null {
+    const raw = scene.radiometric_calibration?.acquisition_datetime || scene.acquisition_datetime;
+    if (typeof raw === "string" && (raw.includes("T") || raw.includes(" "))) {
+        // 没有时区的STAC时间按UTC解释，与Python后端保持一致。
+        const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : `${raw}Z`;
+        const parsed = new Date(normalized);
+        if (Number.isFinite(parsed.getTime())) return parsed;
+    }
+    for (const id of [scene.scene_id, scene.stac_item_id]) {
+        const match = S1_ID_RE.exec(String(id ?? "").trim());
+        if (!match?.[2]) continue;
+        const stamp = match[2];
+        const parsed = new Date(
+            `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`,
+        );
+        if (Number.isFinite(parsed.getTime())) return parsed;
+    }
+    return null;
+}
+
+function inferS1CalibrationEpoch(scene: SarSceneLike, platform: string | null): string {
+    if (platform !== "S1C") return "not_applicable";
+    const calibration = scene.radiometric_calibration;
+    const declared = String(calibration?.calibration_epoch || scene.calibration_epoch || "").trim();
+    if (declared) return declared;
+    const acquisition = parseS1AcquisitionDateTime(scene);
+    if (acquisition) {
+        return acquisition.getTime() < S1C_CALIBRATION_CUTOFF_UTC
+            ? S1C_CALIBRATION_EPOCH_PRE
+            : S1C_CALIBRATION_EPOCH_POST;
+    }
+    const dateText = String(scene.date ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return "s1c-auxcal-unknown";
+    const observationDay = Date.parse(`${dateText}T00:00:00Z`);
+    const cutoffDay = Date.UTC(2026, 1, 3);
+    if (observationDay < cutoffDay) return S1C_CALIBRATION_EPOCH_PRE;
+    if (observationDay > cutoffDay) return S1C_CALIBRATION_EPOCH_POST;
+    return S1C_CALIBRATION_EPOCH_UNKNOWN;
+}
+
+export function s1PlatformForScene(scene: SarSceneLike): string | null {
+    return parseS1Platform(
+        scene.radiometric_calibration?.platform || scene.platform,
+        scene.scene_id || scene.stac_item_id,
+    );
+}
+
+export function s1CalibrationEpochForScene(scene: SarSceneLike): string | null {
+    const declared = String(
+        scene.radiometric_calibration?.calibration_epoch || scene.calibration_epoch || "",
+    ).trim();
+    if (declared) return declared;
+    const platform = s1PlatformForScene(scene);
+    return platform === "S1C" ? inferS1CalibrationEpoch(scene, platform) : null;
+}
 
 function finiteNum(v: unknown): number | null {
     if (typeof v !== "number" || !Number.isFinite(v)) return null;
     return v;
+}
+
+function calibrationScale(v: unknown): number | null {
+    const parsed = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN;
+    return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function computeNddi(ndvi: number, ndmi: number): number | null {
@@ -688,29 +775,39 @@ export function parseS1RelativeOrbit(
     const m = S1_ID_RE.exec(sceneId.trim());
     if (!m) return null;
     const mission = m[1]!.toUpperCase();
-    const absOrbit = Number(m[2]);
+    const absOrbit = Number(m[3]);
     if (!Number.isFinite(absOrbit)) return null;
     const offset = S1_ORBIT_OFFSET[mission] ?? 73;
     return ((((absOrbit - offset) % 175) + 175) % 175) + 1;
 }
 
 export function orbitGroupKey(scene: SarSceneLike): string {
-    const rel = parseS1RelativeOrbit(scene.scene_id, scene.relative_orbit);
+    const rel = parseS1RelativeOrbit(scene.scene_id || scene.stac_item_id, scene.relative_orbit);
     return rel == null ? "unknown" : `ron${rel}`;
 }
 
 function floodCalibrationGroupKey(scene: SarSceneLike): string {
-    const method = String(scene.radiometric_calibration?.method ?? "").trim();
-    if (!method) return "legacy_unknown";
-    if (method === "fixed_amplitude_scale_approximation") {
-        const scale = finiteNum(scene.radiometric_calibration?.fallback_scale);
-        return `${method}:${scale == null ? "unknown" : scale}`;
-    }
-    return method;
+    const calibration = scene.radiometric_calibration;
+    const method =
+        String(calibration?.method || scene.calibration_method || "").trim() || "legacy_unknown";
+    const scale = calibrationScale(calibration?.fallback_scale ?? scene.calibration_scale);
+    const platform = s1PlatformForScene(scene);
+    const processingVersion =
+        String(calibration?.processing_version || scene.processing_version || "").trim() ||
+        "unknown_processing_version";
+    const epoch = s1CalibrationEpochForScene(scene) ?? "not_applicable";
+    // 旧记录即使缺少定标方法，只要保留了比例也不能与其他数值尺度共用基线。
+    return JSON.stringify([
+        platform ?? "unknown_platform",
+        epoch,
+        processingVersion,
+        method,
+        scale == null ? "none" : String(scale),
+    ]);
 }
 
 function floodBaselineGroupKey(scene: SarSceneLike): string {
-    return `${orbitGroupKey(scene)}|${floodCalibrationGroupKey(scene)}`;
+    return JSON.stringify([orbitGroupKey(scene), floodCalibrationGroupKey(scene)]);
 }
 
 export function classifyFloodScene(
