@@ -18,7 +18,7 @@ import type { LandStat, IndexType, WeatherDaily } from "@/lib/api";
 import { INDEX_CONFIG } from "@/lib/api";
 import { tokenColor } from "@/lib/design-tokens";
 import { useTranslations } from "next-intl";
-import { DECLOUD_SOURCE } from "@/lib/agri-classify";
+import { DECLOUD_SOURCE, isGoodDecloudQuality } from "@/lib/agri-classify";
 import {
     axisLabel,
     baseTooltip,
@@ -204,7 +204,7 @@ export default function NdviChart({
         });
         const altName = t("decloudAltSeries");
         const altData = (decloudAltStats ?? []).map((s) => {
-            const unreliable = s.may_be_unreliable || s.decloud_quality !== "good";
+            const unreliable = s.may_be_unreliable || !isGoodDecloudQuality(s.decloud_quality);
             return {
                 value: [s.date, s.mean ?? null] as [string, number | null],
                 itemStyle: {

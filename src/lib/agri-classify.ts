@@ -247,8 +247,13 @@ export function isDecloudProduct(scene: {
     source?: string | null;
     scene_id?: string | null;
 }): boolean {
-    if (scene.source === DECLOUD_SOURCE) return true;
+    if ((scene.source ?? "").trim().toLowerCase() === DECLOUD_SOURCE) return true;
     return typeof scene.scene_id === "string" && scene.scene_id.endsWith(DECLOUD_SCENE_ID_SUFFIX);
+}
+
+export function isGoodDecloudQuality(quality?: string | null): boolean {
+    // 与后端规则一致：旧产品标记允许大小写或首尾空白差异。
+    return (quality ?? "").trim().toLowerCase() === "good";
 }
 
 export function parcelCloudIsUntrustedClear(scene: {
@@ -342,12 +347,13 @@ export function isOfficialOpticalScene(scene: {
     clear_frac?: number | null;
 }): boolean {
     if (isDecloudProduct(scene)) {
-        return scene.decloud_quality === "good";
+        return isGoodDecloudQuality(scene.decloud_quality);
     }
     const pct = sceneCloudPct(scene);
     if (pct != null) return pct <= DROUGHT_CLOUD_MAX_PCT;
     if (scene.cloud_cover_over_30 === true) return false;
     if (scene.cloud_cover_over_30 === false) return true;
+    // 无云量和阈值标记表示质量未知，前后端均不将它当作晴空基线。
     return false;
 }
 
@@ -476,7 +482,7 @@ export function pickOfficialOptical<T extends OpticalSceneLike>(
     if (!scenes.length) return null;
     const rawScenes = scenes.filter((s) => !isDecloudProduct(s));
     const goodDecloud = scenes.filter(
-        (s) => isDecloudProduct(s) && s.decloud_quality === "good",
+        (s) => isDecloudProduct(s) && isGoodDecloudQuality(s.decloud_quality),
     );
     const byCloud = (a: T, b: T) => {
         const [pa, ia] = cloudSortKey(a);
@@ -518,7 +524,7 @@ export function pickOpticalForNdvi<T extends OpticalSceneLike>(
     };
     const rawScenes = scenes.filter((s) => !isDecloudProduct(s));
     const goodDecloud = scenes.filter(
-        (s) => isDecloudProduct(s) && s.decloud_quality === "good",
+        (s) => isDecloudProduct(s) && isGoodDecloudQuality(s.decloud_quality),
     );
     const bestRaw = rawScenes.length ? [...rawScenes].sort(byCloud)[0]! : null;
     const bestDecloud = goodDecloud.length ? [...goodDecloud].sort(byCloud)[0]! : null;

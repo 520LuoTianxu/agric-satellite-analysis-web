@@ -37,6 +37,7 @@ import {
     classifyDroughtSeries,
     classifyFloodSeriesByDate,
     isFloodDayClass,
+    isGoodDecloudQuality,
     isFloodWatchClass,
     isSpringFloodMonth,
     opticalTooltipFields,
@@ -196,7 +197,7 @@ function scenesToStats(scenes: AgriSceneProduct[], key: SeriesKey, landId: strin
     const byDate = new Map<string, AgriSceneProduct[]>();
     for (const s of scenes) {
         if (s.sensor !== meta.sensor) continue;
-        if (key === "drought" && isDecloudProduct(s) && s.decloud_quality !== "good") continue;
+        if (key === "drought" && isDecloudProduct(s) && !isGoodDecloudQuality(s.decloud_quality)) continue;
         const arr = byDate.get(s.date) ?? [];
         arr.push(s);
         byDate.set(s.date, arr);

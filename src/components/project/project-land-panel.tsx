@@ -10,6 +10,7 @@ import { ruleLabel } from "@/lib/alert-rules";
 import { cn } from "@/lib/utils";
 import { formatAlertCount } from "@/lib/alert-session";
 import { MAP_CHROME } from "@/lib/design-tokens";
+import { isDecloudProduct } from "@/lib/agri-classify";
 
 export function ProjectRiskBadge({ land }: { land: Pick<ProjectLand, "riskLevel"> }) {
     const t = useTranslations("projectMonitoring");
@@ -82,7 +83,7 @@ export function ProjectLandPanel({ land, groupId, freshnessDays, onClose }: {
                         {latestSceneDiffers && <p className="text-xs text-muted-foreground">{t("latestScene", { date: monitoring?.latest_scene_date ?? emptyValue })}</p>}
                     </div>
                     <p className="text-xs text-muted-foreground">{land.dataStatus === "fresh" || land.dataStatus === "stale" ? t("freshnessRule", { days: freshnessDays }) : t("dataGap")}</p>
-                    {observation && <p className="text-xs text-muted-foreground">{t("source", { source: observation.source === "uncrtaints_decloud" ? t("decloud") : t("optical") })}
+                    {observation && <p className="text-xs text-muted-foreground">{t("source", { source: isDecloudProduct({ source: observation.source }) ? t("decloud") : t("optical") })}
                         {observation.cloud_cover !== null ? ` · ${t("cloud", { value: observation.cloud_cover.toFixed(1) })}` : ""}</p>}
                 </section>
                 <section className="space-y-2">
