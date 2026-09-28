@@ -1088,6 +1088,7 @@
     "subtitle": "Crecimiento e historial del campo{scenes}",
     "scenesCount": " · {total} escenas",
     "historyWindowPartial": "Solo se cargan los registros más recientes ({sensors}); las imágenes anteriores no están cargadas.",
+    "droughtHistoryPartial": "Las líneas base mensuales de sequía usan solo las escenas oficiales cargadas; al cargar imágenes anteriores pueden cambiar las clasificaciones existentes.",
     "loadEarlier": "Cargar anteriores",
     "loadingEarlier": "Cargando",
     "loadEarlierFailed": "No se pudieron cargar imágenes anteriores. Reintenta.",

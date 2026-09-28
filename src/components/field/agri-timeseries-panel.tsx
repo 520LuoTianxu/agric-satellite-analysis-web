@@ -1757,6 +1757,11 @@ export default function AgriTimeseriesPanel({
                                 <p role="status" aria-live="polite" className="text-[9px] leading-tight text-muted-foreground">
                                     {t("historyWindowPartial", { sensors: partialSceneCounts })}
                                 </p>
+                                {series === "drought" && partialSensors.some((sensor) => sensor.sensor === "S2") ? (
+                                    <p className="text-[9px] leading-tight text-muted-foreground">
+                                        {t("droughtHistoryPartial")}
+                                    </p>
+                                ) : null}
                                 <div className="flex flex-wrap justify-end gap-1">
                                     {partialSensors.map((sensor) => (
                                         <Button

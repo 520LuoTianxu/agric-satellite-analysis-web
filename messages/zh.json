@@ -1088,6 +1088,7 @@
     "subtitle": "查看地块长势与历史变化{scenes}",
     "scenesCount": " · 共 {total} 景",
     "historyWindowPartial": "当前仅载入各传感器的最新记录（{sensors}），更早影像未载入。",
+    "droughtHistoryPartial": "旱情月基线仅使用当前已载入的官方影像；加载更早影像后，已有日期的等级可能更新。",
     "loadEarlier": "加载更早",
     "loadingEarlier": "正在加载",
     "loadEarlierFailed": "更早影像加载失败，请重试。",

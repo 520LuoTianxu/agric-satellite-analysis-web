@@ -1088,6 +1088,7 @@
     "subtitle": "Field growth and history{scenes}",
     "scenesCount": " · {total} scenes",
     "historyWindowPartial": "Only the newest records are loaded ({sensors}); earlier imagery is not loaded.",
+    "droughtHistoryPartial": "Drought monthly baselines use only currently loaded official scenes; loading earlier imagery may change existing date classifications.",
     "loadEarlier": "Load earlier",
     "loadingEarlier": "Loading",
     "loadEarlierFailed": "Could not load earlier imagery. Please retry.",
