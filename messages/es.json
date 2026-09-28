@@ -1094,7 +1094,7 @@
     "algorithmVersionMeta": "Versión de procesamiento: {version}",
     "radiometricCalibrationLut": "Calibración radiométrica: tablas Sigma0 de la escena (VV/VH)",
     "radiometricCalibrationApprox": "Calibración radiométrica: aproximación de escala fija (escala {scale})",
-    "thermalNoiseNotApplied": "Este flujo no aplicó la tabla de consulta de ruido térmico",
+    "thermalNoiseNotApplied": "Este flujo no aplicó la corrección con la tabla de ruido térmico; no se ha confirmado si la fuente ya la aplicó",
     "radiometricCalibrationUnknown": "Este producto de radar antiguo no tiene registro de calibración; se desconoce su escala",
     "floodCalibrationOverlayUnavailable": "Esta escena no tiene un método Sigma0 LUT confirmado; se oculta la capa de agua basada en umbrales absolutos. Las estadísticas se agrupan por método de calibración.",
     "overlaySuffix": "superposición",

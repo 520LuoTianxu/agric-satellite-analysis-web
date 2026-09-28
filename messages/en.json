@@ -1104,7 +1104,7 @@
     "algorithmVersionMeta": "Processing version: {version}",
     "radiometricCalibrationLut": "Radiometric calibration: scene-provided Sigma0 lookup tables (VV/VH)",
     "radiometricCalibrationApprox": "Radiometric calibration: fixed-amplitude approximation (scale {scale})",
-    "thermalNoiseNotApplied": "This pipeline did not apply the thermal-noise lookup table",
+    "thermalNoiseNotApplied": "This pipeline did not apply thermal-noise LUT correction; upstream correction by the source is unverified",
     "radiometricCalibrationUnknown": "This legacy radar product has no calibration record; its value scale is unknown",
     "floodCalibrationOverlayUnavailable": "This scene has no confirmed scene-level Sigma0 LUT method, so its absolute-threshold water overlay is hidden. Scene statistics remain grouped by calibration method.",
     "overlaySuffix": "overlay",

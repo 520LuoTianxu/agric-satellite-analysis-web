@@ -1104,7 +1104,7 @@
     "algorithmVersionMeta": "处理版本：{version}",
     "radiometricCalibrationLut": "辐射定标：场景提供的 Sigma0 查找表（VV/VH）",
     "radiometricCalibrationApprox": "辐射定标：固定幅度比例近似（比例 {scale}）",
-    "thermalNoiseNotApplied": "本处理流程未执行热噪声查找表扣除",
+    "thermalNoiseNotApplied": "本处理流程未执行热噪声查找表扣除；数据源上游是否已校正尚未确认",
     "radiometricCalibrationUnknown": "该历史雷达产品没有定标记录，数值口径无法确认",
     "floodCalibrationOverlayUnavailable": "该景没有可确认的场景 Sigma0 LUT 定标口径，已隐藏按绝对阈值绘制的水体候选色斑；场景统计仍按定标方式分组比较。",
     "overlaySuffix": "叠加层",
