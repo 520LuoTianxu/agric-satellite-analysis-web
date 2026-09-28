@@ -96,6 +96,10 @@ export type SarSceneLike = {
     vv_avg?: number | null;
     vh_avg?: number | null;
     sensor?: string | null;
+    radiometric_calibration?: {
+        method?: string;
+        fallback_scale?: number | null;
+    } | null;
 };
 
 export type OpticalTooltipFields = {
@@ -695,6 +699,20 @@ export function orbitGroupKey(scene: SarSceneLike): string {
     return rel == null ? "unknown" : `ron${rel}`;
 }
 
+function floodCalibrationGroupKey(scene: SarSceneLike): string {
+    const method = String(scene.radiometric_calibration?.method ?? "").trim();
+    if (!method) return "legacy_unknown";
+    if (method === "fixed_amplitude_scale_approximation") {
+        const scale = finiteNum(scene.radiometric_calibration?.fallback_scale);
+        return `${method}:${scale == null ? "unknown" : scale}`;
+    }
+    return method;
+}
+
+function floodBaselineGroupKey(scene: SarSceneLike): string {
+    return `${orbitGroupKey(scene)}|${floodCalibrationGroupKey(scene)}`;
+}
+
 export function classifyFloodScene(
     vv: number | null,
     vh: number | null,
@@ -728,19 +746,16 @@ export function classifyFloodScene(
 export function classifyFloodSeries(scenes: SarSceneLike[]): Map<string, AgriFloodClass> {
     const valid = scenes.filter((s) => finiteNum(s.vv_avg) != null);
     const groups = new Map<string, SarSceneLike[]>();
+    const calibrationGroups = new Map<string, SarSceneLike[]>();
     for (const s of valid) {
-        const key = orbitGroupKey(s);
+        const calibrationKey = floodCalibrationGroupKey(s);
+        const calibrationRows = calibrationGroups.get(calibrationKey) ?? [];
+        calibrationRows.push(s);
+        calibrationGroups.set(calibrationKey, calibrationRows);
+        const key = floodBaselineGroupKey(s);
         const arr = groups.get(key) ?? [];
         arr.push(s);
         groups.set(key, arr);
-    }
-
-    const allVv = valid.map((s) => s.vv_avg!).filter((v) => Number.isFinite(v));
-    const allDiff: number[] = [];
-    for (const s of valid) {
-        const vv = finiteNum(s.vv_avg);
-        const vh = finiteNum(s.vh_avg);
-        if (vv != null && vh != null) allDiff.push(vv - vh);
     }
 
     const baselines = new Map<string, { vv: number | null; p40: number | null }>();
@@ -755,11 +770,25 @@ export function classifyFloodSeries(scenes: SarSceneLike[]): Map<string, AgriFlo
         if (vvs.length >= MIN_ORBIT_SAMPLES) {
             baselines.set(key, { vv: median(vvs), p40: percentile(diffs, VV_VH_DIFF_PCTL) });
         } else {
+            // 轨道样本不足时仅回退到同定标尺度的其他轨道，避免新旧产品数值混算。
+            const calibrationRows = calibrationGroups.get(floodCalibrationGroupKey(rows[0]!)) ?? [];
+            const compatibleVv = calibrationRows
+                .map((row) => finiteNum(row.vv_avg))
+                .filter((value): value is number => value != null);
+            const compatibleDiff: number[] = [];
+            for (const row of calibrationRows) {
+                const vv = finiteNum(row.vv_avg);
+                const vh = finiteNum(row.vh_avg);
+                if (vv != null && vh != null) compatibleDiff.push(vv - vh);
+            }
             baselines.set(key, {
-                vv: allVv.length >= MIN_ORBIT_SAMPLES ? median(allVv) : median(vvs),
+                vv:
+                    compatibleVv.length >= MIN_ORBIT_SAMPLES
+                        ? median(compatibleVv)
+                        : median(vvs),
                 p40:
-                    allDiff.length >= MIN_ORBIT_SAMPLES
-                        ? percentile(allDiff, VV_VH_DIFF_PCTL)
+                    compatibleDiff.length >= MIN_ORBIT_SAMPLES
+                        ? percentile(compatibleDiff, VV_VH_DIFF_PCTL)
                         : percentile(diffs, VV_VH_DIFF_PCTL),
             });
         }
@@ -769,7 +798,7 @@ export function classifyFloodSeries(scenes: SarSceneLike[]): Map<string, AgriFlo
     for (const s of valid) {
         const date = String(s.date ?? "");
         if (!date) continue;
-        const base = baselines.get(orbitGroupKey(s));
+        const base = baselines.get(floodBaselineGroupKey(s));
         const cls = classifyFloodScene(
             finiteNum(s.vv_avg),
             finiteNum(s.vh_avg),

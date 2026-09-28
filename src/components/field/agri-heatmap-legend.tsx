@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Maximize2 } from "lucide-react";
+import { Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
 import type { AgriHeatmapImage } from "@/lib/agri-heatmap";
-import { AGRI_MODE_LABELS } from "@/lib/agri-heatmap";
 import { MAP_CHROME } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { useLocale, useTranslations } from "next-intl";
 import {
     Dialog,
     DialogContent,
@@ -34,6 +35,8 @@ function PreviewImg({
         <img
             src={src}
             alt={alt}
+            width={1200}
+            height={900}
             loading="lazy"
             className={cn("h-full w-full object-contain", className)}
             onError={onFailed}
@@ -56,6 +59,7 @@ function ZoomableScene({
     const transformRef = useRef({ scale: 1, x: 0, y: 0 });
     const dragRef = useRef<{ x: number; y: number } | null>(null);
     const [, setTick] = useState(0);
+    const t = useTranslations("agriPanel");
 
     const apply = useCallback((next: { scale: number; x: number; y: number }) => {
         transformRef.current = next;
@@ -63,6 +67,28 @@ function ZoomableScene({
     }, []);
 
     const reset = useCallback(() => apply({ scale: 1, x: 0, y: 0 }), [apply]);
+
+    const zoomBy = useCallback((factor: number) => {
+        const el = viewportRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const { scale, x, y } = transformRef.current;
+        const nextScale = Math.min(8, Math.max(1, scale * factor));
+        if (Math.abs(nextScale - scale) < 0.0001) return;
+        if (nextScale <= 1.001) {
+            reset();
+            return;
+        }
+        const mx = rect.width / 2;
+        const my = rect.height / 2;
+        const worldX = (mx - x) / scale;
+        const worldY = (my - y) / scale;
+        apply({
+            scale: nextScale,
+            x: mx - worldX * nextScale,
+            y: my - worldY * nextScale,
+        });
+    }, [apply, reset]);
 
     useEffect(() => {
         if (!active) reset();
@@ -103,10 +129,32 @@ function ZoomableScene({
     return (
         <div
             ref={viewportRef}
+            role="group"
+            tabIndex={0}
+            aria-label={t("imagePanArea")}
             className={cn(
-                "relative min-h-0 flex-1 overflow-hidden rounded-md bg-muted/40 touch-none",
+                "relative min-h-0 flex-1 overflow-hidden rounded-md bg-muted/40 touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                 scale > 1 ? "cursor-grab" : "cursor-zoom-in",
             )}
+            onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key === "Home") {
+                    event.preventDefault();
+                    reset();
+                    return;
+                }
+                if (scale <= 1) return;
+                const step = 40;
+                let nextX = transformRef.current.x;
+                let nextY = transformRef.current.y;
+                if (event.key === "ArrowLeft") nextX += step;
+                else if (event.key === "ArrowRight") nextX -= step;
+                else if (event.key === "ArrowUp") nextY += step;
+                else if (event.key === "ArrowDown") nextY -= step;
+                else return;
+                event.preventDefault();
+                apply({ scale, x: nextX, y: nextY });
+            }}
             onDoubleClick={reset}
             onPointerDown={(e) => {
                 if (transformRef.current.scale <= 1) return;
@@ -135,6 +183,49 @@ function ZoomableScene({
             }}
         >
             <div
+                role="group"
+                aria-label={t("zoomControls")}
+                className="absolute right-2 top-2 z-10 flex gap-1 rounded-md bg-background/90 p-1 shadow-sm"
+                onPointerDown={(e) => e.stopPropagation()}
+            >
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    title={t("zoomOut")}
+                    aria-label={t("zoomOut")}
+                    disabled={scale <= 1}
+                    onClick={() => zoomBy(1 / 1.25)}
+                >
+                    <Minus className="h-4 w-4" aria-hidden="true" />
+                </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    title={t("zoomIn")}
+                    aria-label={t("zoomIn")}
+                    disabled={scale >= 8}
+                    onClick={() => zoomBy(1.25)}
+                >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    title={t("resetZoom")}
+                    aria-label={t("resetZoom")}
+                    disabled={scale <= 1}
+                    onClick={reset}
+                >
+                    <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                </Button>
+            </div>
+            <div
                 className="relative flex h-full w-full items-center justify-center"
                 style={{
                     transform: `translate(${x}px, ${y}px) scale(${scale})`,
@@ -145,6 +236,8 @@ function ZoomableScene({
                 <img
                     src={src}
                     alt={alt}
+                    width={1200}
+                    height={900}
                     draggable={false}
                     className="max-h-full max-w-full select-none object-contain"
                 />
@@ -152,15 +245,16 @@ function ZoomableScene({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                         src={overlaySrc}
-                        alt={`${alt}叠加`}
+                        alt={`${alt} ${t("overlaySuffix")}`}
+                        width={1200}
+                        height={900}
                         draggable={false}
                         className="pointer-events-none absolute inset-0 m-auto max-h-full max-w-full select-none object-contain opacity-55"
                     />
                 ) : null}
             </div>
             <p className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-background/85 px-2 py-0.5 text-[10px] text-muted-foreground shadow-sm">
-                Ctrl / ⌘ + 滚轮缩放
-                {scale > 1 ? " · 拖动平移 · 双击重置" : ""}
+                {t("zoomInstructions")}
             </p>
         </div>
     );
@@ -184,6 +278,7 @@ function PreviewFrame({
     onOverlayFailed?: () => void;
 }) {
     const [open, setOpen] = useState(false);
+    const t = useTranslations("agriPanel");
 
     const frame = cn(
         "relative w-full overflow-hidden rounded-md border border-border bg-muted/60",
@@ -195,9 +290,9 @@ function PreviewFrame({
             <div className={frame}>
                 <button
                     type="button"
-                    className="absolute inset-0 z-0 cursor-zoom-in"
+                    className="absolute inset-0 z-0 cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                     onClick={() => setOpen(true)}
-                    aria-label={`放大查看${caption}`}
+                    aria-label={t("openPreview", { caption })}
                 >
                     <PreviewImg
                         src={src}
@@ -220,17 +315,17 @@ function PreviewFrame({
                         e.stopPropagation();
                         setOpen(true);
                     }}
-                    className="absolute right-1 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/80 bg-background/90 text-foreground shadow-sm hover:bg-background"
-                    title="放大"
-                    aria-label={`放大${caption}`}
+                    className="absolute right-1 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/80 bg-background/90 text-foreground shadow-sm hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                    title={t("enlarge")}
+                    aria-label={t("openPreview", { caption })}
                 >
-                    <Maximize2 className="h-3.5 w-3.5" />
+                    <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
             </div>
             <p className="mt-0.5 text-[9px] leading-none text-muted-foreground">{caption}</p>
 
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="flex h-[min(85vh,56rem)] w-[min(90vw,80rem)] max-w-[90vw] flex-col gap-3 overflow-hidden p-3 sm:p-4">
+                <DialogContent className="flex h-[min(85vh,56rem)] w-[min(90vw,80rem)] max-w-[90vw] flex-col gap-3 overflow-hidden overscroll-contain p-3 sm:p-4">
                     <DialogHeader className="space-y-1 pr-8">
                         <DialogTitle className="text-sm font-medium">{caption}</DialogTitle>
                     </DialogHeader>
@@ -261,6 +356,7 @@ function OssPreviewStack({
     const [largeFailed, setLargeFailed] = useState(false);
     const [parcelFailed, setParcelFailed] = useState(false);
     const [hmFailed, setHmFailed] = useState(false);
+    const t = useTranslations("agriPanel");
 
     useEffect(() => {
         setLargeFailed(false);
@@ -284,13 +380,13 @@ function OssPreviewStack({
             {trueColorUrl && (
                 <PreviewFrame
                     src={trueColorUrl}
-                    alt="真彩预览"
+                    alt={t("trueColorPreview")}
                     caption={
                         overlayHm
-                            ? "真彩+色斑"
+                            ? t("trueColorWithHeatmap")
                             : trueColorIsLarge
-                              ? "真彩（瓦片）"
-                              : "真彩"
+                              ? t("trueColorTiles")
+                              : t("trueColor")
                     }
                     compact={compact}
                     overlaySrc={overlayHm ? heatmapUrl : null}
@@ -303,8 +399,8 @@ function OssPreviewStack({
             {hmAlone && heatmapUrl && (
                 <PreviewFrame
                     src={heatmapUrl}
-                    alt="色斑预览"
-                    caption="色斑"
+                    alt={t("heatmapPreview")}
+                    caption={t("heatmap")}
                     compact={compact}
                     onFailed={() => setHmFailed(true)}
                 />
@@ -316,9 +412,40 @@ function OssPreviewStack({
 /** Map overlay legend + mean badge for agri pixel_data 色斑图 (figure-3 style). */
 export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeatmapLegendProps) {
     const legend = heatmap.legend;
+    const locale = useLocale();
+    const t = useTranslations("agriPanel");
+    const tIndex = useTranslations("agriPanel.indexLabels");
+    const numberFormat = useMemo(
+        () => new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        [locale],
+    );
+    const countFormat = useMemo(() => new Intl.NumberFormat(locale), [locale]);
+    const legendLabel =
+        heatmap.index === "drought"
+            ? t("droughtRiskLabel")
+            : heatmap.index === "flood"
+              ? t("floodRiskLabel")
+              : legend.label;
+    const legendHint =
+        heatmap.index === "drought"
+            ? t("droughtHint")
+            : heatmap.index === "flood"
+              ? t("floodHint")
+              : null;
+    const droughtClassLabels: Record<string, string> = {
+        severe: t("droughtSevere"),
+        moderate: t("droughtModerate"),
+        mild: t("droughtMild"),
+        normal: t("droughtNormal"),
+    };
+    const floodClassLabels: Record<string, string> = {
+        flood_severe: t("floodPixelSevere"),
+        flood_moderate: t("floodPixelModerate"),
+        watch: t("floodPixelWatch"),
+    };
     const meanText =
         heatmap.mean != null && Number.isFinite(heatmap.mean)
-            ? heatmap.mean.toFixed(2)
+            ? numberFormat.format(heatmap.mean)
             : null;
 
     const { parcelRgbUrl, largeRgbUrl, heatmapUrl } = useMemo(() => {
@@ -349,10 +476,10 @@ export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeat
             )}
         >
             <div className="flex items-center justify-between gap-2 mb-1.5">
-                <p className="font-semibold tracking-wide text-[11px]">{legend.label}</p>
+                <p className="font-semibold tracking-wide text-[11px]">{legendLabel}</p>
                 {meanText != null && (
                     <span className="rounded bg-primary/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-primary tabular-nums">
-                        均≈{meanText}
+                        {t("meanApprox", { mean: meanText })}
                     </span>
                 )}
             </div>
@@ -367,18 +494,18 @@ export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeat
                         style={{ background: legend.gradient }}
                     />
                     <div className="flex justify-between mt-1">
-                        <span className="text-muted-foreground font-mono text-[11px]">{legend.min}</span>
-                        <span className="text-muted-foreground font-mono text-[11px]">{legend.max}</span>
+                        <span className="text-muted-foreground font-mono text-[11px]">{numberFormat.format(legend.min)}</span>
+                        <span className="text-muted-foreground font-mono text-[11px]">{numberFormat.format(legend.max)}</span>
                     </div>
                     {heatmap.min != null && heatmap.max != null && (
                         <p className="text-muted-foreground leading-tight text-[11px] mt-1">
-                            地块范围:{" "}
+                            {t("fieldRange")}: {" "}
                             <span className="font-mono font-medium text-foreground/80">
-                                {heatmap.min.toFixed(2)}
+                                {numberFormat.format(heatmap.min)}
                             </span>
                             {" – "}
                             <span className="font-mono font-medium text-foreground/80">
-                                {heatmap.max.toFixed(2)}
+                                {numberFormat.format(heatmap.max)}
                             </span>
                         </p>
                     )}
@@ -392,12 +519,16 @@ export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeat
                                     className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border border-border/60"
                                     style={{ background: c.color }}
                                 />
-                                <span className="text-foreground/90">{c.label}</span>
+                                <span className="text-foreground/90">
+                                    {(heatmap.index === "drought"
+                                        ? droughtClassLabels
+                                        : floodClassLabels)[c.key] ?? c.label}
+                                </span>
                             </li>
                         ))}
                     </ul>
-                    {legend.hint && (
-                        <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">{legend.hint}</p>
+                    {legendHint && (
+                        <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">{legendHint}</p>
                     )}
                 </>
             )}
@@ -412,7 +543,7 @@ export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeat
             )}
 
             <p className="mt-1.5 text-[10px] text-muted-foreground tabular-nums">
-                {AGRI_MODE_LABELS[heatmap.index]} · {heatmap.pixelCount} 像素
+                {tIndex(heatmap.index)} · {t("pixelCount", { count: countFormat.format(heatmap.pixelCount) })}
             </p>
         </div>
     );

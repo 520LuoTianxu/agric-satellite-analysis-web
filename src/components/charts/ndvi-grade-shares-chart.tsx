@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import * as echarts from "echarts/core";
 import { PieChart, BarChart, LineChart } from "echarts/charts";
@@ -107,6 +108,20 @@ export default function NdviGradeSharesChart({
     selectedDate,
     height,
 }: NdviGradeSharesChartProps) {
+    const t = useTranslations("agriPanel");
+    const gradeLabels = useMemo<Record<NdviDayGrade, string>>(() => ({
+        红: t("gradeRed"),
+        橙: t("gradeOrange"),
+        黄: t("gradeYellow"),
+        绿: t("gradeGreen"),
+    }), [t]);
+    const gradeByLabel = useMemo<Record<string, NdviDayGrade>>(() => ({
+        [gradeLabels.红]: "红",
+        [gradeLabels.橙]: "橙",
+        [gradeLabels.黄]: "黄",
+        [gradeLabels.绿]: "绿",
+    }), [gradeLabels]);
+    const meanLabel = t("meanNdvi");
     const historyDates = useMemo(
         () => Object.keys(historyByDate).sort((a, b) => a.localeCompare(b)),
         [historyByDate],
@@ -117,13 +132,13 @@ export default function NdviGradeSharesChart({
         const share = selectedShare;
         // Drop 0% slices from the ring so tiny/empty wedges do not clutter; legend stays full.
         const data = NDVI_DAY_GRADE_ORDER.map((g) => ({
-            name: g,
+            name: gradeLabels[g],
             value: share ? share.pct[g] : 0,
             itemStyle: { color: NDVI_DAY_GRADE_COLORS[g] },
         })).filter((d) => d.value > 0);
         const centerTop =
             areaMu != null && Number.isFinite(areaMu)
-                ? `${areaMu.toFixed(areaMu >= 100 ? 0 : 1)}亩`
+                ? t("areaValue", { value: areaMu.toFixed(areaMu >= 100 ? 0 : 1) })
                 : "—";
         // Pie sits left of vertical legend; hole center aligned for graphic label.
         const pieCenter: [string, string] = ["34%", "52%"];
@@ -133,9 +148,9 @@ export default function NdviGradeSharesChart({
                 ...baseTooltip(),
                 trigger: "item" as const,
                 formatter: (p: { name?: string; value?: number; percent?: number }) => {
-                    const g = (p.name || "") as NdviDayGrade;
-                    const cnt = share?.counts[g] ?? 0;
-                    return `${g} ${p.value ?? 0}%（${cnt} 像元）`;
+                    const grade = gradeByLabel[p.name ?? ""];
+                    const count = grade ? share?.counts[grade] ?? 0 : 0;
+                    return `${p.name ?? ""} ${p.value ?? 0}%（${t("pixelCount", { count })}）`;
                 },
             },
             legend: {
@@ -145,11 +160,12 @@ export default function NdviGradeSharesChart({
                 itemGap: 10,
                 ...legendStyle({ itemWidth: 10, itemHeight: 10 }),
                 formatter: (name: string) => {
-                    const g = name as NdviDayGrade;
+                    const g = gradeByLabel[name];
+                    if (!g) return name;
                     const pct = share?.pct[g];
-                    return pct != null ? `${g}  ${pct}%` : g;
+                    return pct != null ? `${name}  ${pct}%` : name;
                 },
-                data: NDVI_DAY_GRADE_ORDER,
+                data: NDVI_DAY_GRADE_ORDER.map((grade) => gradeLabels[grade]),
             },
             // Date is rendered outside ECharts (HTML header); center area via graphic.
             graphic: [
@@ -175,7 +191,7 @@ export default function NdviGradeSharesChart({
                         {
                             type: "text",
                             style: {
-                                text: "总面积",
+                                text: t("totalArea"),
                                 fill: "#6b7280",
                                 fontSize: 10,
                                 align: "center",
@@ -188,7 +204,7 @@ export default function NdviGradeSharesChart({
             ],
             series: [
                 {
-                    name: "长势等级占比",
+                    name: t("gradeShareSeries"),
                     type: "pie",
                     radius: ["48%", "72%"],
                     center: pieCenter,
@@ -208,12 +224,12 @@ export default function NdviGradeSharesChart({
                 },
             ],
         };
-    }, [selectedShare, areaMu]);
+    }, [selectedShare, areaMu, gradeLabels, gradeByLabel, t]);
 
     const stackedOption = useMemo(() => {
         const dates = historyDates;
         const series = NDVI_DAY_GRADE_ORDER.map((g) => ({
-            name: g,
+            name: gradeLabels[g],
             type: "bar" as const,
             stack: "grade",
             barMaxWidth: 36,
@@ -274,7 +290,7 @@ export default function NdviGradeSharesChart({
             animation: false,
             grid: { top: 36, right: 52, bottom: needSlider ? 56 : 36, left: 44 },
             legend: {
-                data: [...NDVI_DAY_GRADE_ORDER, "平均NDVI"],
+                data: [...NDVI_DAY_GRADE_ORDER.map((grade) => gradeLabels[grade]), meanLabel],
                 top: 0,
                 ...legendStyle(),
             },
@@ -288,11 +304,11 @@ export default function NdviGradeSharesChart({
                     const lines = [`<b>${date}</b>`];
                     for (const p of params) {
                         if (p.value == null) continue;
-                        const unit = p.seriesName === "平均NDVI" ? "" : "%";
+                        const unit = p.seriesName === meanLabel ? "" : "%";
                         lines.push(`${p.marker ?? ""}${p.seriesName}: ${p.value}${unit}`);
                     }
                     const nPts = historyByDate[date]?.n;
-                    if (nPts != null) lines.push(`像元 n=${nPts}`);
+                    if (nPts != null) lines.push(t("pixelSampleCount", { count: nPts }));
                     return lines.join("<br/>");
                 },
             },
@@ -320,7 +336,7 @@ export default function NdviGradeSharesChart({
             series: [
                 ...series,
                 {
-                    name: "平均NDVI",
+                    name: meanLabel,
                     type: "line",
                     yAxisIndex: 1,
                     data: means,
@@ -333,7 +349,7 @@ export default function NdviGradeSharesChart({
                 },
             ],
         };
-    }, [historyDates, historyByDate, meanByDate]);
+    }, [historyDates, historyByDate, meanByDate, gradeLabels, meanLabel, t]);
 
     if (variant === "donut") {
         const h = height ?? 200;
@@ -345,10 +361,10 @@ export default function NdviGradeSharesChart({
                     style={{ height: h }}
                 >
                     <div className="shrink-0 px-1 text-[11px] font-medium text-foreground/80 tabular-nums leading-5">
-                        {selectedDate ?? "当日"}
+                        {selectedDate ?? t("gradeToday")}
                     </div>
                     <div className="flex flex-1 items-center justify-center text-[11px] text-muted-foreground px-1">
-                        当日暂无像素分档（可点选其他日期或等待色斑加载）
+                        {t("gradeNoPixelsToday")}
                     </div>
                 </div>
             );
@@ -356,7 +372,7 @@ export default function NdviGradeSharesChart({
         return (
             <div className="flex w-full flex-col" style={{ height: h }}>
                 <div className="shrink-0 px-1 text-[11px] font-medium text-foreground/80 tabular-nums leading-5">
-                    {selectedDate ?? "当日"}
+                    {selectedDate ?? t("gradeToday")}
                 </div>
                 <ReactEChartsCore
                     echarts={echarts}
@@ -377,7 +393,7 @@ export default function NdviGradeSharesChart({
                 className="flex items-center justify-center text-[11px] text-muted-foreground px-1 text-center"
                 style={{ height: Math.min(stackedHeight, 120) }}
             >
-                已有 {historyDates.length} 日分档；再加载 ≥1 日后显示占比趋势
+                {t("gradeTrendNeedMore", { count: historyDates.length })}
             </div>
         );
     }

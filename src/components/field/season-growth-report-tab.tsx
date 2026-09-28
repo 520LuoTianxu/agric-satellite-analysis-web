@@ -32,11 +32,34 @@ interface SeasonGrowthReportTabProps {
     groupId?: string | number | null;
 }
 
+const MAX_MATERIAL_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_SEASON_REPORT_DAYS = 3660;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function dateWindowDays(startDate: string, endDate: string): number | null {
+    const startMs = Date.parse(`${startDate}T00:00:00.000Z`);
+    const endMs = Date.parse(`${endDate}T00:00:00.000Z`);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+    if (
+        new Date(startMs).toISOString().slice(0, 10) !== startDate ||
+        new Date(endMs).toISOString().slice(0, 10) !== endDate
+    ) return null;
+    return Math.floor((endMs - startMs) / MS_PER_DAY) + 1;
+}
+
+function localISODate(day: Date): string {
+    const year = day.getFullYear();
+    const month = String(day.getMonth() + 1).padStart(2, "0");
+    const date = String(day.getDate()).padStart(2, "0");
+    return `${year}-${month}-${date}`;
+}
+
 export default function SeasonGrowthReportTab({
     landId,
     groupId,
 }: SeasonGrowthReportTabProps) {
     const t = useTranslations("seasonGrowthReport");
+    const latestReportDate = localISODate(new Date());
     const [latest, setLatest] = useState<NdviJob | null>(null);
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
@@ -114,6 +137,23 @@ export default function SeasonGrowthReportTab({
     const handleGenerate = async () => {
         if (!startDate || !endDate) {
             toast.error(t("datesRequired"));
+            return;
+        }
+        const dateDays = dateWindowDays(startDate, endDate);
+        if (dateDays === null) {
+            toast.error(t("invalidDate"));
+            return;
+        }
+        if (dateDays < 1) {
+            toast.error(t("endBeforeStart"));
+            return;
+        }
+        if (endDate > latestReportDate) {
+            toast.error(t("futureDateNotAllowed"));
+            return;
+        }
+        if (dateDays > MAX_SEASON_REPORT_DAYS) {
+            toast.error(t("dateRangeTooLong"));
             return;
         }
         setGenerating(true);
@@ -203,13 +243,25 @@ export default function SeasonGrowthReportTab({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="text-xs space-y-1">
                             <span className="text-muted-foreground">{t("startDate")}</span>
-                            <DatePicker value={startDate} onChange={setStartDate} />
+                            <DatePicker
+                                value={startDate}
+                                onChange={setStartDate}
+                                max={endDate || latestReportDate}
+                            />
                         </label>
                         <label className="text-xs space-y-1">
                             <span className="text-muted-foreground">{t("endDate")}</span>
-                            <DatePicker value={endDate} onChange={setEndDate} />
+                            <DatePicker
+                                value={endDate}
+                                onChange={setEndDate}
+                                min={startDate || undefined}
+                                max={latestReportDate}
+                            />
                         </label>
                     </div>
+                    <p className="text-[11px] text-muted-foreground">
+                        {t("dateRangeLimit")}
+                    </p>
                     <div className="space-y-1">
                         <span className="text-xs text-muted-foreground">{t("cropOptional")}</span>
                         <CropSelect value={crop} onChange={setCrop} placeholder={t("selectCrop")} />
@@ -225,12 +277,32 @@ export default function SeasonGrowthReportTab({
                     </label>
                     <div className="text-xs space-y-1.5">
                         <span className="text-muted-foreground">{t("materials")}</span>
+                        <span className="block text-[11px] text-muted-foreground">
+                            {t("materialSizeLimit")}
+                        </span>
                         <input
                             ref={fileRef}
                             type="file"
                             multiple
+                            accept=".pdf,.txt,image/*"
                             className="hidden"
-                            onChange={(event) => setFiles(Array.from(event.target.files || []))}
+                            onChange={(event) => {
+                                const selected = Array.from(event.target.files || []);
+                                const oversized = selected.some(
+                                    (file) => file.size > MAX_MATERIAL_FILE_BYTES,
+                                );
+                                if (oversized) {
+                                    toast.error(t("materialTooLarge"));
+                                    setFiles(
+                                        selected.filter(
+                                            (file) => file.size <= MAX_MATERIAL_FILE_BYTES,
+                                        ),
+                                    );
+                                    event.target.value = "";
+                                    return;
+                                }
+                                setFiles(selected);
+                            }}
                         />
                         <div className="flex flex-wrap items-center gap-2">
                             <Button

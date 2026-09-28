@@ -75,6 +75,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
     const [layers, setLayers] = useState<RasterLayer[]>([]);
     const [stats, setStats] = useState<LandStat[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
 
     // ── Selected date ────────────────────────────────
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -85,16 +86,27 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
     const [weatherData, setWeatherData] = useState<WeatherDaily[]>([]);
 
     const loadGenRef = useRef(0); // prevents stale fetch results
+    const loadRequestRef = useRef<AbortController | null>(null);
 
     // ── Load layers + stats for active index ─────────
     // 监测表和 parcel_scene_products 都属于同一地块主表的下游数据，统一按 land_id 读取。
     const loadData = useCallback(async () => {
         const gen = ++loadGenRef.current;
+        loadRequestRef.current?.abort();
+        const controller = new AbortController();
+        loadRequestRef.current = controller;
         setLoading(true);
+        setLoadError(false);
+        // 新地块或指标开始加载时先清空旧结果，防止地图短暂显示与当前选择不一致的数据。
+        setLayers([]);
+        setStats([]);
+        setSelectedDate(null);
+        onShowLayer?.(null, activeIndex);
+        onAgriHeatmapChange?.(null);
         try {
             const [layersRes, statsRes] = await Promise.all([
-                monitoringApi.layers(landId, activeIndex),
-                monitoringApi.stats(landId, activeIndex),
+                monitoringApi.layers(landId, activeIndex, 50, { signal: controller.signal }),
+                monitoringApi.stats(landId, activeIndex, 200, { signal: controller.signal }),
             ]);
             if (gen !== loadGenRef.current) return; // stale - discard
             // 旧监控表中的 agri:// 占位 COG 会污染 TiTiler；不暴露其瓦片地址。
@@ -116,26 +128,44 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
                 setSelectedDate(null);
             }
         } catch {
-            // silent - may simply have no data
+            if (!controller.signal.aborted && gen === loadGenRef.current) setLoadError(true);
         } finally {
-            if (gen === loadGenRef.current) setLoading(false);
+            if (gen === loadGenRef.current) {
+                if (loadRequestRef.current === controller) loadRequestRef.current = null;
+                setLoading(false);
+            }
         }
-    }, [landId, activeIndex, onDataLoaded]);
+    }, [landId, activeIndex, onDataLoaded, onShowLayer, onAgriHeatmapChange]);
 
     useEffect(() => {
         loadData();
+        return () => {
+            // 地块或指标变化、组件卸载时终止旧请求，避免继续占用连接并污染当前加载状态。
+            loadGenRef.current += 1;
+            loadRequestRef.current?.abort();
+            loadRequestRef.current = null;
+        };
     }, [loadData]);
 
     // ── Fetch weather data when overlay is toggled on ──
     useEffect(() => {
-        if (!showWeatherOverlay || stats.length === 0) return;
+        if (!showWeatherOverlay || stats.length === 0) {
+            setWeatherData([]);
+            return;
+        }
+        const controller = new AbortController();
+        setWeatherData([]);
         const dates = stats.map((s) => s.date).sort();
         const start = dates[0];
         const end = dates[dates.length - 1];
         weatherApi
-            .get(landId, start, end, false)
+            .get(landId, start, end, false, { signal: controller.signal })
             .then((res) => setWeatherData(res.data))
-            .catch(() => setWeatherData([]));
+            .catch(() => {
+                if (!controller.signal.aborted) setWeatherData([]);
+            });
+        // 地块或日期窗口变化时取消旧查询，避免过期天气覆盖当前叠加层。
+        return () => controller.abort();
     }, [showWeatherOverlay, landId, stats]);
 
     // ── Show layer on map when selectedDate or visibility changes ──
@@ -196,6 +226,15 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
 
     return (
         <div className="space-y-4">
+            {loadError && (
+                <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+                    <span>{tMon("dataLoadFailed")}</span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => void loadData()}>
+                        {tMon("retry")}
+                    </Button>
+                </div>
+            )}
+
             {/* ── Canonical S1/S2 scene products ── */}
             <AgriTimeseriesPanel
                 landId={landId}
@@ -222,7 +261,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
                             onClick={() => setShowWeatherOverlay(!showWeatherOverlay)}
                             title={showWeatherOverlay ? tMon("hideWeatherOverlay") : tMon("showWeatherOverlay")}
                         >
-                            <CloudRain className="h-3 w-3" />
+                            <CloudRain className="h-3 w-3" aria-hidden="true" />
                             {tMon("weatherOverlay")}
                         </Button>
                     </div>
@@ -259,11 +298,12 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
                                 onClick={() => setLayerVisible(!layerVisible)}
                                 className="h-9 w-9 p-0"
                                 title={layerVisible ? tMon("hideOverlay", { index: config.label }) : tMon("showOverlay", { index: config.label })}
+                                aria-label={layerVisible ? tMon("hideOverlay", { index: config.label }) : tMon("showOverlay", { index: config.label })}
                             >
                                 {layerVisible ? (
-                                    <Eye className="h-4 w-4" />
+                                    <Eye className="h-4 w-4" aria-hidden="true" />
                                 ) : (
-                                    <EyeOff className="h-4 w-4" />
+                                    <EyeOff className="h-4 w-4" aria-hidden="true" />
                                 )}
                             </Button>
                         </div>

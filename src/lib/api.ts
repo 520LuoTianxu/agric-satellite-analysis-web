@@ -387,6 +387,7 @@ export interface LandStat {
     p90: number | null;
     stddev: number | null;
     quality_score: number | null;
+    quality_score_method?: string | null;
     created_at: string;
     /** Parcel or STAC cloud cover % when this point comes from agri scenes. */
     cloud_cover?: number | null;
@@ -696,10 +697,26 @@ export const landsApi = {
 // ── Monitoring ───────────────────────────────────────────────────────
 
 export const monitoringApi = {
-    layers: (landId: string, type: IndexType = "NDVI", limit = 50) =>
-        apiFetch<Paginated<RasterLayer>>(`/lands/${landId}/layers?type=${type}&limit=${limit}`),
-    stats: (landId: string, type: IndexType = "NDVI", limit = 200) =>
-        apiFetch<Paginated<LandStat>>(`/lands/${landId}/stats?type=${type}&limit=${limit}`),
+    layers: (
+        landId: string,
+        type: IndexType = "NDVI",
+        limit = 50,
+        options: { signal?: AbortSignal } = {},
+    ) =>
+        apiFetch<Paginated<RasterLayer>>(
+            `/lands/${landId}/layers?type=${type}&limit=${limit}`,
+            options,
+        ),
+    stats: (
+        landId: string,
+        type: IndexType = "NDVI",
+        limit = 200,
+        options: { signal?: AbortSignal } = {},
+    ) =>
+        apiFetch<Paginated<LandStat>>(
+            `/lands/${landId}/stats?type=${type}&limit=${limit}`,
+            options,
+        ),
     layerTypes: (landId: string) =>
         apiFetch<string[]>(`/lands/${landId}/layers/types`),
 };
@@ -1135,9 +1152,16 @@ export interface WeatherBackfillOptions {
 }
 
 export const weatherApi = {
-    get: (landId: string, startDate: string, endDate: string, includeForecast = true) =>
+    get: (
+        landId: string,
+        startDate: string,
+        endDate: string,
+        includeForecast = true,
+        options: { signal?: AbortSignal } = {},
+    ) =>
         apiFetch<WeatherResponse>(
             `/lands/${landId}/weather?start_date=${startDate}&end_date=${endDate}&include_forecast=${includeForecast}`,
+            options,
         ),
     summary: (landId: string, days = 30) =>
         apiFetch<WeatherSummary>(`/lands/${landId}/weather/summary?days=${days}`),
@@ -1172,6 +1196,7 @@ export interface ShareStatPoint {
     p90?: number | null;
     stddev?: number | null;
     quality_score?: number | null;
+    quality_score_method?: string | null;
     id?: string | null;
     land_id?: string | null;
     created_at?: string | null;
@@ -1530,8 +1555,35 @@ export interface AgriSceneProduct {
     parcel_cloud_cover_pct: number | null;
     /** scl | lonlat_clear when the parcel cloud is in-polygon; missing = legacy */
     parcel_cloud_source?: string | null;
-    /** stac_direct (raw) or uncrtaints_decloud (additive) */
+    /** stac_direct / stac_s1_direct (raw) or uncrtaints_decloud (additive) */
     source?: string | null;
+    /** Original catalog identifier; scene_id may use a stable legacy upsert key. */
+    stac_item_id?: string | null;
+    /** Version of the index/sampling implementation that created this product. */
+    algorithm_version?: string | null;
+    /** Actual target grid spacing estimate; this is not native sensor resolution. */
+    analysis_grid?: {
+        crs?: string;
+        width?: number;
+        height?: number;
+        cell_size_m?: { x?: number; y?: number };
+        target_cell_size_m?: number;
+        measurement?: string;
+    } | null;
+    /** Sentinel-1 Sigma0 calibration provenance; absent on legacy products. */
+    radiometric_calibration?: {
+        method?: string;
+        coefficient?: string;
+        units?: string;
+        polarizations?: Record<string, string>;
+        fallback_scale?: number | null;
+        thermal_noise_correction?: string;
+    } | null;
+    /** Per-band valid parcel pixel fraction and the method used to calculate it. */
+    quality_metrics?: Record<
+        string,
+        { valid_fraction?: number | null; method?: string | null }
+    > | null;
     /** good | fair | bad; only good enters official drought metrics */
     decloud_quality?: string | null;
     decloud_score?: number | null;
@@ -1753,6 +1805,7 @@ export const agriApi = {
             order?: "asc" | "desc";
             /** If 1, prefer DB lonlat_v1 pixels (pixels_lonlat); grid pixel_data is fallback. */
             includePixels?: 0 | 1;
+            signal?: AbortSignal;
         } = {},
     ) => {
         const params = new URLSearchParams();
@@ -1765,11 +1818,13 @@ export const agriApi = {
         params.set("offset", String(opts.offset ?? 0));
         return apiFetch<Paginated<AgriSceneProduct>>(
             `/agri/lands/${encodeURIComponent(landId)}/scenes?${params}`,
+            { signal: opts.signal },
         );
     },
-    scenesSummary: (landId: string) =>
+    scenesSummary: (landId: string, options: { signal?: AbortSignal } = {}) =>
         apiFetch<AgriLandScenesSummary>(
             `/agri/lands/${encodeURIComponent(landId)}/scenes/summary`,
+            options,
         ),
     harvestDetect: (
         landId: string,
@@ -1793,7 +1848,7 @@ export const agriApi = {
     /** Server-side 图一 NDVI day-grade shares (aggregated; no raw pixels). */
     ndviDayGradeShares: (
         landId: string,
-        opts: { from?: string; to?: string; limit?: number } = {},
+        opts: { from?: string; to?: string; limit?: number; signal?: AbortSignal } = {},
     ) => {
         const params = new URLSearchParams();
         if (opts.from) params.set("from", opts.from);
@@ -1802,6 +1857,7 @@ export const agriApi = {
         const q = params.toString();
         return apiFetch<NdviDayGradeSharesResult>(
             `/agri/lands/${encodeURIComponent(landId)}/ndvi-day-grade-shares${q ? `?${q}` : ""}`,
+            { signal: opts.signal },
         );
     },
 };

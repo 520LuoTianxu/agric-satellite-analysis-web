@@ -193,6 +193,8 @@ export default function NdviChart({
                 symbol: s.may_be_unreliable ? "diamond" : "circle",
                 symbolSize,
                 cloudCover: s.cloud_cover ?? null,
+                qualityScore: s.quality_score ?? null,
+                qualityScoreMethod: s.quality_score_method ?? null,
                 decloudQuality: s.decloud_quality ?? null,
                 decloudReasons: s.decloud_reasons ?? [],
                 productSource: s.product_source ?? null,
@@ -212,6 +214,8 @@ export default function NdviChart({
                 symbol: "diamond",
                 symbolSize: s.date === selectedDate ? 9 : 5,
                 cloudCover: s.cloud_cover ?? null,
+                qualityScore: s.quality_score ?? null,
+                qualityScoreMethod: s.quality_score_method ?? null,
                 decloudQuality: s.decloud_quality ?? null,
                 decloudReasons: s.decloud_reasons ?? [],
                 productSource: s.product_source ?? null,
@@ -339,6 +343,8 @@ export default function NdviChart({
                     const lines = [`<b>${date}</b>`];
                     let extras: {
                         cloudCover?: number | null;
+                        qualityScore?: number | null;
+                        qualityScoreMethod?: string | null;
                         decloudQuality?: string | null;
                         decloudReasons?: string[];
                         productSource?: string | null;
@@ -381,6 +387,15 @@ export default function NdviChart({
                             if (hasRealDecloud && line === t("decloudNone")) continue;
                             lines.push(line);
                         }
+                    }
+                    if (
+                        extras?.qualityScoreMethod === "parcel_mask_valid_fraction_v1" &&
+                        typeof extras.qualityScore === "number" &&
+                        Number.isFinite(extras.qualityScore)
+                    ) {
+                        lines.push(t("validPixelCoverage", { percent: Math.round(extras.qualityScore * 100) }));
+                    } else if (extras?.qualityScoreMethod === "unknown") {
+                        lines.push(t("coverageUnavailable"));
                     }
                     return lines.join("<br/>");
                 },
@@ -662,6 +677,7 @@ const DECLOUD_REASON_KEYS = new Set([
     "spatial_std_low",
     "ndvi_far_below_neighbors",
     "ndvi_below_neighbors",
+    "no_valid_parcel_pixels",
     "non_finite_reconstruction",
 ]);
 

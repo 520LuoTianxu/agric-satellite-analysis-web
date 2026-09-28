@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
+    ApiError,
     agriApi,
     cropsApi,
     landsApi,
@@ -15,18 +16,15 @@ import {
     type HarvestDetectResult,
     type IndexType,
 } from "@/lib/api";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { monthsInWindows, type Phenology } from "@/lib/parcel-insights";
 import PhenologyPicker from "./phenology-picker";
 import {
     rasterizeAgriPixels,
     rasterizeAgriLonLatPixels,
     sensorForIndex,
-    AGRI_MODE_LABELS,
     AGRI_PRIMARY_MODES,
-    DROUGHT_CLASS_STYLE,
     DROUGHT_CLOUD_MAX_PCT,
-    FLOOD_CLASS_STYLE,
     isDroughtDayClass,
     isDecloudProduct,
     isOfficialOpticalScene,
@@ -78,14 +76,10 @@ import { Loader2, Eye, EyeOff, RefreshCw, History, MoreHorizontal, Check, Plus, 
 import { cn } from "@/lib/utils";
 import { reverseDescScenesPage } from "@/lib/agri-scenes-page";
 import { IndexExplainer } from "@/components/field/index-explainer";
-import { REMOTE_SENSING_GUIDE } from "@/lib/remote-sensing-guide";
 import { toast } from "sonner";
 import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land-schedule-filter";
 import type { DayGradeShare } from "@/components/charts/ndvi-grade-shares-chart";
-import {
-    computePixelNdviGradeShares,
-    NDVI_DAY_GRADE_RULE_ZH,
-} from "@/components/charts/ndvi-grade-shares-chart";
+import { computePixelNdviGradeShares } from "@/components/charts/ndvi-grade-shares-chart";
 import { filterRealisticNdviStats } from "@/lib/ndvi-realistic-filter";
 
 const NdviChart = dynamic(() => import("@/components/charts/ndvi-chart"), {
@@ -102,88 +96,77 @@ const NdviGradeSharesChart = dynamic(
 );
 
 type SeriesKey = AgriHeatIndex;
+type HeatmapMeta = {
+    pixels: number;
+    date: string;
+    index: string;
+    sensor: AgriSceneProduct["sensor"];
+    mean: number | null;
+    source: AgriSceneProduct["pixels_source"];
+    stacItemId: string | null;
+    algorithmVersion: string | null;
+    gridSpacingM: { x: number; y: number } | null;
+    radiometricCalibration: AgriSceneProduct["radiometric_calibration"];
+};
 
 const SERIES_META: Record<
     SeriesKey,
     {
-        label: string;
         sensor: "S1" | "S2";
         avgKey: keyof AgriSceneProduct | null;
-        hint: string;
         /** Chart / date list derived from this sensor avg column */
         chartKey: keyof AgriSceneProduct | null;
     }
 > = {
     ndvi: {
-        // 主入口使用业务名称，series key 仍保持 ndvi，避免影响接口和计算逻辑。
-        label: "长势分析",
         sensor: "S2",
         avgKey: "ndvi_avg",
         chartKey: "ndvi_avg",
-        hint: REMOTE_SENSING_GUIDE.ndvi.summary,
     },
     evi: {
-        label: "EVI（光学）",
         sensor: "S2",
         avgKey: "evi_avg",
         chartKey: "evi_avg",
-        hint: REMOTE_SENSING_GUIDE.evi.summary,
     },
     ndmi: {
-        label: "NDMI",
         sensor: "S2",
         avgKey: "ndmi_avg",
         chartKey: "ndmi_avg",
-        hint: REMOTE_SENSING_GUIDE.ndmi.summary,
     },
     ndre: {
-        label: "NDRE",
         sensor: "S2",
         avgKey: "ndre_avg",
         chartKey: "ndre_avg",
-        hint: REMOTE_SENSING_GUIDE.ndre.summary,
     },
     mndwi: {
-        label: "MNDWI",
         sensor: "S2",
         avgKey: "mndwi_avg",
         chartKey: "mndwi_avg",
-        hint: REMOTE_SENSING_GUIDE.mndwi.summary,
     },
     cire: {
-        label: "CIRE",
         sensor: "S2",
         avgKey: "cire_avg",
         chartKey: "cire_avg",
-        hint: REMOTE_SENSING_GUIDE.cire.summary,
     },
     vv: {
-        label: "VV（雷达）",
         sensor: "S1",
         avgKey: "vv_avg",
         chartKey: "vv_avg",
-        hint: REMOTE_SENSING_GUIDE.vv.summary,
     },
     vh: {
-        label: "VH（雷达）",
         sensor: "S1",
         avgKey: "vh_avg",
         chartKey: "vh_avg",
-        hint: REMOTE_SENSING_GUIDE.vh.summary,
     },
     drought: {
-        label: "干旱",
         sensor: "S2",
         avgKey: null,
         chartKey: "ndvi_avg",
-        hint: REMOTE_SENSING_GUIDE.drought.summary,
     },
     flood: {
-        label: "洪涝",
         sensor: "S1",
         avgKey: null,
         chartKey: "vv_avg",
-        hint: REMOTE_SENSING_GUIDE.flood.summary,
     },
 };
 
@@ -227,6 +210,20 @@ function scenesToStats(scenes: AgriSceneProduct[], key: SeriesKey, landId: strin
         const v = picked[avgKey];
         if (typeof v !== "number" || Number.isNaN(v)) return;
         const tip = opticalTooltipFields(picked);
+        // Only S1 products currently carry per-polarization pixel coverage; S2 exposes cloud coverage separately.
+        const qualityMetricKey = avgKey === "vv_avg" ? "VV" : avgKey === "vh_avg" ? "VH" : null;
+        const qualityMetric = qualityMetricKey
+            ? picked.quality_metrics?.[qualityMetricKey]
+            : null;
+        const validFraction = qualityMetric?.valid_fraction;
+        const parcelCoverageScore =
+            qualityMetric?.method === "parcel_mask_valid_fraction_v1" &&
+            typeof validFraction === "number" &&
+            Number.isFinite(validFraction) &&
+            validFraction >= 0 &&
+            validFraction <= 1
+                ? validFraction
+                : null;
         out.push({
             id: `agri-${key}-${date}-${i}`,
             land_id: landId,
@@ -238,7 +235,10 @@ function scenesToStats(scenes: AgriSceneProduct[], key: SeriesKey, landId: strin
             p10: v,
             p90: v,
             stddev: null,
-            quality_score: null,
+            quality_score: parcelCoverageScore,
+            quality_score_method: qualityMetricKey
+                ? qualityMetric?.method ?? "unknown"
+                : null,
             created_at: "",
             cloud_cover: tip.cloudCover,
             decloud_quality: tip.decloudQuality,
@@ -487,6 +487,11 @@ export default function AgriTimeseriesPanel({
     enabled = true,
 }: AgriTimeseriesPanelProps) {
     const t = useTranslations("agriPanel");
+    const locale = useLocale();
+    const gridSpacingFormatter = useMemo(
+        () => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }),
+        [locale],
+    );
     const [backfilling, setBackfilling] = useState(false);
     const [backfillActive, setBackfillActive] = useState(false);
     const [refreshDateOpen, setRefreshDateOpen] = useState(false);
@@ -525,13 +530,8 @@ export default function AgriTimeseriesPanel({
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [heatmapVisible, setHeatmapVisible] = useState(true);
     const [heatmapLoading, setHeatmapLoading] = useState(false);
-    const [heatmapError, setHeatmapError] = useState(false);
-    const [heatmapMeta, setHeatmapMeta] = useState<{
-        pixels: number;
-        date: string;
-        index: string;
-        mean: number | null;
-    } | null>(null);
+    const [heatmapError, setHeatmapError] = useState<"failed" | "tooLarge" | null>(null);
+    const [heatmapMeta, setHeatmapMeta] = useState<HeatmapMeta | null>(null);
     /** Per-date pixel NDVI grade shares (图一 bands) — from dedicated API (+ heatmap fill). */
     const [dayGradeByDate, setDayGradeByDate] = useState<Record<string, DayGradeShare>>({});
     const dayGradeByDateRef = useRef(dayGradeByDate);
@@ -539,19 +539,30 @@ export default function AgriTimeseriesPanel({
     /** Shared with NdviChart + stacked grade shares — hide cloudy/unrealistic dates. */
     const [onlyRealistic, setOnlyRealistic] = useState(true);
     const gradeSharesFetchKeyRef = useRef<string | null>(null);
-    /** Bumps on every loadHeatmap call; stale async results are ignored. */
+    /** Request generation rejects stale results; the request ref de-duplicates and aborts pixel downloads. */
     const heatmapLoadGenRef = useRef(0);
+    const heatmapRequestRef = useRef<{ key: string; controller: AbortController } | null>(null);
     /** Prefetched film — kept even when enabled=false (map cleared, cache retained). */
     const cachedHeatmapRef = useRef<{
+        /** 地块是缓存身份的一部分，避免切换到同日地块时复用上一个地块的色膜。 */
+        landId: string;
         date: string;
         index: SeriesKey;
         img: AgriHeatmapImage | null;
+        meta: HeatmapMeta | null;
     } | null>(null);
     const loadHeatmapRef = useRef<(date: string, index: SeriesKey) => Promise<void>>(async () => {});
     const enabledRef = useRef(enabled);
     enabledRef.current = enabled;
     const heatmapVisibleRef = useRef(heatmapVisible);
     heatmapVisibleRef.current = heatmapVisible;
+
+    useEffect(() => () => {
+        // 离开地块页面后取消可能仍在传输的大体量像元响应，并阻止卸载后的旧结果生效。
+        heatmapLoadGenRef.current += 1;
+        heatmapRequestRef.current?.controller.abort();
+        heatmapRequestRef.current = null;
+    }, []);
 
     useEffect(() => {
         if (modeProp && modeProp !== seriesInternal) {
@@ -589,6 +600,7 @@ export default function AgriTimeseriesPanel({
     useEffect(() => {
         if (!landId) return;
         let cancelled = false;
+        const controller = new AbortController();
         setLoading(true);
         setError(null);
         setDayGradeByDate({});
@@ -599,16 +611,18 @@ export default function AgriTimeseriesPanel({
                 // Avoids offset=0 (oldest page) dropping 2026 when total > 500.
                 const SCENE_PAGE_LIMIT = 500;
                 const [sum, s2Desc, s1Desc] = await Promise.all([
-                    agriApi.scenesSummary(landId),
+                    agriApi.scenesSummary(landId, { signal: controller.signal }),
                     agriApi.scenes(landId, {
                         sensor: "S2",
                         limit: SCENE_PAGE_LIMIT,
                         order: "desc",
+                        signal: controller.signal,
                     }),
                     agriApi.scenes(landId, {
                         sensor: "S1",
                         limit: SCENE_PAGE_LIMIT,
                         order: "desc",
+                        signal: controller.signal,
                     }),
                 ]);
                 if (cancelled) return;
@@ -636,6 +650,7 @@ export default function AgriTimeseriesPanel({
         })();
         return () => {
             cancelled = true;
+            controller.abort();
             // Do NOT clear heatmap here — React Strict Mode remount races with loadHeatmap
             // and can wipe a just-loaded overlay. Clear only when enabled flips false or unmount via land change handled by next effect.
         };
@@ -746,7 +761,7 @@ export default function AgriTimeseriesPanel({
                 start_date: `${y}-04-01`,
                 end_date: `${y}-08-31`,
                 crops: ["corn"],
-                label: "春玉米",
+                label: t("springCornWindow"),
             };
         } else if (preset === "summer_corn") {
             draft = {
@@ -754,7 +769,7 @@ export default function AgriTimeseriesPanel({
                 start_date: `${y}-06-01`,
                 end_date: `${y}-09-30`,
                 crops: ["corn"],
-                label: "夏玉米",
+                label: t("summerCornWindow"),
             };
         } else {
             const key = cropOption?.key;
@@ -901,10 +916,19 @@ export default function AgriTimeseriesPanel({
     const loadHeatmap = useCallback(
         async (date: string, index: SeriesKey) => {
             if (!landId) return;
+            const requestKey = JSON.stringify([landId, date, index]);
+            const activeRequest = heatmapRequestRef.current;
+            // 两个 UI 触发点可能在同一帧请求相同像元；复用进行中的请求避免重复下载。
+            if (activeRequest?.key === requestKey && !activeRequest.controller.signal.aborted) return;
+            activeRequest?.controller.abort();
+            const controller = new AbortController();
+            heatmapRequestRef.current = { key: requestKey, controller };
             const gen = ++heatmapLoadGenRef.current;
             const meta = SERIES_META[index];
             setHeatmapLoading(true);
-            setHeatmapError(false);
+            setHeatmapError(null);
+            // 新请求尚未完成时，不把上个日期的统计与来源误显示成当前选择的数据。
+            setHeatmapMeta(null);
             try {
                 const res = await agriApi.scenes(landId, {
                     sensor: meta.sensor,
@@ -912,6 +936,7 @@ export default function AgriTimeseriesPanel({
                     to: date,
                     limit: 5,
                     includePixels: 1,
+                    signal: controller.signal,
                 });
                 // Ignore stale overlapping NDVI/EVI (or date) loads
                 if (gen !== heatmapLoadGenRef.current) return;
@@ -921,7 +946,13 @@ export default function AgriTimeseriesPanel({
                 const withGrid = (list: AgriSceneProduct[]) =>
                     list.find((s) => (s.pixel_data?.pixels?.length ?? 0) > 0);
                 const scene =
-                    index === "drought"
+                    index === "flood"
+                        ? res.items.find(
+                              (s) =>
+                                  s.radiometric_calibration?.method ===
+                                  "esa_sigma_nought_lut",
+                          ) ?? res.items[0]
+                        : index === "drought"
                         ? (withLonlat(official) ?? withGrid(official) ?? official[0])
                         : (withLonlat(official) ??
                           withLonlat(res.items) ??
@@ -929,36 +960,47 @@ export default function AgriTimeseriesPanel({
                           official[0] ??
                           res.items[0]);
                 if (index === "drought" && !isWithinSeason(date)) {
-                    cachedHeatmapRef.current = { date, index, img: null };
+                    cachedHeatmapRef.current = { landId, date, index, img: null, meta: null };
                     setHeatmapMeta(null);
                     publishHeatmap(null);
                     if (enabledRef.current) {
                         toast(t("outOfSeasonDrought"), {
-                            description: `${date} · ${AGRI_MODE_LABELS[index]}`,
+                            description: `${date} · ${t(`indexLabels.${index}`)}`,
                         });
                     }
                     return;
                 }
                 if (index === "drought" && scene && !isOfficialOpticalScene(scene)) {
-                    cachedHeatmapRef.current = { date, index, img: null };
+                    cachedHeatmapRef.current = { landId, date, index, img: null, meta: null };
                     setHeatmapMeta(null);
                     publishHeatmap(null);
                     if (enabledRef.current) {
                         toast(t("cloudSkipDrought"), {
-                            description: `${date} · ${AGRI_MODE_LABELS[index]}`,
+                            description: `${date} · ${t(`indexLabels.${index}`)}`,
                         });
                     }
+                    return;
+                }
+                if (
+                    index === "flood" &&
+                    scene &&
+                    scene.radiometric_calibration?.method !== "esa_sigma_nought_lut"
+                ) {
+                    // 洪涝像元阈值是绝对Sigma0分贝；缺少场景LUT时隐藏色斑，避免近似尺度误导。
+                    cachedHeatmapRef.current = { landId, date, index, img: null, meta: null };
+                    setHeatmapMeta(null);
+                    publishHeatmap(null);
                     return;
                 }
                 const lonlat = scene?.pixels_lonlat;
                 const grid = scene?.pixel_data;
                 if (!(lonlat?.length || grid?.pixels?.length)) {
-                    cachedHeatmapRef.current = { date, index, img: null };
+                    cachedHeatmapRef.current = { landId, date, index, img: null, meta: null };
                     setHeatmapMeta(null);
                     publishHeatmap(null);
                     if (enabledRef.current) {
-                        toast("该日期无像素数据，无法渲染色斑图", {
-                            description: `${meta.sensor} · ${date} · ${AGRI_MODE_LABELS[index]}`,
+                        toast(t("pixelDataMissing"), {
+                            description: `${meta.sensor} · ${date} · ${t(`indexLabels.${index}`)}`,
                         });
                     }
                     console.warn("[agri-heatmap] missing pixels_lonlat/pixel_data", {
@@ -993,31 +1035,49 @@ export default function AgriTimeseriesPanel({
                     img.previewS2HeatmapUrl = scene.s2_heatmap_url ?? null;
                 }
                 if (gen !== heatmapLoadGenRef.current) return;
-                cachedHeatmapRef.current = { date, index, img };
-                setHeatmapMeta(
+                const nextMeta: HeatmapMeta | null =
                     img
                         ? {
                               pixels: img.pixelCount,
                               date,
-                              index: AGRI_MODE_LABELS[index],
+                              index: t(`indexLabels.${index}`),
+                              sensor: scene.sensor,
                               mean: img.mean,
+                              source: scene.pixels_source ?? null,
+                              stacItemId: scene.stac_item_id ?? null,
+                              algorithmVersion: scene.algorithm_version ?? null,
+                              radiometricCalibration:
+                                  scene.radiometric_calibration ?? null,
+                              gridSpacingM:
+                                  Number.isFinite(scene.analysis_grid?.cell_size_m?.x) &&
+                                  Number.isFinite(scene.analysis_grid?.cell_size_m?.y)
+                                      ? {
+                                            x: scene.analysis_grid!.cell_size_m!.x!,
+                                            y: scene.analysis_grid!.cell_size_m!.y!,
+                                        }
+                                      : null,
                           }
-                        : null,
-                );
+                        : null;
+                cachedHeatmapRef.current = { landId, date, index, img, meta: nextMeta };
+                setHeatmapMeta(nextMeta);
                 publishHeatmap(img);
                 if (!img && enabledRef.current) {
-                    toast("色斑图未绘制任何像素", {
-                        description: `${date} · ${AGRI_MODE_LABELS[index]}`,
+                    toast(t("heatmapNoPixelsRendered"), {
+                        description: `${date} · ${t(`indexLabels.${index}`)}`,
                     });
                 }
             } catch (e) {
-                if (gen !== heatmapLoadGenRef.current) return;
-                cachedHeatmapRef.current = { date, index, img: null };
+                if (controller.signal.aborted || gen !== heatmapLoadGenRef.current) return;
+                cachedHeatmapRef.current = { landId, date, index, img: null, meta: null };
                 setHeatmapMeta(null);
                 publishHeatmap(null);
-                setHeatmapError(true);
+                // 413由地块/场景像元量触发，重复请求不会成功；向用户说明超限原因。
+                setHeatmapError(e instanceof ApiError && e.status === 413 ? "tooLarge" : "failed");
             } finally {
                 if (gen === heatmapLoadGenRef.current) {
+                    if (heatmapRequestRef.current?.controller === controller) {
+                        heatmapRequestRef.current = null;
+                    }
                     setHeatmapLoading(false);
                 }
             }
@@ -1028,14 +1088,16 @@ export default function AgriTimeseriesPanel({
 
     /** One bulk API call — server aggregates lonlat_v1 pixels (no include_pixels loop). */
     const loadDayGradeShares = useCallback(
-        async (from?: string, to?: string) => {
+        async (from?: string, to?: string, signal?: AbortSignal) => {
             if (!landId) return;
             try {
                 const res = await agriApi.ndviDayGradeShares(landId, {
                     from,
                     to,
                     limit: 500,
+                    signal,
                 });
+                if (signal?.aborted) return;
                 const next: Record<string, DayGradeShare> = {};
                 for (const item of res.items ?? []) {
                     const d = String(item.date).slice(0, 10);
@@ -1071,12 +1133,12 @@ export default function AgriTimeseriesPanel({
             const sensor = sensorForIndex(series);
             const scene = scenes.find((s) => s.sensor === sensor && s.date === date);
             if (sceneLooksCloudyOrLowVeg(scene, series)) {
-                toast("该日多为云或植被指数极低，色膜偏红属正常", {
-                    description: `${date} · ${AGRI_MODE_LABELS[series]}`,
+                toast(t("lowVegetationHeatmapNote"), {
+                    description: `${date} · ${t(`indexLabels.${series}`)}`,
                 });
             }
         },
-        [scenes, series],
+        [scenes, series, t],
     );
 
 
@@ -1084,20 +1146,27 @@ export default function AgriTimeseriesPanel({
     useEffect(() => {
         if (!selectedDate) return;
         const cache = cachedHeatmapRef.current;
-        if (cache && cache.date === selectedDate && cache.index === series) {
-            // Already have this film — publish if tab active, else keep cache warm
-            if (enabledRef.current && heatmapVisibleRef.current) {
-                onHeatmapChange?.(cache.img);
-            }
+        if (cache && cache.landId === landId && cache.date === selectedDate && cache.index === series) {
+            setHeatmapError(null);
+            setHeatmapMeta(cache.meta);
             return;
         }
         void loadHeatmap(selectedDate, series);
-    }, [selectedDate, series, loadHeatmap, onHeatmapChange]);
+    }, [landId, selectedDate, series, loadHeatmap]);
 
-    // enabled gate: clear map overlay only (keep cached film). On rise → apply cache or fetch.
+    // enabled gate：只同步地图显示状态；大体量像元请求由上方 effect 统一触发，避免重复拉取。
     useEffect(() => {
+        if (!selectedDate) {
+            heatmapLoadGenRef.current += 1;
+            heatmapRequestRef.current?.controller.abort();
+            heatmapRequestRef.current = null;
+            setHeatmapLoading(false);
+            setHeatmapMeta(null);
+            onHeatmapChange?.(null);
+            return;
+        }
         if (!enabled) {
-            // Do NOT bump gen / cancel prefetch — keep in-flight include_pixels result
+            // 保留后台预取；切换 tab 不取消正在加载的像元。
             onHeatmapChange?.(null);
             return;
         }
@@ -1105,14 +1174,16 @@ export default function AgriTimeseriesPanel({
             onHeatmapChange?.(null);
             return;
         }
-        if (!selectedDate) return;
         const cache = cachedHeatmapRef.current;
-        if (cache && cache.date === selectedDate && cache.index === series) {
+        if (cache && cache.landId === landId && cache.date === selectedDate && cache.index === series) {
+            setHeatmapError(null);
+            setHeatmapMeta(cache.meta);
             onHeatmapChange?.(cache.img);
             return;
         }
-        void loadHeatmap(selectedDate, series);
-    }, [enabled, heatmapVisible, selectedDate, series, loadHeatmap, onHeatmapChange]);
+        // 当前日期尚无缓存时先清除旧日期色膜，等待唯一的预取请求完成。
+        onHeatmapChange?.(null);
+    }, [enabled, heatmapVisible, landId, selectedDate, series, onHeatmapChange]);
 
     const stats = useMemo(() => scenesToStats(scenes, series, landId), [scenes, series, landId]);
     const decloudAltStats = useMemo(
@@ -1179,7 +1250,7 @@ export default function AgriTimeseriesPanel({
                 .sort(([a], [b]) => a.localeCompare(b))
                 .map(([date, cls]) => ({
                     date,
-                    label: DROUGHT_CLASS_STYLE[cls as "mild" | "moderate" | "severe"].label,
+                    label: t(`droughtChip_${cls}`),
                     level:
                         cls === "severe"
                             ? ("high" as const)
@@ -1187,7 +1258,7 @@ export default function AgriTimeseriesPanel({
                               ? ("medium" as const)
                               : ("low" as const),
                 })),
-        [droughtByDate],
+        [droughtByDate, t],
     );
 
     const floodEventMarks = useMemo(
@@ -1197,10 +1268,12 @@ export default function AgriTimeseriesPanel({
                 .sort(([a], [b]) => a.localeCompare(b))
                 .map(([date, cls]) => ({
                     date,
-                    label: FLOOD_CLASS_STYLE[cls].label,
+                    label: t(
+                        `floodChip_${cls === "flood_severe" ? "severe" : cls === "flood_moderate" ? "moderate" : "watch"}`,
+                    ),
                     level: cls === "flood_severe" ? ("high" as const) : cls === "flood_moderate" ? ("medium" as const) : ("low" as const),
                 })),
-        [floodByDate],
+        [floodByDate, t],
     );
 
     const harvestEventMarks = useMemo(() => {
@@ -1208,13 +1281,13 @@ export default function AgriTimeseriesPanel({
             return [
                 {
                     date: harvestResult.harvest_date,
-                    label: "收获",
+                    label: t("harvestLabel"),
                     level: "high" as const,
                 },
             ];
         }
         return [];
-    }, [harvestResult]);
+    }, [harvestResult, t]);
 
     const ndviEventMarks = useMemo(
         () => [...droughtEventMarks, ...harvestEventMarks],
@@ -1287,6 +1360,15 @@ export default function AgriTimeseriesPanel({
                     : pickOpticalForNdvi(matches, { neighbors: scenes })) ??
                 matches[0] ??
                 null
+            );
+        }
+        if (series === "flood") {
+            return (
+                matches.find(
+                    (scene) =>
+                        scene.radiometric_calibration?.method ===
+                        "esa_sigma_nought_lut",
+                ) ?? matches[0]
             );
         }
         return matches[0] ?? null;
@@ -1373,7 +1455,19 @@ export default function AgriTimeseriesPanel({
         const fetchKey = `${landId}:${from}:${to}`;
         if (gradeSharesFetchKeyRef.current === fetchKey) return;
         gradeSharesFetchKeyRef.current = fetchKey;
-        void loadDayGradeShares(from, to);
+        // 地块或统计日期窗口改变时停止旧聚合请求，防止同日期键把前一块地的分级结果写入当前图表。
+        const controller = new AbortController();
+        let settled = false;
+        void loadDayGradeShares(from, to, controller.signal).finally(() => {
+            settled = true;
+        });
+        return () => {
+            controller.abort();
+            // 被新窗口取代的请求不能留下已占用的去重键，否则新请求会被误判为重复。
+            if (!settled && gradeSharesFetchKeyRef.current === fetchKey) {
+                gradeSharesFetchKeyRef.current = null;
+            }
+        };
     }, [landId, scenes, loadDayGradeShares]);
 
     const total = summary?.total ?? 0;
@@ -1452,10 +1546,10 @@ export default function AgriTimeseriesPanel({
                         setInferredPhenology(data);
                         setSeasonWindows(current => current.length ? current : data.windows.slice(-MAX_SEASON_WINDOWS).map(window => ({
                             id: newWindowId(), start_date: window.start_date || window.observed_start || "",
-                            end_date: window.end_date || window.observed_end || "", crops: cropOption?.key ? [cropOption.key] : [], label: "遥感观测窗口",
+                            end_date: window.end_date || window.observed_end || "", crops: cropOption?.key ? [cropOption.key] : [], label: t("remoteSensingWindow"),
                         })));
                     }}
-                    onSelect={window => setSeasonWindows([{ id: newWindowId(), start_date: window.start_date!, end_date: window.end_date!, crops: cropOption?.key ? [cropOption.key] : [], label: "遥感观测窗口" }])} />
+                    onSelect={window => setSeasonWindows([{ id: newWindowId(), start_date: window.start_date!, end_date: window.end_date!, crops: cropOption?.key ? [cropOption.key] : [], label: t("remoteSensingWindow") }])} />
                 <IndexExplainer index={series} />
                 <Dialog open={refreshDateOpen} onOpenChange={setRefreshDateOpen}>
                     <DialogContent className="sm:max-w-lg">
@@ -1550,7 +1644,7 @@ export default function AgriTimeseriesPanel({
                                                 <Input
                                                     className="h-8 text-xs"
                                                     value={w.label}
-                                                    placeholder="春玉米 / 米豆间作"
+                                                    placeholder={t("cropTypeExample")}
                                                     onChange={(e) => updateSeasonWindow(w.id, { label: e.target.value })}
                                                 />
                                             </div>
@@ -1595,9 +1689,20 @@ export default function AgriTimeseriesPanel({
                                 })}
                             </p>
                         )}
-                        <div className="h-1.5 w-full rounded-full bg-info/15 overflow-hidden">
+                        <div
+                            role="progressbar"
+                            aria-label={t("refreshProgressLabel")}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={
+                                backfillProgress?.phase === "bridge"
+                                    ? 100
+                                    : Math.min(100, Math.max(0, backfillProgress?.percent ?? 0))
+                            }
+                            className="h-1.5 w-full rounded-full bg-info/15 overflow-hidden"
+                        >
                             <div
-                                className="h-full rounded-full bg-info transition-all duration-500"
+                                className="h-full rounded-full bg-info transition-[width] duration-500 motion-reduce:transition-none"
                                 style={{
                                     width: `${
                                         backfillProgress?.phase === "bridge"
@@ -1610,8 +1715,8 @@ export default function AgriTimeseriesPanel({
                     </div>
                 )}
                 {loading && (
-                    <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground text-xs">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                    <div role="status" aria-live="polite" className="flex items-center justify-center py-8 gap-2 text-muted-foreground text-xs">
+                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                         {t("loading")}
                     </div>
                 )}
@@ -1630,7 +1735,6 @@ export default function AgriTimeseriesPanel({
                     <>
                         <div className="flex flex-wrap gap-1.5 items-center rounded-xl bg-muted/40 p-2">
                             {primaryKeys.map((key) => {
-                                const meta = SERIES_META[key];
                                 return (
                                     <Button
                                         key={key}
@@ -1644,9 +1748,10 @@ export default function AgriTimeseriesPanel({
                                                 "border-primary/40",
                                         )}
                                         onClick={() => setSeries(key)}
-                                        title={meta.hint}
+                                        aria-pressed={series === key}
+                                        title={t(`indexHints.${key}`)}
                                     >
-                                        {meta.label}
+                                        {t(`indexLabels.${key}`)}
                                     </Button>
                                 );
                             })}
@@ -1658,15 +1763,15 @@ export default function AgriTimeseriesPanel({
                                             size="sm"
                                             variant={seriesInOverflow ? "secondary" : "outline"}
                                             className="h-7 w-7 p-0 shrink-0"
-                                            title="更多指数"
+                                            title={t("moreIndices")}
+                                            aria-label={t("moreIndices")}
                                         >
-                                            <MoreHorizontal className="h-3.5 w-3.5" />
-                                            <span className="sr-only">更多指数</span>
+                                            <MoreHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+                                            <span className="sr-only">{t("moreIndices")}</span>
                                         </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="start" className="min-w-[10rem]">
                                         {overflowKeys.map((key) => {
-                                            const meta = SERIES_META[key];
                                             const active = series === key;
                                             return (
                                                 <DropdownMenuItem
@@ -1674,9 +1779,9 @@ export default function AgriTimeseriesPanel({
                                                     onSelect={() => setSeries(key)}
                                                     className="text-xs gap-2"
                                                 >
-                                                    <span className="flex-1">{meta.label}</span>
+                                                    <span className="flex-1">{t(`indexLabels.${key}`)}</span>
                                                     {active ? (
-                                                        <Check className="h-3.5 w-3.5 text-primary" />
+                                                        <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
                                                     ) : null}
                                                 </DropdownMenuItem>
                                             );
@@ -1690,6 +1795,7 @@ export default function AgriTimeseriesPanel({
                                 variant="ghost"
                                 className="h-7 w-7 p-0 shrink-0 ml-auto"
                                 title={heatmapVisible ? t("hideHeatmap") : t("showHeatmap")}
+                                aria-label={heatmapVisible ? t("hideHeatmap") : t("showHeatmap")}
                                 onClick={() => {
                                     setHeatmapVisible((v) => {
                                         const next = !v;
@@ -1699,15 +1805,15 @@ export default function AgriTimeseriesPanel({
                                 }}
                             >
                                 {heatmapVisible ? (
-                                    <Eye className="h-3.5 w-3.5" />
+                                    <Eye className="h-3.5 w-3.5" aria-hidden="true" />
                                 ) : (
-                                    <EyeOff className="h-3.5 w-3.5" />
+                                    <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
                                 )}
                             </Button>
                         </div>
                         {(series === "drought" || series === "flood") && (
                             <p className="text-[11px] text-muted-foreground leading-snug">
-                                {SERIES_META[series].hint}
+                                {t(`indexHints.${series}`)}
                                 {series === "drought" && clearS2Count > 0
                                     ? ` · ${t("droughtDaysCount", { drought: droughtDayCount, clear: clearS2Count })}`
                                     : ""}
@@ -1720,7 +1826,7 @@ export default function AgriTimeseriesPanel({
                             {/* 收获日识别属于历史曲线操作，和当前指标、日期放在同一行，避免单独占一块空间。 */}
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                                 <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                                    <span>{AGRI_MODE_LABELS[series]}</span>
+                                    <span>{t(`indexLabels.${series}`)}</span>
                                     <span className="tabular-nums">{selectedDate ?? "—"} · {selectedMean != null ? selectedMean.toFixed(2) : "—"}</span>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1787,18 +1893,22 @@ export default function AgriTimeseriesPanel({
                             <>
                                 <div className="rounded-lg bg-background p-2.5 space-y-3">
                                     <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className="text-[11px] font-medium text-foreground">当日长势等级</span>
+                                        <span className="text-[11px] font-medium text-foreground">{t("dayGrowthGrade")}</span>
                                         <Badge variant="secondary" className="text-[10px]">
-                                            {cropOption?.season_label_zh || cropOption?.name_zh || "作物生育季"}
+                                            {locale === "zh"
+                                                ? cropOption?.season_label_zh || cropOption?.name_zh || t("cropSeason")
+                                                : locale === "en"
+                                                  ? cropOption?.name || t("cropSeason")
+                                                  : t("cropSeason")}
                                         </Badge>
                                         {selectedBare && (
                                             <Badge variant="destructive" className="text-[10px]">
-                                                疑似未种植/裸地（旺季 NDVI 低于 {UNCROPPED_NDVI}）
+                                                {t("bareLandSuspicion", { threshold: UNCROPPED_NDVI })}
                                             </Badge>
                                         )}
                                     </div>
                                     <p className="text-[10px] text-muted-foreground leading-snug">
-                                        把地块分成小格后，按每格的 NDVI 分组：{NDVI_DAY_GRADE_RULE_ZH}。绿色表示植被相对较密，红色表示较稀；苗期、成熟或收割后偏低也可能正常。圆环中心是地块面积（亩）。
+                                        {t("gradeShareExplanation", { rule: t("gradeShareRule") })}
                                     </p>
                                     <NdviGradeSharesChart
                                         variant="donut"
@@ -1809,7 +1919,7 @@ export default function AgriTimeseriesPanel({
                                     />
                                 </div>
                                 <div className="rounded-lg bg-background p-2.5 space-y-3">
-                                    <span className="text-[11px] font-medium text-foreground">多日长势占比趋势</span>
+                                    <span className="text-[11px] font-medium text-foreground">{t("growthShareTrend")}</span>
                                     <NdviGradeSharesChart
                                         variant="stacked"
                                         historyByDate={stackedHistoryByDate}
@@ -1822,7 +1932,7 @@ export default function AgriTimeseriesPanel({
                         <div data-tour="select-date" className="space-y-3 rounded-lg bg-muted/20 p-2.5">
                             <p className="text-[11px] text-muted-foreground leading-relaxed">
                                 {selectedDate
-                                    ? t("heatmapDate", { date: selectedDate, mode: AGRI_MODE_LABELS[series] })
+                                    ? t("heatmapDate", { date: selectedDate, mode: t(`indexLabels.${series}`) })
                                     : t("pickDate")}
                                 {cloudCoverPct != null
                                     ? ` · ${formatCloudCoverLabel(cloudCoverPct, selectedCloud.source, t)}`
@@ -1835,18 +1945,67 @@ export default function AgriTimeseriesPanel({
                                 {series === "flood" && selectedDate && isSpringFloodMonth(selectedDate)
                                     ? ` · ${t("floodSpringNote")}`
                                     : ""}
-                                {heatmapLoading ? t("rendering") : ""}
+                                {heatmapLoading ? (
+                                    <span role="status" aria-live="polite">{t("rendering")}</span>
+                                ) : ""}
                             </p>
                             {heatmapError && (
                                 <div role="alert" className="flex items-center justify-between gap-2 text-[11px] text-destructive">
-                                    <span>{t("heatmapFailed")}</span>
-                                    <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => selectedDate && void loadHeatmap(selectedDate, series)}>{t("retry")}</Button>
+                                    <span>{t(heatmapError === "tooLarge" ? "heatmapTooLarge" : "heatmapFailed")}</span>
+                                    {heatmapError !== "tooLarge" && (
+                                        <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => selectedDate && void loadHeatmap(selectedDate, series)}>{t("retry")}</Button>
+                                    )}
                                 </div>
                             )}
+                            {series === "flood" &&
+                                selectedScene &&
+                                selectedScene.radiometric_calibration?.method !== "esa_sigma_nought_lut" && (
+                                    <p role="status" className="text-[11px] text-muted-foreground">
+                                        {t("floodCalibrationOverlayUnavailable")}
+                                    </p>
+                                )}
                             {heatmapMeta && (
                                 <details className="text-[11px] text-muted-foreground">
                                     <summary className="cursor-pointer">{t("dataDetails")}</summary>
                                     <p className="mt-1 tabular-nums">{t("pixelsMeta", { pixels: heatmapMeta.pixels })}{heatmapMeta.mean != null ? t("meanMeta", { mean: heatmapMeta.mean.toFixed(2) }) : ""}</p>
+                                    {heatmapMeta.source && (
+                                        <p>{t("pixelSource", { source: t(`pixelSource${heatmapMeta.source === "db_lonlat" ? "DbLonlat" : heatmapMeta.source === "oss" ? "Oss" : "LegacyGrid"}`) })}</p>
+                                    )}
+                                    {heatmapMeta.gridSpacingM && (
+                                        <p>
+                                            {t("gridSpacingMeta", {
+                                                x: gridSpacingFormatter.format(heatmapMeta.gridSpacingM.x),
+                                                y: gridSpacingFormatter.format(heatmapMeta.gridSpacingM.y),
+                                            })}
+                                        </p>
+                                    )}
+                                    {heatmapMeta.stacItemId && (
+                                        <p className="break-all">
+                                            {t("stacItemMeta", { id: heatmapMeta.stacItemId })}
+                                        </p>
+                                    )}
+                                    {heatmapMeta.algorithmVersion && (
+                                        <p>{t("algorithmVersionMeta", { version: heatmapMeta.algorithmVersion })}</p>
+                                    )}
+                                    {heatmapMeta.radiometricCalibration && (
+                                        <>
+                                            <p>
+                                                {heatmapMeta.radiometricCalibration.method === "esa_sigma_nought_lut"
+                                                    ? t("radiometricCalibrationLut")
+                                                    : t("radiometricCalibrationApprox", {
+                                                          scale:
+                                                              heatmapMeta.radiometricCalibration.fallback_scale ?? "—",
+                                                      })}
+                                            </p>
+                                            {heatmapMeta.radiometricCalibration.thermal_noise_correction === "not_performed_by_this_pipeline" && (
+                                                <p>{t("thermalNoiseNotApplied")}</p>
+                                            )}
+                                        </>
+                                    )}
+                                    {heatmapMeta.sensor === "S1" &&
+                                        !heatmapMeta.radiometricCalibration && (
+                                            <p>{t("radiometricCalibrationUnknown")}</p>
+                                        )}
                                 </details>
                             )}
                             {selectedDate && (
@@ -1871,6 +2030,7 @@ export default function AgriTimeseriesPanel({
                                                         active && cloudCoverOver30 && "ring-1 ring-warning/50",
                                                     )}
                                                     onClick={() => selectDateExplicit(date)}
+                                                    aria-pressed={active}
                                                 >
                                                     {date.slice(5)}
                                                     {droughtCls && (
@@ -1930,14 +2090,14 @@ export default function AgriTimeseriesPanel({
                                     {allDates.length > 0 && (
                                         <div className="flex items-center gap-2 min-w-0">
                                             <span className="text-[10px] text-muted-foreground shrink-0">
-                                                全年日期
+                                                {t("yearDates")}
                                             </span>
                                             <Select
                                                 value={selectedDate}
                                                 onValueChange={(v) => selectDateExplicit(v)}
                                             >
                                                 <SelectTrigger className="h-7 text-[11px] w-full max-w-[14rem]">
-                                                    <SelectValue placeholder="选择日期" />
+                                                    <SelectValue placeholder={t("selectDate")} />
                                                 </SelectTrigger>
                                                 <SelectContent className="max-h-72">
                                                     {allDates.map((date) => {
@@ -1974,7 +2134,7 @@ export default function AgriTimeseriesPanel({
                                                             <SelectItem
                                                                 key={date}
                                                                 value={date}
-                                                                className="text-xs tabular-nums"
+                                                                className="text-xs tabular-nums [content-visibility:auto] [contain-intrinsic-size:2rem]"
                                                             >
                                                                 {label}
                                                             </SelectItem>

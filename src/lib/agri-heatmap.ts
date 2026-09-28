@@ -5,7 +5,8 @@
  * Legacy DB grid pixel_data ([row,col,...]) is fallback only.
  * Optional field.geom mask in WebMercator canvas space (skipped if alpha≈0).
  * Map overlay uses image film only (no GeoJSON fill — white seams between cells).
- * geojson/points on AgriHeatmapImage remain for metadata / rebuilds, not map layers.
+ * GeoJSON polygons remain for clipping fallback and metadata; point collections are
+ * intentionally not duplicated because the map renders the canvas image film.
  *
  * OSS S2 pixel: {lon,lat,clear?,NDVI,EVI,NDMI,NDRE,CIre,MNDWI}
  * OSS S1 pixel: {lon,lat,VV_db,VH_db}
@@ -207,9 +208,9 @@ export const FLOOD_CLASS_STYLE: Record<
     AgriFloodClass | "flood_mild",
     { label: string; color: string; rgba: [number, number, number, number] }
 > = {
-    // Confirmed flood (VV + orbit drop + helper) vs watch (near-threshold).
-    flood_severe: { label: "重度洪涝", color: "#08306b", rgba: [8, 48, 107, 240] },
-    flood_moderate: { label: "中度洪涝", color: "#08519c", rgba: [8, 81, 156, 230] },
+    // 这是单景像元级水体候选，不使用同轨时序变化，不能直接解释为洪涝等级。
+    flood_severe: { label: "强水体信号", color: "#08306b", rgba: [8, 48, 107, 240] },
+    flood_moderate: { label: "疑似水体", color: "#08519c", rgba: [8, 81, 156, 230] },
     watch: WATCH_STYLE,
     flood_mild: WATCH_STYLE,
     dry: { label: "干燥地表", color: "#74c476", rgba: [116, 196, 118, 0] }, // alpha 0
@@ -467,7 +468,7 @@ function droughtLegend(): AgriHeatmapLegend {
     return {
         kind: "classes",
         label: "干旱风险",
-        hint: "在 6–9 月用较清晰的影像排查缺水。颜色表示可能偏干的程度，需结合近期降雨和田间情况判断。",
+        hint: "结合当前作物生长窗口内较清晰的影像排查缺水。颜色表示可能偏干的程度，需结合近期降雨和田间情况判断。",
         classes: (["severe", "moderate", "mild", "normal"] as AgriDroughtPixelClass[]).map((k) => ({
             key: k,
             label: DROUGHT_CLASS_STYLE[k].label,
@@ -479,8 +480,8 @@ function droughtLegend(): AgriHeatmapLegend {
 function floodLegend(): AgriHeatmapLegend {
     return {
         kind: "classes",
-        label: "洪涝风险（雷达）",
-        hint: "根据雷达信号的变化排查积水；“关注”表示需要继续观察。春季灌溉、泡田也可能有积水，并不一定是洪灾。",
+        label: "雷达水体候选（像元）",
+        hint: "按单景 VV/VH 后向散射阈值标记疑似开阔水体像元，不等同日期级洪涝事件或灾情等级；事件判定还需同轨历史变化与现场核查。春季灌溉、泡田可能产生相似信号。",
         classes: (["flood_severe", "flood_moderate", "watch"] as AgriFloodClass[]).map((k) => ({
             key: k,
             label: FLOOD_CLASS_STYLE[k].label,
@@ -1579,22 +1580,8 @@ export function rasterizeAgriLonLatPixels(
     });
     const geojson: AgriHeatmapGeoJSON = { type: "FeatureCollection", features };
 
-    const points: AgriHeatmapPoints = {
-        type: "FeatureCollection",
-        features: cellsWithRc.map((cell) => {
-            const props: AgriHeatmapPoints["features"][number]["properties"] = {
-                color: cell.color,
-                value: cell.value,
-                rgba: cell.rgba,
-            };
-            if (cell.class) props.class = cell.class;
-            return {
-                type: "Feature",
-                properties: props,
-                geometry: { type: "Point", coordinates: [cell.lon, cell.lat] },
-            };
-        }),
-    };
+    // 地图主渲染使用下方 Canvas 色膜，当前没有消费者读取逐像元点集；
+    // 不再为每个像元复制一份 GeoJSON Point，降低大地块热图的瞬时内存占用。
 
     const tl = webMercatorToLonLat(minX, maxY);
     const tr = webMercatorToLonLat(minX + width * resM, maxY);
@@ -1659,7 +1646,6 @@ export function rasterizeAgriLonLatPixels(
         dataUrl,
         coordinates,
         geojson,
-        points,
         fromLonLat: true,
         grid,
         width,
