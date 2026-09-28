@@ -843,17 +843,8 @@ export function classifyFloodScene(
     return "dry";
 }
 
-export function classifyFloodSeries(
-    scenes: SarSceneLike[],
-    asOfDate?: string,
-): Map<string, AgriFloodClass> {
-    // 回看单个历史日期时，排除之后的场景，避免未来影像回写过去的洪涝标签。
-    const valid = scenes.filter(
-        (s) =>
-            finiteNum(s.vv_avg) != null &&
-            (asOfDate == null ||
-                (Boolean(s.date) && String(s.date) <= asOfDate)),
-    );
+export function classifyFloodSeries(scenes: SarSceneLike[]): Map<string, AgriFloodClass> {
+    const valid = scenes.filter((s) => finiteNum(s.vv_avg) != null);
     const groups = new Map<string, SarSceneLike[]>();
     const calibrationGroups = new Map<string, SarSceneLike[]>();
     for (const s of valid) {
@@ -928,6 +919,151 @@ function floodRank(cls: AgriFloodClass): number {
     if (cls === "flood_moderate") return 2;
     if (cls === "watch") return 1;
     return 0;
+}
+
+type FloodBaselineSamples = { vv: number[]; differences: number[] };
+
+function floodSamplesForKey(
+    groups: Map<string, FloodBaselineSamples>,
+    key: string,
+): FloodBaselineSamples {
+    let samples = groups.get(key);
+    if (!samples) {
+        samples = { vv: [], differences: [] };
+        groups.set(key, samples);
+    }
+    return samples;
+}
+
+function insertSortedValue(values: number[], value: number): void {
+    let low = 0;
+    let high = values.length;
+    while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (values[middle]! <= value) low = middle + 1;
+        else high = middle;
+    }
+    values.splice(low, 0, value);
+}
+
+function addFloodBaselineSamples(
+    target: FloodBaselineSamples,
+    scenes: SarSceneLike[],
+): void {
+    for (const scene of scenes) {
+        const vv = finiteNum(scene.vv_avg);
+        if (vv == null) continue;
+        insertSortedValue(target.vv, vv);
+        const vh = finiteNum(scene.vh_avg);
+        if (vh != null && Number.isFinite(vv - vh)) {
+            insertSortedValue(target.differences, vv - vh);
+        }
+    }
+}
+
+function medianFromSorted(values: number[]): number | null {
+    if (!values.length) return null;
+    const middle = Math.floor(values.length / 2);
+    return values.length % 2
+        ? values[middle]!
+        : (values[middle - 1]! + values[middle]!) / 2;
+}
+
+function percentileFromSorted(values: number[], p: number): number | null {
+    if (!values.length) return null;
+    if (values.length === 1) return values[0]!;
+    const position = (Math.max(0, Math.min(100, p)) / 100) * (values.length - 1);
+    const lower = Math.floor(position);
+    const upper = Math.ceil(position);
+    if (lower === upper) return values[lower]!;
+    const weight = position - lower;
+    return values[lower]! * (1 - weight) + values[upper]! * weight;
+}
+
+function floodBaselineFromSamples(
+    samples: FloodBaselineSamples,
+): { vv: number | null; p40: number | null } {
+    return {
+        vv:
+            samples.vv.length >= MIN_ORBIT_SAMPLES
+                ? medianFromSorted(samples.vv)
+                : null,
+        p40:
+            samples.differences.length >= MIN_ORBIT_SAMPLES
+                ? percentileFromSorted(samples.differences, VV_VH_DIFF_PCTL)
+                : null,
+    };
+}
+
+/**
+ * 为每个历史日期只使用截至当日的样本，并在一次正向遍历中累计基线。
+ * 同一日期的多轨场景仍共同参与当日统计，保持日期级展示口径。
+ */
+export function classifyFloodSeriesByDate(
+    scenes: SarSceneLike[],
+): Map<string, AgriFloodClass> {
+    const scenesByDate = new Map<
+        string,
+        Map<string, { calibrationKey: string; scenes: SarSceneLike[] }>
+    >();
+    for (const scene of scenes) {
+        if (finiteNum(scene.vv_avg) == null) continue;
+        const date = String(scene.date ?? "");
+        // 没有日期就无法证明它属于哪个时间前缀，不能混入历史基线。
+        if (!date) continue;
+        const orbitKey = floodBaselineGroupKey(scene);
+        const calibrationKey = floodCalibrationGroupKey(scene);
+        const groupsForDate = scenesByDate.get(date) ?? new Map();
+        const group = groupsForDate.get(orbitKey) ?? { calibrationKey, scenes: [] };
+        group.scenes.push(scene);
+        groupsForDate.set(orbitKey, group);
+        scenesByDate.set(date, groupsForDate);
+    }
+
+    const orbitSamples = new Map<string, FloodBaselineSamples>();
+    const calibrationSamples = new Map<string, FloodBaselineSamples>();
+    const output = new Map<string, AgriFloodClass>();
+    for (const date of [...scenesByDate.keys()].sort((a, b) => a.localeCompare(b))) {
+        const groupsForDate = scenesByDate.get(date)!;
+
+        // 先累计整日所有轨道，再分类，避免同日多景的结果受输入顺序影响。
+        for (const [orbitKey, group] of groupsForDate) {
+            addFloodBaselineSamples(
+                floodSamplesForKey(orbitSamples, orbitKey),
+                group.scenes,
+            );
+            addFloodBaselineSamples(
+                floodSamplesForKey(calibrationSamples, group.calibrationKey),
+                group.scenes,
+            );
+        }
+
+        for (const [orbitKey, group] of groupsForDate) {
+            let baseline = floodBaselineFromSamples(
+                floodSamplesForKey(orbitSamples, orbitKey),
+            );
+            if (baseline.vv == null) {
+                baseline = floodBaselineFromSamples(
+                    floodSamplesForKey(calibrationSamples, group.calibrationKey),
+                );
+            }
+            for (const scene of group.scenes) {
+                const cls = classifyFloodScene(
+                    finiteNum(scene.vv_avg),
+                    finiteNum(scene.vh_avg),
+                    baseline.vv,
+                    baseline.p40,
+                );
+                if (cls) {
+                    const previous = output.get(date);
+                    if (!previous || floodRank(cls) > floodRank(previous)) {
+                        output.set(date, cls);
+                    }
+                }
+            }
+        }
+    }
+    return output;
 }
 
 export function isFloodDayClass(cls: AgriFloodClass | null | undefined): boolean {

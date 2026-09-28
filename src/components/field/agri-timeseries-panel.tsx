@@ -35,7 +35,7 @@ import {
 } from "@/lib/agri-heatmap";
 import {
     classifyDroughtSeries,
-    classifyFloodSeries,
+    classifyFloodSeriesByDate,
     isFloodDayClass,
     isFloodWatchClass,
     isSpringFloodMonth,
@@ -1422,15 +1422,7 @@ export default function AgriTimeseriesPanel({
 
     const floodByDate = useMemo(() => {
         const s1 = scenes.filter((s) => s.sensor === "S1");
-        const dates = [
-            ...new Set(s1.map((scene) => String(scene.date ?? "")).filter(Boolean)),
-        ].sort((a, b) => a.localeCompare(b));
-        const classified = new Map<string, AgriFloodClass>();
-        for (const date of dates) {
-            const cls = classifyFloodSeries(s1, date).get(date);
-            if (cls) classified.set(date, cls);
-        }
-        return classified;
+        return classifyFloodSeriesByDate(s1);
     }, [scenes]);
 
     const floodUnclassifiedDates = useMemo(() => {
