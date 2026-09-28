@@ -336,7 +336,7 @@ export default function FarmsListPage() {
                                     data-tour-href={`/farms/detail?groupId=${encodeURIComponent(groupId)}`}
                                     className="group min-w-0"
                                 >
-                                    <Card className="h-full transition-all hover:border-primary/30 hover:shadow-sm">
+                                    <Card className="h-full transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-sm">
                                         <CardContent className="p-4">
                                             <div className="flex items-start gap-3">
                                                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-subtle">

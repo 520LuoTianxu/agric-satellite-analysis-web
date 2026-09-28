@@ -386,7 +386,7 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                                     </span>
                                     <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden relative">
                                         <div
-                                            className={`h-full rounded-full transition-all ${val > 30 ? "bg-danger" : val <= 0 ? "bg-info" : "bg-sig-temp"
+                                            className={`h-full rounded-full transition-[width,background-color] ${val > 30 ? "bg-danger" : val <= 0 ? "bg-info" : "bg-sig-temp"
                                                 }`}
                                             style={{ width: `${Math.min(Math.max(((val + 10) / 50) * 100, 5), 100)}%` }}
                                         />

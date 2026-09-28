@@ -623,6 +623,8 @@
     "title": "田间调查观测",
     "addObservation": "添加观测",
     "editObservation": "编辑观测",
+    "viewObservationOnMap": "在地图上查看观测：{title}",
+    "viewPhoto": "查看照片：{title}",
     "noObservations": "暂无观测",
     "noObservationsDesc": "添加第一条田间调查观测，记录地块状况。",
     "titleLabel": "标题",

@@ -623,6 +623,8 @@
     "title": "Scouting observations",
     "addObservation": "Add observation",
     "editObservation": "Edit observation",
+    "viewObservationOnMap": "View observation on map: {title}",
+    "viewPhoto": "View photo: {title}",
     "noObservations": "No observations yet",
     "noObservationsDesc": "Add your first scouting observation to document field conditions.",
     "titleLabel": "Title",

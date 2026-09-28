@@ -734,7 +734,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                         </div>
                         <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-2">
                             <div
-                                className={cn("h-full rounded-full transition-all",
+                                className={cn("h-full rounded-full transition-[width,background-color]",
                                     weatherStress.severity < 0.3 ? "bg-success" :
                                         weatherStress.severity < 0.6 ? "bg-warning" : "bg-danger"
                                 )}
@@ -1065,7 +1065,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                                 </div>
                                 <div className="h-2 bg-muted rounded-full overflow-hidden">
                                     <div
-                                        className={cn("h-full rounded-full transition-all",
+                                        className={cn("h-full rounded-full transition-[width,background-color]",
                                             carbonEstimate.saturation_pct < 50 ? "bg-success" :
                                                 carbonEstimate.saturation_pct < 80 ? "bg-warning" : "bg-danger"
                                         )}
@@ -1409,7 +1409,7 @@ function AwcBar({
             </div>
             <div className="h-2.5 bg-muted rounded-full overflow-hidden">
                 <div
-                    className={cn("h-full rounded-full transition-all", awcColor(awc))}
+                    className={cn("h-full rounded-full transition-[width,background-color]", awcColor(awc))}
                     style={{ width: `${pct}%` }}
                 />
             </div>
@@ -1497,7 +1497,7 @@ function SocStockCard({
             </div>
             <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div
-                    className={cn("h-full rounded-full transition-all", barColor)}
+                    className={cn("h-full rounded-full transition-[width,background-color]", barColor)}
                     style={{ width: `${pct}%` }}
                 />
             </div>

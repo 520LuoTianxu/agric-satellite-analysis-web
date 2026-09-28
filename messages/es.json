@@ -623,6 +623,8 @@
     "title": "Observaciones de campo",
     "addObservation": "Agregar observación",
     "editObservation": "Editar observación",
+    "viewObservationOnMap": "Ver observación en el mapa: {title}",
+    "viewPhoto": "Ver foto: {title}",
     "noObservations": "Sin observaciones aún",
     "noObservationsDesc": "Agrega tu primera observación de campo para documentar las condiciones.",
     "titleLabel": "Título",
