@@ -1946,6 +1946,7 @@
     "noPixels": "Sin píxeles espaciales utilizables",
     "spatial": "Distribución espacial del verdor",
     "spatialLegend": "Escala común: <0.25 / 0.25–0.35 / 0.35–0.50 / ≥0.50; no equivale a superficie dañada",
+    "spatialSampled": "El mapa muestra una muestra espacial ({displayed}/{total} píxeles válidos); las métricas usan todos los píxeles válidos.",
     "curve": "Observaciones NDVI",
     "validDates": "Días con observación válida",
     "meanNdvi": "NDVI medio observado",

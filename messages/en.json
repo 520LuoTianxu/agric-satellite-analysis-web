@@ -1946,6 +1946,7 @@
     "noPixels": "No usable spatial pixels",
     "spatial": "Spatial greenness",
     "spatialLegend": "Shared bands: <0.25 / 0.25–0.35 / 0.35–0.50 / ≥0.50; not damaged area",
+    "spatialSampled": "The map uses a spatial grid sample ({displayed}/{total} valid pixels); metrics use all valid pixels.",
     "curve": "NDVI observations",
     "validDates": "Valid observation days",
     "meanNdvi": "Observed mean NDVI",

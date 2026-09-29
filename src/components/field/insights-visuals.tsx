@@ -38,5 +38,5 @@ export function InsightsSpatial({ item }: { item: InsightLand }) {
     const size = Math.max(2, Math.min(7, 180 / Math.sqrt(pixels.length)));
     return <figure><svg viewBox="0 0 300 205" role="img" aria-label={`${item.land_name} ${t("spatial")}`} className="h-48 w-full rounded-lg bg-muted/30">
         {pixels.map(([lon, lat, value], i) => <rect key={i} x={15 + (lon - minX) * factor * scale} y={15 + (maxY - lat) * scale} width={size} height={size} fill={color(value)}><title>{`NDVI ${value.toFixed(3)} · ${lon.toFixed(5)}, ${lat.toFixed(5)}`}</title></rect>)}
-    </svg><figcaption className="mt-2 text-xs text-muted-foreground">{item.spatial?.date} · {t("spatialLegend")}</figcaption></figure>;
+    </svg><figcaption className="mt-2 space-y-1 text-xs text-muted-foreground"><p>{item.spatial?.date} · {t("spatialLegend")}</p>{item.spatial?.display_sampled && <p>{t("spatialSampled", { displayed: pixels.length, total: item.spatial.valid_pixels })}</p>}</figcaption></figure>;
 }
