@@ -1780,6 +1780,7 @@
     "totalClaims": "Total claims",
     "success": "Completed",
     "failed": "Failed",
+    "partial": "Partially completed",
     "running": "Running",
     "queued": "Queued",
     "cancelled": "Cancelled",

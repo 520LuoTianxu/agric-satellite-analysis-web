@@ -49,6 +49,7 @@ function workerTone(status: DownloadWorkerStatus["status"]) {
 function runTone(status: AdminTaskRun["status"]) {
     if (status === "success") return "border-success/30 bg-success-subtle text-success";
     if (status === "failed") return "border-destructive/30 bg-destructive/5 text-destructive";
+    if (status === "partial") return "border-warning/40 bg-warning-subtle text-warning-foreground";
     if (status === "cancelled") return "border-muted-foreground/30 bg-muted text-muted-foreground";
     return "border-primary/30 bg-primary-subtle text-primary";
 }
@@ -342,12 +343,12 @@ function WorkerCard({ worker, locale, t }: { worker: DownloadWorkerStatus; local
 
 function RunRow({ run, locale, t }: { run: AdminTaskRun; locale: string; t: (key: string, values?: Record<string, string | number>) => string }) {
     const [expanded, setExpanded] = useState(false);
-    const statusLabel = run.status === "success" ? t("success") : run.status === "failed" ? t("failed") : run.status === "cancelled" ? t("cancelled") : run.status === "running" ? t("running") : t("queued");
+    const statusLabel = run.status === "partial" ? t("partial") : run.status === "success" ? t("success") : run.status === "failed" ? t("failed") : run.status === "cancelled" ? t("cancelled") : run.status === "running" ? t("running") : t("queued");
     const detail = run.error || (run.result ? JSON.stringify(run.result) : run.celery_task_id || "—");
     return <>
         <tr className="border-b last:border-0">
             <td className="px-3 py-3 font-medium"><button className="text-left hover:text-primary" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{run.label}</button></td>
-            <td className="px-3 py-3"><Badge className={runTone(run.status)}>{run.status === "success" ? <CheckCircle2 className="mr-1 h-3 w-3" /> : run.status === "failed" ? <TriangleAlert className="mr-1 h-3 w-3" /> : run.status === "cancelled" ? <Ban className="mr-1 h-3 w-3" /> : <Loader2 className="mr-1 h-3 w-3 animate-spin" />}{statusLabel}</Badge></td>
+            <td className="px-3 py-3"><Badge className={runTone(run.status)}>{run.status === "success" ? <CheckCircle2 className="mr-1 h-3 w-3" /> : run.status === "failed" || run.status === "partial" ? <TriangleAlert className="mr-1 h-3 w-3" /> : run.status === "cancelled" ? <Ban className="mr-1 h-3 w-3" /> : <Loader2 className="mr-1 h-3 w-3 animate-spin" />}{statusLabel}</Badge></td>
             <td className="px-3 py-3 text-muted-foreground">{formatTime(run.created_at, locale)}</td>
             <td className="px-3 py-3 text-muted-foreground">{formatTime(run.finished_at, locale)}</td>
             <td className={cn("max-w-[300px] truncate px-3 py-3 text-xs", run.error ? "text-destructive" : "text-muted-foreground")} title={detail}>{detail}</td>

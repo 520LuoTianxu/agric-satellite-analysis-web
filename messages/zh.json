@@ -1780,6 +1780,7 @@
     "totalClaims": "累计 claim",
     "success": "已完成",
     "failed": "失败",
+    "partial": "部分完成",
     "running": "运行中",
     "queued": "排队中",
     "cancelled": "已取消",

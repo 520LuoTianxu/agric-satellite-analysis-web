@@ -2073,7 +2073,7 @@ export interface AdminTaskRun {
     label: string;
     task_name: string;
     celery_task_id: string | null;
-    status: "queued" | "running" | "success" | "failed" | "cancelled";
+    status: "queued" | "running" | "success" | "failed" | "cancelled" | "partial";
     params: Record<string, unknown>;
     result: unknown;
     error: string | null;

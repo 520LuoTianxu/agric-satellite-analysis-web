@@ -1780,6 +1780,7 @@
     "totalClaims": "Claims totales",
     "success": "Completada",
     "failed": "Fallida",
+    "partial": "Parcialmente completada",
     "running": "En ejecución",
     "queued": "En cola",
     "cancelled": "Cancelada",
