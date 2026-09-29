@@ -76,9 +76,9 @@ export const parcelInsightsApi = {
         if (end) query.set("end_date", end);
         return request<Phenology>(`/lands/${encodeURIComponent(landId)}/phenology?${query}`, { signal });
     },
-    analyze: (body: InsightsRequest) => request<InsightsSnapshot>("/parcel-insights", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
-    history: (offset = 0) => request<InsightsHistory>(`/parcel-insights?limit=10&offset=${offset}`),
-    get: (id: string) => request<InsightsSnapshot>(`/parcel-insights/${encodeURIComponent(id)}`),
+    analyze: (body: InsightsRequest, signal?: AbortSignal) => request<InsightsSnapshot>("/parcel-insights", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal }),
+    history: (offset = 0, signal?: AbortSignal) => request<InsightsHistory>(`/parcel-insights?limit=10&offset=${offset}`, { signal }),
+    get: (id: string, signal?: AbortSignal) => request<InsightsSnapshot>(`/parcel-insights/${encodeURIComponent(id)}`, { signal }),
     download: async (id: string) => {
         const response = await fetch(`${getApiBase()}/parcel-insights/${encodeURIComponent(id)}/report.pdf`);
         if (!response.ok) throw new ApiError(response.status, response.statusText);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Download, Loader2, Search, Sprout, X } from "lucide-react";
@@ -61,6 +61,7 @@ export default function ParcelInsights() {
     const [inferBusy, setInferBusy] = useState<string | null>(null);
     const [inferences, setInferences] = useState<Record<string, { data?: Phenology; error?: string }>>({});
     const inferenceRequest = useRef<AbortController | null>(null);
+    const insightRequest = useRef<{ controller: AbortController; inputKey: string } | null>(null);
     const prefillFieldId = useRef(fieldId);
     const selectionManuallyChanged = useRef(false);
     const [history, setHistory] = useState<InsightsHistory | null>(null);
@@ -99,18 +100,45 @@ export default function ParcelInsights() {
     );
     const eventOutsideRange = events.some(item => item.date < start || item.date > end);
     const invalidEventDays = !Number.isInteger(event.window_days) || event.window_days < 7 || event.window_days > 60;
+    const requestBody: InsightsRequest = {
+        land_ids: selected.map(item => item.land_id),
+        start_date: start,
+        end_date: end,
+        mode,
+        reference_year: reference ? Number(reference) : null,
+        brand_name: brand,
+        title,
+        events,
+        seasons: Object.fromEntries(Object.entries(seasons).filter(([key]) => selected.some(item => item.land_id === key))),
+    };
+    // 指纹与POST正文保持一致；输入变化时取消旧请求，避免迟到结果覆盖当前表单语境。
+    const requestInputKey = JSON.stringify(requestBody);
+    const latestRequestInputKey = useRef(requestInputKey);
+    useLayoutEffect(() => { latestRequestInputKey.current = requestInputKey; }, [requestInputKey]);
 
-    useEffect(() => () => { inferenceRequest.current?.abort(); }, []);
+    useEffect(() => {
+        const active = insightRequest.current;
+        if (!active || active.inputKey === requestInputKey) return;
+        active.controller.abort();
+        insightRequest.current = null;
+        setBusy(false);
+    }, [requestInputKey]);
+
+    useEffect(() => () => {
+        inferenceRequest.current?.abort();
+        insightRequest.current?.controller.abort();
+    }, []);
 
     useEffect(() => { const timer = setTimeout(() => { setQuery(search.trim()); setPage(0); }, 300); return () => clearTimeout(timer); }, [search]);
     useEffect(() => {
+        const controller = new AbortController();
         let cancelled = false;
         setListLoading(true); setListError(false);
-        void landsApi.list({ group_id: groupId || undefined, q: query, limit: 30, offset: page * 30 })
+        void landsApi.list({ group_id: groupId || undefined, q: query, limit: 30, offset: page * 30 }, controller.signal)
             .then(data => { if (!cancelled) { setLands(data.items); setTotal(data.total); } })
             .catch(() => { if (!cancelled) setListError(true); })
             .finally(() => { if (!cancelled) setListLoading(false); });
-        return () => { cancelled = true; };
+        return () => { cancelled = true; controller.abort(); };
     }, [groupId, query, page, retry]);
     useEffect(() => {
         if (prefillFieldId.current !== fieldId) {
@@ -118,8 +146,9 @@ export default function ParcelInsights() {
             selectionManuallyChanged.current = false;
         }
         if (!fieldId || selectionManuallyChanged.current) return;
+        const controller = new AbortController();
         let cancelled = false;
-        void landsApi.get(fieldId).then(land => {
+        void landsApi.get(fieldId, controller.signal).then(land => {
             // URL预选只在用户尚未接管地块选择时生效，避免慢响应覆盖手动选择或已打开的快照。
             if (!cancelled && !selectionManuallyChanged.current) {
                 setSelected([{ land_id: land.land_id, land_name: land.land_name || land.land_id, crop_type: land.crop_type }]);
@@ -127,16 +156,17 @@ export default function ParcelInsights() {
         }).catch(() => {
             if (!cancelled && !selectionManuallyChanged.current) setError(t("loadFailed"));
         });
-        return () => { cancelled = true; };
+        return () => { cancelled = true; controller.abort(); };
     }, [fieldId, t]);
     useEffect(() => {
         if (!openHistory) return;
+        const controller = new AbortController();
         let cancelled = false;
         setHistoryLoading(true); setHistoryError(false);
-        void parcelInsightsApi.history(historyOffset).then(data => { if (!cancelled) setHistory(data); })
+        void parcelInsightsApi.history(historyOffset, controller.signal).then(data => { if (!cancelled) setHistory(data); })
             .catch(() => { if (!cancelled) setHistoryError(true); })
             .finally(() => { if (!cancelled) setHistoryLoading(false); });
-        return () => { cancelled = true; };
+        return () => { cancelled = true; controller.abort(); };
     }, [openHistory, historyOffset, historyRevision]);
 
     const markSelectionManuallyChanged = () => {
@@ -147,6 +177,7 @@ export default function ParcelInsights() {
         selectionManuallyChanged.current = true;
     };
     const toggleLand = (land: Selected) => {
+        if (busy) return;
         markSelectionManuallyChanged();
         if (inferBusy === land.land_id) { inferenceRequest.current?.abort(); setInferBusy(null); }
         setInferences(current => { const next = { ...current }; delete next[land.land_id]; return next; });
@@ -200,27 +231,50 @@ export default function ParcelInsights() {
         }
     };
     const analyze = async () => {
+        insightRequest.current?.controller.abort();
+        const controller = new AbortController();
+        insightRequest.current = { controller, inputKey: requestInputKey };
         setError(""); setBusy(true);
-        const ids = selected.map(item => item.land_id);
-        const body: InsightsRequest = { land_ids: ids, start_date: start, end_date: end, mode,
-            reference_year: reference ? Number(reference) : null, brand_name: brand, title, events,
-            seasons: Object.fromEntries(Object.entries(seasons).filter(([key]) => ids.includes(key))) };
-        try { setResult(await parcelInsightsApi.analyze(body)); setHistoryRevision(value => value + 1); }
-        catch (err) { setError(err instanceof Error ? err.message : t("loadFailed")); }
-        finally { setBusy(false); }
+        try {
+            const data = await parcelInsightsApi.analyze(requestBody, controller.signal);
+            if (controller.signal.aborted || latestRequestInputKey.current !== requestInputKey) return;
+            setResult(data);
+            setHistoryRevision(value => value + 1);
+        } catch (err) {
+            if (!controller.signal.aborted && latestRequestInputKey.current === requestInputKey) {
+                setError(err instanceof Error ? err.message : t("loadFailed"));
+            }
+        } finally {
+            if (insightRequest.current?.controller === controller) {
+                insightRequest.current = null;
+                setBusy(false);
+            }
+        }
     };
     const openSnapshot = async (id: string) => {
+        insightRequest.current?.controller.abort();
+        const controller = new AbortController();
+        insightRequest.current = { controller, inputKey: requestInputKey };
         clearInferences();
         setBusy(true); setError("");
         try {
-            const data = await parcelInsightsApi.get(id);
+            const data = await parcelInsightsApi.get(id, controller.signal);
+            if (controller.signal.aborted || latestRequestInputKey.current !== requestInputKey) return;
             const req = data.request;
             markSelectionManuallyChanged();
             setResult(data); setMode("historical"); setStart(req.start_date); setEnd(req.end_date); setReference(req.reference_year ? String(req.reference_year) : "");
             setTitle(req.title); setBrand(req.brand_name); setSeasons(req.seasons); setEvents(req.events);
             setSelected(data.items.map(item => ({ land_id: item.land_id, land_name: item.land_name, crop_type: item.crop })));
-        } catch (err) { setError(err instanceof Error ? err.message : t("loadFailed")); }
-        finally { setBusy(false); }
+        } catch (err) {
+            if (!controller.signal.aborted && latestRequestInputKey.current === requestInputKey) {
+                setError(err instanceof Error ? err.message : t("loadFailed"));
+            }
+        } finally {
+            if (insightRequest.current?.controller === controller) {
+                insightRequest.current = null;
+                setBusy(false);
+            }
+        }
     };
     const download = async () => {
         if (!result?.snapshot_id) return;
@@ -240,12 +294,12 @@ export default function ParcelInsights() {
         {openHistory && <section className="rounded-xl border p-4"><h2 className="font-semibold">{t("savedReports")}</h2>{historyLoading ? <p role="status" aria-live="polite" className="py-3 text-sm">{t("loading")}</p> : historyError ? <Button variant="outline" onClick={() => setHistoryRevision(value => value + 1)}>{t("retry")}</Button> : <div className="mt-3 grid gap-2 md:grid-cols-2">{history?.items.map(item => <button type="button" disabled={busy} key={item.id} onClick={() => void openSnapshot(item.id)} className="rounded-lg border p-3 text-left text-sm hover:bg-muted"><span className="block font-medium">{item.request.title}</span><span className="text-xs text-muted-foreground">{item.request.start_date} ~ {item.request.end_date} · {item.request.land_ids.length} {t("lands")}</span></button>)}{!history?.items.length && <p className="text-sm text-muted-foreground">{t("noSaved")}</p>}</div>}<div className="mt-3 flex gap-2"><Button size="sm" variant="ghost" disabled={historyOffset === 0 || historyLoading} onClick={() => setHistoryOffset(value => value - 10)}>{t("previous")}</Button><Button size="sm" variant="ghost" disabled={!history || historyOffset + 10 >= history.total || historyLoading} onClick={() => setHistoryOffset(value => value + 10)}>{t("next")}</Button></div></section>}
         <div className="grid items-start gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
             <aside className="rounded-xl border bg-background p-4"><h2 className="mb-3 font-semibold">{t("selectLands")} <span className="text-sm text-muted-foreground">{selected.length}/20</span></h2><p className="mb-3 text-xs text-muted-foreground">{t("selectionHint")}</p><label className="relative block"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" /><Input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("search")} aria-label={t("search")} className="pl-9" /></label>
-                <div className="mt-3 max-h-64 space-y-1 overflow-y-auto xl:max-h-[440px]">{listLoading ? <p role="status" aria-live="polite" className="p-3 text-sm">{t("loading")}</p> : listError ? <Button onClick={() => setRetry(value => value + 1)} variant="outline">{t("retry")}</Button> : lands.length ? lands.map(land => <label key={land.land_id} className="flex cursor-pointer items-start gap-3 rounded-lg p-2.5 hover:bg-muted"><input type="checkbox" className="mt-1" checked={selected.some(item => item.land_id === land.land_id)} disabled={selected.length >= 20 && !selected.some(item => item.land_id === land.land_id)} onChange={() => toggleLand({ land_id: land.land_id, land_name: land.land_name || land.land_id, crop_type: land.crop_type })} /><span className="min-w-0 text-sm"><span className="block truncate font-medium">{land.land_name || land.land_id}</span><span className="block truncate text-xs text-muted-foreground">{land.crop_type || t("unknownCrop")} · {land.group_name || land.land_id}</span></span></label>) : <p className="p-3 text-sm text-muted-foreground">{t("noLands")}</p>}</div>
+                <div className="mt-3 max-h-64 space-y-1 overflow-y-auto xl:max-h-[440px]">{listLoading ? <p role="status" aria-live="polite" className="p-3 text-sm">{t("loading")}</p> : listError ? <Button onClick={() => setRetry(value => value + 1)} variant="outline">{t("retry")}</Button> : lands.length ? lands.map(land => <label key={land.land_id} className="flex cursor-pointer items-start gap-3 rounded-lg p-2.5 hover:bg-muted"><input type="checkbox" className="mt-1" checked={selected.some(item => item.land_id === land.land_id)} disabled={busy || (selected.length >= 20 && !selected.some(item => item.land_id === land.land_id))} onChange={() => toggleLand({ land_id: land.land_id, land_name: land.land_name || land.land_id, crop_type: land.crop_type })} /><span className="min-w-0 text-sm"><span className="block truncate font-medium">{land.land_name || land.land_id}</span><span className="block truncate text-xs text-muted-foreground">{land.crop_type || t("unknownCrop")} · {land.group_name || land.land_id}</span></span></label>) : <p className="p-3 text-sm text-muted-foreground">{t("noLands")}</p>}</div>
                 <div className="mt-3 flex items-center justify-between"><Button size="sm" variant="ghost" disabled={!page || listLoading} onClick={() => setPage(value => value - 1)}>{t("previous")}</Button><span className="text-xs text-muted-foreground">{total}</span><Button size="sm" variant="ghost" disabled={(page + 1) * 30 >= total || listLoading} onClick={() => setPage(value => value + 1)}>{t("next")}</Button></div>
             </aside>
             <div className="min-w-0 space-y-4">
                 <section className="rounded-xl border bg-background p-4 md:p-5">
-                    <div className="mb-4 flex flex-wrap gap-2">{selected.map(land => <button type="button" key={land.land_id} onClick={() => toggleLand(land)} className="flex max-w-full items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 text-xs text-primary" aria-label={`${t("remove")} ${land.land_name}`}><span className="truncate">{land.land_name}</span><X className="h-3 w-3 shrink-0" aria-hidden="true" /></button>)}</div>
+                    <div className="mb-4 flex flex-wrap gap-2">{selected.map(land => <button type="button" key={land.land_id} disabled={busy} onClick={() => toggleLand(land)} className="flex max-w-full items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 text-xs text-primary disabled:cursor-not-allowed disabled:opacity-50" aria-label={`${t("remove")} ${land.land_name}`}><span className="truncate">{land.land_name}</span><X className="h-3 w-3 shrink-0" aria-hidden="true" /></button>)}</div>
                     <div className="grid gap-3 sm:grid-cols-3"><label className="space-y-1 text-xs">{t("start")}<Input type="date" value={start} min={earliestAllowedStart} max={end} aria-invalid={invalidPeriod} aria-describedby={invalidPeriod ? "parcel-insights-period-error" : undefined} onChange={e => { clearInferences(); setStart(e.target.value); }} /></label><label className="space-y-1 text-xs">{t("end")}<Input type="date" value={end} min={start} max={latestAllowedEnd} aria-invalid={invalidPeriod} aria-describedby={invalidPeriod ? "parcel-insights-period-error" : undefined} onChange={e => { clearInferences(); setEnd(e.target.value); }} /></label><label className="space-y-1 text-xs">{t("referenceYear")}<Input type="number" min="2015" max={Number(start.slice(0, 4)) - 1} value={reference} aria-invalid={invalidReference} aria-describedby={invalidReference ? "parcel-insights-reference-error" : undefined} placeholder={t("optional")} onChange={e => setReference(e.target.value)} /></label></div>
                     {(invalidPeriod || invalidReference) && <div className="space-y-1 text-xs text-destructive">{invalidPeriod && <p id="parcel-insights-period-error" role="alert">{t("periodInvalid")}</p>}{invalidReference && <p id="parcel-insights-reference-error" role="alert">{t("referenceYearInvalid")}</p>}</div>}
                     <p className="mt-3 text-xs text-muted-foreground">{mode === "historical" ? t("historicalHint") : t("recentHint")}</p>

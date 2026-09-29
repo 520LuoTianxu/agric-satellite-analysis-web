@@ -591,7 +591,7 @@ export interface BackfillStatusResponse {
 }
 
 export const landsApi = {
-    list: (opts: { farm_id?: string; group_id?: string; q?: string; limit?: number; offset?: number } = {}) => {
+    list: (opts: { farm_id?: string; group_id?: string; q?: string; limit?: number; offset?: number } = {}, signal?: AbortSignal) => {
         const params = new URLSearchParams({
             limit: String(opts.limit ?? 200),
             offset: String(opts.offset ?? 0),
@@ -599,9 +599,9 @@ export const landsApi = {
         if (opts.farm_id) params.set("farm_id", opts.farm_id);
         if (opts.group_id) params.set("group_id", opts.group_id);
         if (opts.q?.trim()) params.set("q", opts.q.trim());
-        return apiFetch<Paginated<LandParcel>>(`/lands?${params.toString()}`);
+        return apiFetch<Paginated<LandParcel>>(`/lands?${params.toString()}`, { signal });
     },
-    get: (landId: string) => apiFetch<LandParcel>(`/lands/${landId}`),
+    get: (landId: string, signal?: AbortSignal) => apiFetch<LandParcel>(`/lands/${landId}`, { signal }),
     create: (data: {
         land_id: string;
         farm_id?: string;
