@@ -101,6 +101,8 @@ const NdviGradeSharesChart = dynamic(
 type SeriesKey = AgriHeatIndex;
 type SceneHistoryCursor = { date: string; sceneId: string };
 type HeatmapMeta = {
+    landId: string;
+    sceneId: string;
     pixels: number;
     date: string;
     index: string;
@@ -115,6 +117,44 @@ type HeatmapMeta = {
     processingVersion: string | null;
     calibrationEpoch: string | null;
 };
+
+type SceneProvenanceMeta = Pick<
+    HeatmapMeta,
+    | "sensor"
+    | "source"
+    | "stacItemId"
+    | "algorithmVersion"
+    | "gridSpacingM"
+    | "radiometricCalibration"
+    | "platform"
+    | "processingVersion"
+    | "calibrationEpoch"
+>;
+
+function sceneProvenanceMeta(scene: AgriSceneProduct): SceneProvenanceMeta {
+    const cellSize = scene.analysis_grid?.cell_size_m;
+    const cellSizeX = cellSize?.x;
+    const cellSizeY = cellSize?.y;
+    return {
+        sensor: scene.sensor,
+        source: scene.pixels_source ?? null,
+        stacItemId: scene.stac_item_id ?? null,
+        algorithmVersion: scene.algorithm_version ?? null,
+        gridSpacingM:
+            typeof cellSizeX === "number" &&
+            Number.isFinite(cellSizeX) &&
+            typeof cellSizeY === "number" &&
+            Number.isFinite(cellSizeY)
+                ? { x: cellSizeX, y: cellSizeY }
+                : null,
+        radiometricCalibration: scene.radiometric_calibration ?? null,
+        platform: scene.sensor === "S1" ? s1PlatformForScene(scene) : null,
+        processingVersion:
+            scene.radiometric_calibration?.processing_version ?? null,
+        calibrationEpoch:
+            scene.sensor === "S1" ? s1CalibrationEpochForScene(scene) : null,
+    };
+}
 
 const SERIES_META: Record<
     SeriesKey,
@@ -1088,32 +1128,13 @@ export default function AgriTimeseriesPanel({
                 const nextMeta: HeatmapMeta | null =
                     img
                         ? {
+                              landId,
+                              sceneId: scene.scene_id,
                               pixels: img.pixelCount,
                               date,
                               index: t(`indexLabels.${index}`),
-                              sensor: scene.sensor,
                               mean: img.mean,
-                              source: scene.pixels_source ?? null,
-                              stacItemId: scene.stac_item_id ?? null,
-                              algorithmVersion: scene.algorithm_version ?? null,
-                              radiometricCalibration:
-                                  scene.radiometric_calibration ?? null,
-                              platform:
-                                  scene.sensor === "S1" ? s1PlatformForScene(scene) : null,
-                              processingVersion:
-                                  scene.radiometric_calibration?.processing_version ?? null,
-                              calibrationEpoch:
-                                  scene.sensor === "S1"
-                                      ? s1CalibrationEpochForScene(scene)
-                                      : null,
-                              gridSpacingM:
-                                  Number.isFinite(scene.analysis_grid?.cell_size_m?.x) &&
-                                  Number.isFinite(scene.analysis_grid?.cell_size_m?.y)
-                                      ? {
-                                            x: scene.analysis_grid!.cell_size_m!.x!,
-                                            y: scene.analysis_grid!.cell_size_m!.y!,
-                                        }
-                                      : null,
+                              ...sceneProvenanceMeta(scene),
                           }
                         : null;
                 cachedHeatmapRef.current = { landId, date, index, img, meta: nextMeta };
@@ -1571,6 +1592,19 @@ export default function AgriTimeseriesPanel({
         }
         return matches[0] ?? null;
     }, [scenes, selectedDate, series]);
+
+    // 无像元、低质量或被算法门控的场景仍可查看来源与定标信息。
+    const selectedSceneMeta = selectedScene
+        ? sceneProvenanceMeta(selectedScene)
+        : null;
+    const activeHeatmapMeta =
+        heatmapMeta?.landId === landId &&
+        heatmapMeta.date === selectedDate &&
+        heatmapMeta.sensor === sensorForIndex(series) &&
+        heatmapMeta.sceneId === selectedScene?.scene_id
+            ? heatmapMeta
+            : null;
+    const detailsMeta = activeHeatmapMeta ?? selectedSceneMeta;
 
     const selectedCloud = useMemo(() => {
         if (!selectedScene || sensorForIndex(series) !== "S2") {
@@ -2226,70 +2260,72 @@ export default function AgriTimeseriesPanel({
                                         {t("floodCalibrationOverlayUnavailable")}
                                     </p>
                                 )}
-                            {heatmapMeta && (
+                            {detailsMeta && (
                                 <details className="text-[11px] text-muted-foreground">
                                     <summary className="cursor-pointer">{t("dataDetails")}</summary>
-                                    <p className="mt-1 tabular-nums">{t("pixelsMeta", { pixels: heatmapMeta.pixels })}{heatmapMeta.mean != null ? t("meanMeta", { mean: heatmapMeta.mean.toFixed(2) }) : ""}</p>
-                                    {heatmapMeta.source && (
-                                        <p>{t("pixelSource", { source: t(`pixelSource${heatmapMeta.source === "db_lonlat" ? "DbLonlat" : heatmapMeta.source === "oss" ? "Oss" : "LegacyGrid"}`) })}</p>
+                                    {activeHeatmapMeta && (
+                                        <p className="mt-1 tabular-nums">{t("pixelsMeta", { pixels: activeHeatmapMeta.pixels })}{activeHeatmapMeta.mean != null ? t("meanMeta", { mean: activeHeatmapMeta.mean.toFixed(2) }) : ""}</p>
                                     )}
-                                    {heatmapMeta.gridSpacingM && (
+                                    {detailsMeta.source && (
+                                        <p>{t("pixelSource", { source: t(`pixelSource${detailsMeta.source === "db_lonlat" ? "DbLonlat" : detailsMeta.source === "oss" ? "Oss" : "LegacyGrid"}`) })}</p>
+                                    )}
+                                    {detailsMeta.gridSpacingM && (
                                         <p>
                                             {t("gridSpacingMeta", {
-                                                x: gridSpacingFormatter.format(heatmapMeta.gridSpacingM.x),
-                                                y: gridSpacingFormatter.format(heatmapMeta.gridSpacingM.y),
+                                                x: gridSpacingFormatter.format(detailsMeta.gridSpacingM.x),
+                                                y: gridSpacingFormatter.format(detailsMeta.gridSpacingM.y),
                                             })}
                                         </p>
                                     )}
-                                    {heatmapMeta.stacItemId && (
+                                    {detailsMeta.stacItemId && (
                                         <p className="break-all">
-                                            {t("stacItemMeta", { id: heatmapMeta.stacItemId })}
+                                            {t("stacItemMeta", { id: detailsMeta.stacItemId })}
                                         </p>
                                     )}
-                                    {heatmapMeta.platform && (
-                                        <p>{t("s1PlatformMeta", { platform: heatmapMeta.platform })}</p>
+                                    {detailsMeta.platform && (
+                                        <p>{t("s1PlatformMeta", { platform: detailsMeta.platform })}</p>
                                     )}
-                                    {heatmapMeta.algorithmVersion && (
-                                        <p>{t("algorithmVersionMeta", { version: heatmapMeta.algorithmVersion })}</p>
+                                    {detailsMeta.algorithmVersion && (
+                                        <p>{t("algorithmVersionMeta", { version: detailsMeta.algorithmVersion })}</p>
                                     )}
-                                    {heatmapMeta.processingVersion && (
+                                    {detailsMeta.processingVersion && (
                                         <p>
                                             {t("s1ProcessingVersionMeta", {
-                                                version: heatmapMeta.processingVersion,
+                                                version: detailsMeta.processingVersion,
                                             })}
                                         </p>
                                     )}
-                                    {heatmapMeta.calibrationEpoch && (
+                                    {detailsMeta.calibrationEpoch && (
                                         <p>
-                                            {heatmapMeta.calibrationEpoch ===
+                                            {detailsMeta.calibrationEpoch ===
                                             "s1c-auxcal-pre-2026-02-03"
                                                 ? t("s1CalibrationEpochPre")
-                                                : heatmapMeta.calibrationEpoch ===
+                                                : detailsMeta.calibrationEpoch ===
                                                     "s1c-auxcal-post-2026-02-03"
                                                   ? t("s1CalibrationEpochPost")
                                                   : t("s1CalibrationEpochUnknown")}
                                         </p>
                                     )}
-                                    {heatmapMeta.calibrationEpoch?.startsWith("s1c-auxcal-") && (
+                                    {detailsMeta.calibrationEpoch?.startsWith("s1c-auxcal-") && (
                                         <p>{t("s1CalibrationEpochScope")}</p>
                                     )}
-                                    {heatmapMeta.radiometricCalibration && (
+                                    {detailsMeta.radiometricCalibration && (
                                         <>
                                             <p>
-                                                {heatmapMeta.radiometricCalibration.method === "esa_sigma_nought_lut"
+                                                {detailsMeta.radiometricCalibration.method === "esa_sigma_nought_lut"
                                                     ? t("radiometricCalibrationLut")
                                                     : t("radiometricCalibrationApprox", {
                                                           scale:
-                                                              heatmapMeta.radiometricCalibration.fallback_scale ?? "—",
+                                                              detailsMeta.radiometricCalibration.fallback_scale ?? "—",
                                                       })}
                                             </p>
-                                            {heatmapMeta.radiometricCalibration.thermal_noise_correction === "not_performed_by_this_pipeline" && (
+                                            {detailsMeta.radiometricCalibration.thermal_noise_correction === "not_performed_by_this_pipeline" && (
                                                 <p>{t("thermalNoiseNotApplied")}</p>
                                             )}
                                         </>
                                     )}
-                                    {heatmapMeta.sensor === "S1" &&
-                                        !heatmapMeta.radiometricCalibration && (
+                                    {detailsMeta.sensor === "S1" &&
+                                        !detailsMeta.radiometricCalibration && (
                                             <p>{t("radiometricCalibrationUnknown")}</p>
                                         )}
                                 </details>
