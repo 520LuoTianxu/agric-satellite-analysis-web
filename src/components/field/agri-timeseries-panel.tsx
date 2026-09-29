@@ -1755,11 +1755,11 @@ export default function AgriTimeseriesPanel({
                         )}
                         {partialSceneCounts && (
                             <div className="max-w-[20rem] space-y-1 text-right">
-                                <p role="status" aria-live="polite" className="text-[9px] leading-tight text-muted-foreground">
+                                <p role="status" aria-live="polite" className="text-[11px] leading-snug text-muted-foreground">
                                     {t("historyWindowPartial", { sensors: partialSceneCounts })}
                                 </p>
                                 {series === "drought" && partialSensors.some((sensor) => sensor.sensor === "S2") ? (
-                                    <p className="text-[9px] leading-tight text-muted-foreground">
+                                    <p className="text-[11px] leading-snug text-muted-foreground">
                                         {t("droughtHistoryPartial")}
                                     </p>
                                 ) : null}
@@ -1770,7 +1770,7 @@ export default function AgriTimeseriesPanel({
                                             type="button"
                                             size="sm"
                                             variant="ghost"
-                                            className="h-6 px-1.5 text-[9px]"
+                                            className="h-7 px-2 text-[10px]"
                                             disabled={loading || !sceneCursors[sensor.sensor] || loadingEarlierSensor !== null}
                                             aria-label={`${t("loadEarlier")} ${sensor.sensor}`}
                                             onClick={() => void loadEarlierScenes(sensor.sensor)}
@@ -1784,7 +1784,7 @@ export default function AgriTimeseriesPanel({
                                     ))}
                                 </div>
                                 {loadEarlierError ? (
-                                    <p role="alert" className="text-[9px] leading-tight text-destructive">
+                                    <p role="alert" className="text-[11px] leading-snug text-destructive">
                                         {t("loadEarlierFailed")}
                                     </p>
                                 ) : null}
