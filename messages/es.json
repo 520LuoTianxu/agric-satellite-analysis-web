@@ -1855,6 +1855,7 @@
     "taskTypeUnknown": "Tarea desconocida",
     "taskTypeOverviewDaily": "Resumen nacional diario",
     "taskTypeSatelliteBatch": "Procesamiento de lotes satelitales",
+    "taskTypeS1Sigma0Backfill": "Recálculo de calibración Sigma0 de Sentinel-1",
     "taskTypeSatelliteAnalysis": "Análisis satelital",
     "taskTypeSatelliteDownload": "Descarga de datos satelitales",
     "taskTypeAssessmentReport": "Informe de evaluación agrícola",

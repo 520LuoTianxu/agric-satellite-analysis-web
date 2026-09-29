@@ -1855,6 +1855,7 @@
     "taskTypeUnknown": "未知任务",
     "taskTypeOverviewDaily": "全国态势每日汇总",
     "taskTypeSatelliteBatch": "卫星数据分块处理",
+    "taskTypeS1Sigma0Backfill": "Sentinel-1 Sigma0定标回算",
     "taskTypeSatelliteAnalysis": "卫星分析",
     "taskTypeSatelliteDownload": "卫星数据下载",
     "taskTypeAssessmentReport": "农情评估报告",

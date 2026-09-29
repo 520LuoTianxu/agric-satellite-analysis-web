@@ -1855,6 +1855,7 @@
     "taskTypeUnknown": "Unknown task",
     "taskTypeOverviewDaily": "Daily national overview",
     "taskTypeSatelliteBatch": "Satellite batch processing",
+    "taskTypeS1Sigma0Backfill": "Sentinel-1 Sigma0 calibration backfill",
     "taskTypeSatelliteAnalysis": "Satellite analysis",
     "taskTypeSatelliteDownload": "Satellite data download",
     "taskTypeAssessmentReport": "Agricultural assessment report",
