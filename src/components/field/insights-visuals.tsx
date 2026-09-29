@@ -1,9 +1,17 @@
 "use client";
 
+import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import type { InsightLand, InsightPoint } from "@/lib/parcel-insights";
 
 const COLORS = ["#17745b", "#4773b4", "#b7792b", "#965f9f"];
+const EMPTY_SPATIAL_PIXELS: number[][] = [];
+const SPATIAL_BANDS = [
+    { key: "spatialBandVeryLow", color: "#b34a3c" },
+    { key: "spatialBandLow", color: "#d89e4c" },
+    { key: "spatialBandModerate", color: "#b7ca71" },
+    { key: "spatialBandHigh", color: "#238867" },
+] as const;
 const stamp = (day: string) => Date.parse(`${day}T00:00:00Z`);
 
 /** 统一量程和日期轴；长缺景断开，不能用平滑曲线制造不存在的观测。 */
@@ -27,16 +35,59 @@ export function InsightsCurve({ series, start, end }: { series: Array<{ name: st
 
 export function InsightsSpatial({ item }: { item: InsightLand }) {
     const t = useTranslations("parcelInsights");
-    const pixels = item.spatial?.pixels ?? [];
-    if (!pixels.length) return <div className="flex h-48 items-center justify-center rounded-lg bg-muted/40 text-sm text-muted-foreground">{t("noPixels")}</div>;
-    const minX = Math.min(...pixels.map(p => p[0])), maxX = Math.max(...pixels.map(p => p[0]));
-    const minY = Math.min(...pixels.map(p => p[1])), maxY = Math.max(...pixels.map(p => p[1]));
-    // 经度按纬度校正比例；每块地单独适配视图，颜色阈值在所有地块间保持一致。
-    const factor = Math.cos(((minY + maxY) / 2) * Math.PI / 180);
-    const scale = Math.min(270 / Math.max((maxX - minX) * factor, 0.00001), 170 / Math.max(maxY - minY, 0.00001));
-    const color = (value: number) => value < .25 ? "#b34a3c" : value < .35 ? "#d89e4c" : value < .5 ? "#b7ca71" : "#238867";
-    const size = Math.max(2, Math.min(7, 180 / Math.sqrt(pixels.length)));
-    return <figure><svg viewBox="0 0 300 205" role="img" aria-label={`${item.land_name} ${t("spatial")}`} className="h-48 w-full rounded-lg bg-muted/30">
-        {pixels.map(([lon, lat, value], i) => <rect key={i} x={15 + (lon - minX) * factor * scale} y={15 + (maxY - lat) * scale} width={size} height={size} fill={color(value)}><title>{`NDVI ${value.toFixed(3)} · ${lon.toFixed(5)}, ${lat.toFixed(5)}`}</title></rect>)}
-    </svg><figcaption className="mt-2 space-y-1 text-xs text-muted-foreground"><p>{item.spatial?.date} · {t("spatialLegend")}</p>{item.spatial?.display_sampled && <p>{t("spatialSampled", { displayed: pixels.length, total: item.spatial.valid_pixels })}</p>}</figcaption></figure>;
+    const spatial = item.spatial;
+    const pixels = spatial?.pixels ?? EMPTY_SPATIAL_PIXELS;
+    const paths = useMemo(() => {
+        if (!pixels.length) return [];
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const [lon, lat] of pixels) {
+            minX = Math.min(minX, lon);
+            maxX = Math.max(maxX, lon);
+            minY = Math.min(minY, lat);
+            maxY = Math.max(maxY, lat);
+        }
+        // 经度按纬度校正比例；每块地单独适配视图，颜色阈值在所有地块间保持一致。
+        const factor = Math.cos(((minY + maxY) / 2) * Math.PI / 180);
+        const scale = Math.min(270 / Math.max((maxX - minX) * factor, 0.00001), 170 / Math.max(maxY - minY, 0.00001));
+        const size = Math.max(2, Math.min(7, 180 / Math.sqrt(pixels.length)));
+        const commands = SPATIAL_BANDS.map(() => [] as string[]);
+        const counts = SPATIAL_BANDS.map(() => 0);
+        for (const [lon, lat, value] of pixels) {
+            const band = value < 0.25 ? 0 : value < 0.35 ? 1 : value < 0.5 ? 2 : 3;
+            const x = (15 + (lon - minX) * factor * scale).toFixed(1);
+            const y = (15 + (maxY - lat) * scale).toFixed(1);
+            const side = size.toFixed(1);
+            // 同色方块合并成单个SVG路径，避免20块地各创建1600个矩形DOM节点。
+            commands[band].push(`M${x} ${y}h${side}v${side}h-${side}Z`);
+            counts[band] += 1;
+        }
+        return SPATIAL_BANDS.map((definition, index) => ({
+            ...definition,
+            count: counts[index],
+            d: commands[index].join(""),
+        }));
+    }, [pixels]);
+    if (!spatial || !pixels.length) return <div className="flex h-48 items-center justify-center rounded-lg bg-muted/40 text-sm text-muted-foreground">{t("noPixels")}</div>;
+    const coverageDescription = spatial.display_sampled
+        ? t("spatialSampled", { displayed: pixels.length, total: spatial.valid_pixels })
+        : t("spatialFull", { displayed: pixels.length });
+    return <figure>
+        <svg viewBox="0 0 300 205" role="img" aria-label={`${item.land_name} ${t("spatial")} ${spatial.date}`} className="h-48 w-full rounded-lg bg-muted/30">
+            <title>{`${item.land_name} · ${t("spatial")} · ${spatial.date}`}</title>
+            <desc>{`${t("spatialLegend")} · ${coverageDescription}`}</desc>
+            {paths.map(path => <path key={path.key} d={path.d} fill={path.color} shapeRendering="crispEdges">
+                <title>{t("spatialBandTooltip", { band: t(path.key), count: path.count })}</title>
+            </path>)}
+        </svg>
+        <figcaption className="mt-2 space-y-2 text-xs text-muted-foreground">
+            <p>{spatial.date} · {t("spatialLegend")}</p>
+            <ul className="flex flex-wrap gap-x-3 gap-y-1">
+                {SPATIAL_BANDS.map(band => <li key={band.key} className="flex items-center gap-1.5">
+                    <span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: band.color }} />
+                    <span>{t(band.key)}</span>
+                </li>)}
+            </ul>
+            {spatial.display_sampled && <p>{coverageDescription}</p>}
+        </figcaption>
+    </figure>;
 }
