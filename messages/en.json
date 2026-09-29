@@ -1998,6 +1998,11 @@
     "fillObservedRange": "Fill observed range",
     "windowApplied": "Filled in",
     "completeDatesHint": "Complete the manual window start and end dates, or disable the manual window before analyzing.",
+    "seasonOutsideRange": "Set the season start before its end, and keep the full window inside the analysis period.",
+    "eventOutsideRange": "A farming event is outside the analysis period. Change the period or remove the out-of-range event.",
+    "eventDaysInvalid": "The event window must be a whole number from 7 to 60 days.",
+    "periodInvalid": "The date range is invalid for this mode. Check its order and end date, and keep it within 550 days.",
+    "referenceYearInvalid": "The reference year must be an integer from 2015 up to the year before the analysis starts, or be left blank.",
     "inferenceMismatch": "The result does not match the current parcel or date range. Please detect again."
   }
 }

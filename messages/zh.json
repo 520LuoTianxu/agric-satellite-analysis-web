@@ -1998,6 +1998,11 @@
     "fillObservedRange": "填入观测范围",
     "windowApplied": "已回填",
     "completeDatesHint": "请补齐人工窗口的开始、结束日期，或取消使用人工窗口后再分析。",
+    "seasonOutsideRange": "生育期窗口需按开始、结束顺序填写，并完整落在当前分析区间内。",
+    "eventOutsideRange": "已有农事记录超出当前分析区间；请修改分析区间或删除越界记录。",
+    "eventDaysInvalid": "农事事件的前后观察天数需为7到60的整数。",
+    "periodInvalid": "当前模式下日期范围无效；请检查起止顺序、截止日，并确保区间不超过550天。",
+    "referenceYearInvalid": "对照年份须为2015年至分析起始年份之前的整数年份；不需要对照时可留空。",
     "inferenceMismatch": "识别结果与当前地块或日期区间不一致，请重新识别。"
   }
 }

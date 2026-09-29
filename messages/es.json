@@ -1998,6 +1998,11 @@
     "fillObservedRange": "Rellenar rango observado",
     "windowApplied": "Rellenado",
     "completeDatesHint": "Completa las fechas de inicio y fin de la ventana manual o desactívala antes del análisis.",
+    "seasonOutsideRange": "Indique el inicio antes del fin y mantenga toda la ventana dentro del período de análisis.",
+    "eventOutsideRange": "Hay una labor fuera del período de análisis. Cambie el período o elimine esa labor.",
+    "eventDaysInvalid": "La ventana del evento debe ser un número entero entre 7 y 60 días.",
+    "periodInvalid": "El rango no es válido para este modo. Revise el orden y la fecha final; no debe superar 550 días.",
+    "referenceYearInvalid": "El año de referencia debe ser un entero desde 2015 hasta antes del inicio del análisis, o dejarse vacío.",
     "inferenceMismatch": "El resultado no coincide con la parcela o el período actual. Repite la detección."
   }
 }
