@@ -61,6 +61,8 @@ export default function ParcelInsights() {
     const [inferBusy, setInferBusy] = useState<string | null>(null);
     const [inferences, setInferences] = useState<Record<string, { data?: Phenology; error?: string }>>({});
     const inferenceRequest = useRef<AbortController | null>(null);
+    const prefillFieldId = useRef(fieldId);
+    const selectionManuallyChanged = useRef(false);
     const [history, setHistory] = useState<InsightsHistory | null>(null);
     const [historyOffset, setHistoryOffset] = useState(0);
     const [historyError, setHistoryError] = useState(false);
@@ -111,10 +113,20 @@ export default function ParcelInsights() {
         return () => { cancelled = true; };
     }, [groupId, query, page, retry]);
     useEffect(() => {
-        if (!fieldId) return;
+        if (prefillFieldId.current !== fieldId) {
+            prefillFieldId.current = fieldId;
+            selectionManuallyChanged.current = false;
+        }
+        if (!fieldId || selectionManuallyChanged.current) return;
         let cancelled = false;
-        void landsApi.get(fieldId).then(land => { if (!cancelled) setSelected([{ land_id: land.land_id, land_name: land.land_name || land.land_id, crop_type: land.crop_type }]); })
-            .catch(() => { if (!cancelled) setError(t("loadFailed")); });
+        void landsApi.get(fieldId).then(land => {
+            // URL预选只在用户尚未接管地块选择时生效，避免慢响应覆盖手动选择或已打开的快照。
+            if (!cancelled && !selectionManuallyChanged.current) {
+                setSelected([{ land_id: land.land_id, land_name: land.land_name || land.land_id, crop_type: land.crop_type }]);
+            }
+        }).catch(() => {
+            if (!cancelled && !selectionManuallyChanged.current) setError(t("loadFailed"));
+        });
         return () => { cancelled = true; };
     }, [fieldId, t]);
     useEffect(() => {
@@ -127,7 +139,15 @@ export default function ParcelInsights() {
         return () => { cancelled = true; };
     }, [openHistory, historyOffset, historyRevision]);
 
+    const markSelectionManuallyChanged = () => {
+        if (prefillFieldId.current !== fieldId) {
+            prefillFieldId.current = fieldId;
+            selectionManuallyChanged.current = false;
+        }
+        selectionManuallyChanged.current = true;
+    };
     const toggleLand = (land: Selected) => {
+        markSelectionManuallyChanged();
         if (inferBusy === land.land_id) { inferenceRequest.current?.abort(); setInferBusy(null); }
         setInferences(current => { const next = { ...current }; delete next[land.land_id]; return next; });
         setSelected(current => current.some(item => item.land_id === land.land_id) ? current.filter(item => item.land_id !== land.land_id) : current.length < 20 ? [...current, land] : current);
@@ -195,6 +215,7 @@ export default function ParcelInsights() {
         try {
             const data = await parcelInsightsApi.get(id);
             const req = data.request;
+            markSelectionManuallyChanged();
             setResult(data); setMode("historical"); setStart(req.start_date); setEnd(req.end_date); setReference(req.reference_year ? String(req.reference_year) : "");
             setTitle(req.title); setBrand(req.brand_name); setSeasons(req.seasons); setEvents(req.events);
             setSelected(data.items.map(item => ({ land_id: item.land_id, land_name: item.land_name, crop_type: item.crop })));
