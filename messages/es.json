@@ -1802,7 +1802,6 @@
     "progress": "Progreso",
     "dispatchStatus": "Envío del mensaje",
     "dispatchAttempts": "Intentos de envío",
-    "dispatchLastError": "Último error de envío",
     "dispatchPending": "Pendiente de envío",
     "dispatchRetrying": "Reintentando",
     "dispatchPublished": "Enviado",

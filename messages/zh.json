@@ -1802,7 +1802,6 @@
     "progress": "进度",
     "dispatchStatus": "消息派发",
     "dispatchAttempts": "派发次数",
-    "dispatchLastError": "最近派发错误",
     "dispatchPending": "等待派发",
     "dispatchRetrying": "重试中",
     "dispatchPublished": "已发送",

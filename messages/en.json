@@ -1802,7 +1802,6 @@
     "progress": "Progress",
     "dispatchStatus": "Message dispatch",
     "dispatchAttempts": "Dispatch attempts",
-    "dispatchLastError": "Latest dispatch error",
     "dispatchPending": "Waiting to dispatch",
     "dispatchRetrying": "Retrying",
     "dispatchPublished": "Published",

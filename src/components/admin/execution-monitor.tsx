@@ -118,7 +118,6 @@ function formatProgress(progress: Record<string, unknown>, t: (key: string) => s
     const progressLabels: Record<string, string> = {
         dispatch_status: t("dispatchStatus"),
         dispatch_attempts: t("dispatchAttempts"),
-        dispatch_last_error: t("dispatchLastError"),
     };
     const dispatchStates: Record<string, string> = {
         pending: t("dispatchPending"),
