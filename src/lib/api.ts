@@ -913,11 +913,12 @@ export const assessmentApi = {
         }),
     getBatch: (batchId: string) =>
         apiFetch<AssessmentBatchResponse>(`/lands/assessment-reports/batch/${encodeURIComponent(batchId)}`),
-    latestMeta: (landId: string) =>
-        apiFetch<NdviJob>(`/lands/${landId}/assessment-report/latest/meta`),
-    latestScorecard: (landId: string) =>
+    latestMeta: (landId: string, signal?: AbortSignal) =>
+        apiFetch<NdviJob>(`/lands/${landId}/assessment-report/latest/meta`, { signal }),
+    latestScorecard: (landId: string, signal?: AbortSignal) =>
         apiFetch<AssessmentScorecard>(
             `/lands/${landId}/assessment-report/latest/scorecard`,
+            { signal },
         ),
     downloadLatest: async (landId: string) => {
         const res = await fetch(

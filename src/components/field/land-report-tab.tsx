@@ -113,7 +113,7 @@ function isCropRequiredError(err: any): boolean {
 
 export default function LandReportTab({ landId, groupId, cropType, onCropBound, onReportReady }: LandReportTabProps) {
     const t = useTranslations("landReportTab");
-    const [latest, setLatest] = useState<NdviJob | null>(null);
+    const [latestState, setLatest] = useState<NdviJob | null>(null);
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
     const [downloading, setDownloading] = useState(false);
@@ -121,11 +121,21 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
     const [pickCrop, setPickCrop] = useState(() => (isUsableCrop(cropType) ? String(cropType).trim() : ""));
     const [years, setYears] = useState<number>(3);
     const [dateFrom, setDateFrom] = useState<string>("");
-    const [scorecard, setScorecard] = useState<AssessmentScorecard | null>(null);
-    const [scorecardState, setScorecardState] = useState<ScorecardState>("loading");
+    const [scorecardValue, setScorecard] = useState<AssessmentScorecard | null>(null);
+    const [scorecardValueState, setScorecardState] = useState<ScorecardState>("loading");
     const [generationSettingsOpen, setGenerationSettingsOpen] = useState(false);
     const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pollControllerRef = useRef<AbortController | null>(null);
+    const currentLandIdRef = useRef(landId);
+    currentLandIdRef.current = landId;
+    const latestLandIdRef = useRef<string | null>(null);
+    const scorecardLandIdRef = useRef<string | null>(null);
+    const latestRequestVersionRef = useRef(0);
+    const scorecardRequestVersionRef = useRef(0);
+    // 异步结果只有在归属地块仍然一致时才能展示，防止切地块后旧报告闪现。
+    const latest = latestLandIdRef.current === landId ? latestState : null;
+    const scorecard = scorecardLandIdRef.current === landId ? scorecardValue : null;
+    const scorecardState = scorecardLandIdRef.current === landId ? scorecardValueState : "loading";
 
     useEffect(() => {
         const next = isUsableCrop(cropType) ? String(cropType).trim() : "";
@@ -133,34 +143,71 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
         if (next) setPickCrop(next);
     }, [cropType]);
 
-    const refreshMeta = useCallback(async () => {
+    const refreshMeta = useCallback(async (signal?: AbortSignal) => {
+        const requestVersion = ++latestRequestVersionRef.current;
+        setLoading(true);
         try {
-            const job = await assessmentApi.latestMeta(landId);
+            const job = await assessmentApi.latestMeta(landId, signal);
+            if (
+                signal?.aborted
+                || requestVersion !== latestRequestVersionRef.current
+                || currentLandIdRef.current !== landId
+            ) return null;
+            latestLandIdRef.current = landId;
             setLatest(job);
             return job;
         } catch {
-            setLatest(null);
+            if (
+                !signal?.aborted
+                && requestVersion === latestRequestVersionRef.current
+                && currentLandIdRef.current === landId
+            ) {
+                latestLandIdRef.current = landId;
+                setLatest(null);
+            }
             return null;
         } finally {
-            setLoading(false);
+            if (
+                !signal?.aborted
+                && requestVersion === latestRequestVersionRef.current
+                && currentLandIdRef.current === landId
+            ) setLoading(false);
         }
     }, [landId]);
 
-    const refreshScorecard = useCallback(async () => {
+    const refreshScorecard = useCallback(async (signal?: AbortSignal) => {
+        const requestVersion = ++scorecardRequestVersionRef.current;
         try {
-            const next = await assessmentApi.latestScorecard(landId);
+            const next = await assessmentApi.latestScorecard(landId, signal);
+            if (
+                signal?.aborted
+                || requestVersion !== scorecardRequestVersionRef.current
+                || currentLandIdRef.current !== landId
+            ) return;
+            scorecardLandIdRef.current = landId;
             setScorecard(next);
             setScorecardState("ready");
         } catch (err) {
+            if (
+                signal?.aborted
+                || requestVersion !== scorecardRequestVersionRef.current
+                || currentLandIdRef.current !== landId
+            ) return;
+            scorecardLandIdRef.current = landId;
             setScorecard(null);
             setScorecardState(errorCode(err) === "scorecard_unavailable" ? "legacy" : "empty");
         }
     }, [landId]);
 
     useEffect(() => {
-        refreshMeta();
-        refreshScorecard();
+        const metaController = new AbortController();
+        const scorecardController = new AbortController();
+        setGenerating(false);
+        void refreshMeta(metaController.signal);
+        void refreshScorecard(scorecardController.signal);
         return () => {
+            metaController.abort();
+            scorecardController.abort();
             if (pollRef.current) clearTimeout(pollRef.current);
             pollControllerRef.current?.abort();
             pollControllerRef.current = null;
@@ -179,7 +226,12 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
             pollControllerRef.current = controller;
             try {
                 const job = await jobsApi.get(assessmentJobId, controller.signal);
-                if (cancelled || controller.signal.aborted) return;
+                if (
+                    cancelled
+                    || controller.signal.aborted
+                    || currentLandIdRef.current !== landId
+                ) return;
+                latestLandIdRef.current = landId;
                 setLatest(job);
                 if (job.status === "succeeded") {
                     setGenerating(false);
@@ -195,7 +247,11 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
                     pollRef.current = setTimeout(() => void poll(), 2000);
                 }
             } catch {
-                if (!cancelled && !controller.signal.aborted) {
+                if (
+                    !cancelled
+                    && !controller.signal.aborted
+                    && currentLandIdRef.current === landId
+                ) {
                     pollRef.current = setTimeout(() => void poll(), 2000);
                 }
             } finally {
@@ -212,7 +268,7 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
             pollControllerRef.current?.abort();
             pollControllerRef.current = null;
         };
-    }, [assessmentJobId, assessmentJobStatus, onReportReady, refreshScorecard, t]);
+    }, [assessmentJobId, assessmentJobStatus, landId, onReportReady, refreshScorecard, t]);
 
     const runGenerate = async (cropKey?: string) => {
         setGenerating(true);
@@ -237,10 +293,12 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
             if (credentials.groupId) body.group_id = credentials.groupId;
             if (credentials.hrBaseId) body.hr_base_id = credentials.hrBaseId;
             const job = await assessmentApi.generate(landId, body);
+            if (currentLandIdRef.current !== landId) return;
             if (cropKey) {
                 setBoundCrop(cropKey);
                 onCropBound?.(cropKey);
             }
+            latestLandIdRef.current = landId;
             setLatest(job);
             if (job.status === "succeeded") {
                 setGenerating(false);
@@ -256,6 +314,7 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
             }
             toast.message(t("pullAndGenerateStarted"));
         } catch (e: any) {
+            if (currentLandIdRef.current !== landId) return;
             setGenerating(false);
             if (isCropRequiredError(e)) {
                 toast.error(t("cropRequired"));
