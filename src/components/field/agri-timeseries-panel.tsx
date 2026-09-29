@@ -109,6 +109,7 @@ type HeatmapMeta = {
     sensor: AgriSceneProduct["sensor"];
     mean: number | null;
     source: AgriSceneProduct["pixels_source"];
+    productSource: string | null;
     stacItemId: string | null;
     algorithmVersion: string | null;
     gridSpacingM: { x: number; y: number } | null;
@@ -122,6 +123,7 @@ type SceneProvenanceMeta = Pick<
     HeatmapMeta,
     | "sensor"
     | "source"
+    | "productSource"
     | "stacItemId"
     | "algorithmVersion"
     | "gridSpacingM"
@@ -138,6 +140,7 @@ function sceneProvenanceMeta(scene: AgriSceneProduct): SceneProvenanceMeta {
     return {
         sensor: scene.sensor,
         source: scene.pixels_source ?? null,
+        productSource: scene.source ?? null,
         stacItemId: scene.stac_item_id ?? null,
         algorithmVersion: scene.algorithm_version ?? null,
         gridSpacingM:
@@ -1605,6 +1608,13 @@ export default function AgriTimeseriesPanel({
             ? heatmapMeta
             : null;
     const detailsMeta = activeHeatmapMeta ?? selectedSceneMeta;
+    const productSourceLabel = detailsMeta?.productSource
+        ? {
+              stac_direct: t("productSourceStacDirect"),
+              stac_s1_direct: t("productSourceStacS1Direct"),
+              uncrtaints_decloud: t("productSourceDecloud"),
+          }[detailsMeta.productSource] ?? detailsMeta.productSource
+        : null;
 
     const selectedCloud = useMemo(() => {
         if (!selectedScene || sensorForIndex(series) !== "S2") {
@@ -2268,6 +2278,13 @@ export default function AgriTimeseriesPanel({
                                     )}
                                     {detailsMeta.source && (
                                         <p>{t("pixelSource", { source: t(`pixelSource${detailsMeta.source === "db_lonlat" ? "DbLonlat" : detailsMeta.source === "oss" ? "Oss" : "LegacyGrid"}`) })}</p>
+                                    )}
+                                    {productSourceLabel && (
+                                        <p className="break-all">
+                                            {t("productSourceMeta", {
+                                                source: productSourceLabel,
+                                            })}
+                                        </p>
                                     )}
                                     {detailsMeta.gridSpacingM && (
                                         <p>
