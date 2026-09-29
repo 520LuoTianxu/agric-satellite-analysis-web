@@ -345,15 +345,22 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
 
     // Job tracking
     const [activeJob, setActiveJob] = useState<NdviJob | null>(null);
-    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pollControllerRef = useRef<AbortController | null>(null);
+    const pollGenerationRef = useRef(0);
+    const clearJobUiRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // 地块切换后，迟到的旧任务状态不能写入当前地块的面板。
+    const currentLandIdRef = useRef(landId);
+    currentLandIdRef.current = landId;
 
-    const loadData = useCallback(async (isInitial = true) => {
+    const loadData = useCallback(async (isInitial = true): Promise<boolean> => {
         if (isInitial) setLoading(true);
         try {
             const [p, s] = await Promise.allSettled([
                 soilApi.get(landId),
                 soilApi.getSummary(landId),
             ]);
+            const coreDataLoaded = p.status === "fulfilled" && s.status === "fulfilled";
             if (p.status === "fulfilled") setProfile(p.value);
             if (s.status === "fulfilled") setSummary(s.value);
 
@@ -386,8 +393,10 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                 if (ws.status === "fulfilled") setWeatherStress(ws.value);
                 if (sz.status === "fulfilled") setSamplingZones(sz.value);
             }
+            return coreDataLoaded;
         } catch {
             // empty state shown
+            return false;
         } finally {
             if (isInitial) setLoading(false);
         }
@@ -398,46 +407,95 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
     }, [loadData]);
 
     // Job polling
+    const stopJobPolling = useCallback(() => {
+        pollGenerationRef.current += 1;
+        if (pollRef.current) {
+            clearTimeout(pollRef.current);
+            pollRef.current = null;
+        }
+        pollControllerRef.current?.abort();
+        pollControllerRef.current = null;
+        if (clearJobUiRef.current) {
+            clearTimeout(clearJobUiRef.current);
+            clearJobUiRef.current = null;
+        }
+    }, []);
+
     const pollJob = useCallback(
-        async (jobId: string) => {
-            try {
-                const job = await jobsApi.get(jobId);
-                setActiveJob(job);
-                if (job.status === "completed" || job.status === "failed") {
-                    if (pollRef.current) clearInterval(pollRef.current);
-                    pollRef.current = null;
-                    if (job.status === "completed") {
-                        toast.success(t("refreshComplete"));
-                        // Reload data with retry - API may be briefly busy
-                        const reload = async (retries = 3) => {
-                            for (let i = 0; i < retries; i++) {
-                                try {
-                                    await loadData(false);
-                                    return;
-                                } catch {
-                                    if (i < retries - 1) await new Promise(r => setTimeout(r, 2000));
+        (jobId: string, expectedLandId: string, generation: number) => {
+            const tick = async () => {
+                if (
+                    generation !== pollGenerationRef.current
+                    || currentLandIdRef.current !== expectedLandId
+                ) return;
+
+                const controller = new AbortController();
+                pollControllerRef.current = controller;
+                let shouldContinue = false;
+                try {
+                    const job = await jobsApi.get(jobId, controller.signal);
+                    if (
+                        controller.signal.aborted
+                        || generation !== pollGenerationRef.current
+                        || currentLandIdRef.current !== expectedLandId
+                    ) return;
+
+                    setActiveJob(job);
+                    if (job.status === "completed" || job.status === "failed") {
+                        stopJobPolling();
+                        if (job.status === "completed") {
+                            toast.success(t("refreshComplete"));
+                            // 以地块资料和汇总都成功为完成条件，短暂失败时才执行有限重试。
+                            const reload = async (retries = 3) => {
+                                for (let attempt = 0; attempt < retries; attempt += 1) {
+                                    if (await loadData(false)) return;
+                                    if (attempt < retries - 1) {
+                                        await new Promise((resolve) => setTimeout(resolve, 2000));
+                                    }
                                 }
-                            }
-                        };
-                        reload();
-                    } else {
-                        toast.error(t("refreshFailed"));
+                            };
+                            void reload();
+                        } else {
+                            toast.error(t("refreshFailed"));
+                        }
+                        clearJobUiRef.current = setTimeout(() => {
+                            setActiveJob((current) => current?.id === jobId ? null : current);
+                            clearJobUiRef.current = null;
+                        }, 3000);
+                        return;
                     }
-                    // Clear job UI after a short delay
-                    setTimeout(() => setActiveJob(null), 3000);
+                    shouldContinue = true;
+                } catch {
+                    // 网络瞬时失败时保留任务状态，稍后串行重试。
+                    shouldContinue = !controller.signal.aborted
+                        && generation === pollGenerationRef.current
+                        && currentLandIdRef.current === expectedLandId;
+                } finally {
+                    if (pollControllerRef.current === controller) {
+                        pollControllerRef.current = null;
+                    }
                 }
-            } catch {
-                // poll error - keep trying
-            }
+
+                if (
+                    shouldContinue
+                    && generation === pollGenerationRef.current
+                    && currentLandIdRef.current === expectedLandId
+                ) {
+                    // 下一次轮询等待当前请求结束后才开始，避免慢接口时重叠读取。
+                    pollRef.current = setTimeout(() => void tick(), 3000);
+                }
+            };
+            void tick();
         },
-        [loadData, t],
+        [loadData, stopJobPolling, t],
     );
 
     useEffect(() => {
+        setActiveJob(null);
         return () => {
-            if (pollRef.current) clearInterval(pollRef.current);
+            stopJobPolling();
         };
-    }, []);
+    }, [landId, stopJobPolling]);
 
     const handleRefresh = async () => {
         if (oversizedLand) {
@@ -450,12 +508,15 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
         setRefreshing(true);
         try {
             const res = await soilApi.refresh(landId);
+            if (currentLandIdRef.current !== landId) return;
             toast.success(t("refreshStarted"));
             // Start polling the job
-            if (pollRef.current) clearInterval(pollRef.current);
+            stopJobPolling();
             const jobId = res.job_id;
             setActiveJob({ id: jobId, status: "pending", type: "soil_fetch", created_at: new Date().toISOString() } as NdviJob);
-            pollRef.current = setInterval(() => pollJob(jobId), 3000);
+            if (currentLandIdRef.current === landId) {
+                pollJob(jobId, landId, pollGenerationRef.current);
+            }
         } catch (err: unknown) {
             const status = (err as { status?: number })?.status;
             if (status === 429) {

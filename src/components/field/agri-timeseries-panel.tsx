@@ -568,7 +568,12 @@ export default function AgriTimeseriesPanel({
     const [harvestError, setHarvestError] = useState(false);
     const [backfillProgress, setBackfillProgress] = useState<BackfillStatusResponse | null>(null);
     const [reloadKey, setReloadKey] = useState(0);
-    const backfillPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const backfillPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const backfillPollControllerRef = useRef<AbortController | null>(null);
+    const backfillPollGenerationRef = useRef(0);
+    // 地块切换与被动效果清理之间存在提交窗口，旧轮询不得覆盖新地块状态。
+    const currentLandIdRef = useRef(landId);
+    currentLandIdRef.current = landId;
     const [summary, setSummary] = useState<AgriLandScenesSummary | null>(null);
     const [scenes, setScenes] = useState<AgriSceneProduct[]>([]);
     const [sceneCursors, setSceneCursors] = useState<Record<"S1" | "S2", SceneHistoryCursor | null>>({ S1: null, S2: null });
@@ -751,10 +756,13 @@ export default function AgriTimeseriesPanel({
     }, [landId, reloadKey]);
 
     const stopBackfillPoll = useCallback(() => {
+        backfillPollGenerationRef.current += 1;
         if (backfillPollRef.current) {
-            clearInterval(backfillPollRef.current);
+            clearTimeout(backfillPollRef.current);
             backfillPollRef.current = null;
         }
+        backfillPollControllerRef.current?.abort();
+        backfillPollControllerRef.current = null;
     }, []);
 
     const applyBackfillStatus = useCallback(
@@ -774,33 +782,68 @@ export default function AgriTimeseriesPanel({
     const startBackfillPoll = useCallback(() => {
         if (!landId) return;
         stopBackfillPoll();
-        let wasActive = true;
+        const generation = backfillPollGenerationRef.current;
+        const wasActive = true;
         const tick = async () => {
+            if (
+                generation !== backfillPollGenerationRef.current
+                || currentLandIdRef.current !== landId
+            ) return;
+
+            const controller = new AbortController();
+            backfillPollControllerRef.current = controller;
+            let shouldContinue = false;
             try {
-                const res = await landsApi.backfillStatus(landId);
+                const res = await landsApi.backfillStatus(landId, controller.signal);
+                if (
+                    controller.signal.aborted
+                    || generation !== backfillPollGenerationRef.current
+                    || currentLandIdRef.current !== landId
+                ) return;
+
                 const stillActive = applyBackfillStatus(res, { wasActive });
                 if (stillActive) {
-                    wasActive = true;
+                    shouldContinue = true;
                 } else {
-                    wasActive = false;
                     stopBackfillPoll();
+                    return;
                 }
             } catch {
-                /* ignore transient poll errors */
+                // 只对当前地块的瞬时失败继续轮询；切换地块或清理产生的取消直接结束。
+                shouldContinue = !controller.signal.aborted
+                    && generation === backfillPollGenerationRef.current
+                    && currentLandIdRef.current === landId;
+            } finally {
+                if (backfillPollControllerRef.current === controller) {
+                    backfillPollControllerRef.current = null;
+                }
+            }
+
+            // 串行调度可避免慢响应期间堆叠请求及旧状态覆盖新状态。
+            if (
+                shouldContinue
+                && generation === backfillPollGenerationRef.current
+                && currentLandIdRef.current === landId
+            ) {
+                backfillPollRef.current = setTimeout(() => void tick(), 5000);
             }
         };
         void tick();
-        backfillPollRef.current = setInterval(tick, 5000);
     }, [landId, applyBackfillStatus, stopBackfillPoll]);
 
     // One-shot on mount: resume polling only if a current-wave job is truly active
     useEffect(() => {
         if (!landId) return;
         let cancelled = false;
+        const controller = new AbortController();
         (async () => {
             try {
-                const res = await landsApi.backfillStatus(landId);
-                if (cancelled) return;
+                const res = await landsApi.backfillStatus(landId, controller.signal);
+                if (
+                    cancelled
+                    || controller.signal.aborted
+                    || currentLandIdRef.current !== landId
+                ) return;
                 const active = applyBackfillStatus(res);
                 if (active) startBackfillPoll();
             } catch {
@@ -809,6 +852,7 @@ export default function AgriTimeseriesPanel({
         })();
         return () => {
             cancelled = true;
+            controller.abort();
             stopBackfillPoll();
         };
     }, [landId]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -124,7 +124,8 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
     const [scorecard, setScorecard] = useState<AssessmentScorecard | null>(null);
     const [scorecardState, setScorecardState] = useState<ScorecardState>("loading");
     const [generationSettingsOpen, setGenerationSettingsOpen] = useState(false);
-    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pollControllerRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
         const next = isUsableCrop(cropType) ? String(cropType).trim() : "";
@@ -160,7 +161,9 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
         refreshMeta();
         refreshScorecard();
         return () => {
-            if (pollRef.current) clearInterval(pollRef.current);
+            if (pollRef.current) clearTimeout(pollRef.current);
+            pollControllerRef.current?.abort();
+            pollControllerRef.current = null;
         };
     }, [refreshMeta, refreshScorecard]);
 
@@ -170,10 +173,13 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
         if (!assessmentJobId || !["pending", "running"].includes(assessmentJobStatus || "")) return;
         let cancelled = false;
         // 根据服务端任务状态恢复轮询，刷新或切换到首页后仍能自动展示完成的报告。
-        pollRef.current = setInterval(async () => {
+        const poll = async () => {
+            if (cancelled) return;
+            const controller = new AbortController();
+            pollControllerRef.current = controller;
             try {
-                const job = await jobsApi.get(assessmentJobId);
-                if (cancelled) return;
+                const job = await jobsApi.get(assessmentJobId, controller.signal);
+                if (cancelled || controller.signal.aborted) return;
                 setLatest(job);
                 if (job.status === "succeeded") {
                     setGenerating(false);
@@ -184,15 +190,27 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
                 } else if (job.status === "failed" || job.status === "cancelled") {
                     setGenerating(false);
                     toast.error(job.error || t("generateFailed"));
+                } else {
+                    // 等本次网络请求结束后再预约下一次，避免服务端慢响应时并发查同一任务。
+                    pollRef.current = setTimeout(() => void poll(), 2000);
                 }
             } catch {
-                /* keep polling briefly */
+                if (!cancelled && !controller.signal.aborted) {
+                    pollRef.current = setTimeout(() => void poll(), 2000);
+                }
+            } finally {
+                if (pollControllerRef.current === controller) {
+                    pollControllerRef.current = null;
+                }
             }
-        }, 2000);
+        };
+        void poll();
         return () => {
             cancelled = true;
-            if (pollRef.current) clearInterval(pollRef.current);
+            if (pollRef.current) clearTimeout(pollRef.current);
             pollRef.current = null;
+            pollControllerRef.current?.abort();
+            pollControllerRef.current = null;
         };
     }, [assessmentJobId, assessmentJobStatus, onReportReady, refreshScorecard, t]);
 

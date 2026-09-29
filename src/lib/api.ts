@@ -688,9 +688,10 @@ export const landsApi = {
             { method: "POST", body: JSON.stringify(body) },
         );
     },
-    backfillStatus: (landId: string) =>
+    backfillStatus: (landId: string, signal?: AbortSignal) =>
         apiFetch<BackfillStatusResponse>(
             `/lands/${landId}/backfill-status`,
+            { signal },
         ),
 };
 
@@ -734,7 +735,8 @@ export const jobsApi = {
             method: "POST",
             body: JSON.stringify({ index_type: indexType.toLowerCase(), date_from: dateFrom, date_to: dateTo, ...params }),
         }),
-    get: (jobId: string) => apiFetch<NdviJob>(`/jobs/${jobId}`),
+    get: (jobId: string, signal?: AbortSignal) =>
+        apiFetch<NdviJob>(`/jobs/${jobId}`, { signal }),
 };
 
 // ── Alerts ───────────────────────────────────────────────────────────
