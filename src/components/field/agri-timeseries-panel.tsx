@@ -685,10 +685,10 @@ export default function AgriTimeseriesPanel({
                 onModeChange?.(nextSeries);
                 const bestDate = pickBestDefaultDate(all, nextSeries);
                 if (bestDate) setSelectedDate(bestDate);
-                // Prefetch include_pixels=1 as soon as land scenes load (even if 指数 tab
-                // inactive). Map overlay is only published when enabled===true.
+                // 像元色斑预取与场景列表分开加载，避免大像元响应阻塞时间轴首屏。
+                // 即使指数 tab 未激活也预取；地图叠加仍由 enabled 控制是否发布。
                 if (!cancelled && bestDate) {
-                    await loadHeatmapRef.current(bestDate, nextSeries);
+                    void loadHeatmapRef.current(bestDate, nextSeries);
                 }
             } catch (e: any) {
                 if (!cancelled) setError(t("loadFailed"));
