@@ -64,6 +64,8 @@ export default function AdminOperationsPage() {
     const [smartYears, setSmartYears] = useState("3");
     const [satelliteHistoryLandList, setSatelliteHistoryLandList] = useState("");
     const [satelliteHistoryYears, setSatelliteHistoryYears] = useState("5");
+    const [s1CalibrationLandList, setS1CalibrationLandList] = useState("");
+    const [s1CalibrationYears, setS1CalibrationYears] = useState("5");
     const { data, error, isLoading, mutate } = useSWR<AdminOpsOverview>(
         "/admin/ops/overview",
         () => adminOpsApi.overview(100),
@@ -149,6 +151,43 @@ export default function AdminOperationsPage() {
                 ...(landIds.length ? { landIdList: landIds } : {}),
                 years,
                 sensors: ["S1", "S2"],
+            });
+            setNotice(t("triggered"));
+            await mutate();
+        } catch (triggerError) {
+            setNotice(triggerError instanceof Error ? triggerError.message : t("triggerFailed"));
+        } finally {
+            setTriggering(null);
+        }
+    }
+
+    async function triggerS1Sigma0Backfill() {
+        const landIds = [...new Set(
+            s1CalibrationLandList
+                .split(/[\s,，]+/)
+                .map((value) => value.trim())
+                .filter(Boolean),
+        )];
+        const years = Number(s1CalibrationYears);
+        if (landIds.length === 0) {
+            setNotice(t("s1Sigma0LandListRequired"));
+            return;
+        }
+        if (landIds.length > 100) {
+            setNotice(t("s1Sigma0LandCountInvalid"));
+            return;
+        }
+        if (!Number.isInteger(years) || years < 1 || years > 10) {
+            setNotice(t("s1Sigma0YearsInvalid"));
+            return;
+        }
+        setTriggering("s1-sigma0-calibration-backfill");
+        setNotice(null);
+        try {
+            await adminOpsApi.trigger({
+                task_key: "s1-sigma0-calibration-backfill",
+                landIdList: landIds,
+                years,
             });
             setNotice(t("triggered"));
             await mutate();
@@ -247,6 +286,24 @@ export default function AdminOperationsPage() {
                                         {triggering === task.key ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                                         {t("runNow")}
                                     </Button>
+                                </div>
+                            ) : task.key === "s1-sigma0-calibration-backfill" ? (
+                                <div className="w-full max-w-3xl space-y-3 rounded-md border border-warning/30 bg-warning-subtle/20 p-3 sm:w-[560px]">
+                                    <p className="text-xs text-muted-foreground">{t("s1Sigma0BackfillHint")}</p>
+                                    <textarea
+                                        className="min-h-16 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                                        value={s1CalibrationLandList}
+                                        onChange={(event) => setS1CalibrationLandList(event.target.value)}
+                                        placeholder={t("s1Sigma0LandListPlaceholder")}
+                                        aria-label={t("landIdList")}
+                                    />
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <Input type="number" min={1} max={10} value={s1CalibrationYears} onChange={(event) => setS1CalibrationYears(event.target.value)} placeholder={t("years")} aria-label={t("years")} className="max-w-32" />
+                                        <Button size="sm" onClick={triggerS1Sigma0Backfill} disabled={triggering !== null || !task.enabled}>
+                                            {triggering === task.key ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                                            {t("runNow")}
+                                        </Button>
+                                    </div>
                                 </div>
                             ) : (
                                 <Button size="sm" className="shrink-0" onClick={() => trigger(task.key)} disabled={triggering !== null}>
