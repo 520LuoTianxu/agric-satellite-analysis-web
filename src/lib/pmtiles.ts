@@ -268,6 +268,7 @@ const GAODE_ROAD_TILE_URLS = [
 export function getStreetBasemapStyle(): maplibregl.StyleSpecification {
     return {
         version: 8,
+        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
         sources: {
             "gaode-road": {
                 type: "raster",
@@ -305,6 +306,8 @@ const TIANDITU_LABEL_TILE_URL =
 export function getSatelliteBasemapStyle(): maplibregl.StyleSpecification {
     return {
         version: 8,
+        // 行政区和业务标注使用 symbol 文本图层，栅格底图也必须提供字体模板。
+        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
         sources: {
             "tianditu-satellite": {
                 type: "raster" as const,
@@ -428,6 +431,7 @@ export const MAP_STYLES: MapStyleOption[] = [
 
 /**
  * 外部底图失败时仅替换底图资源，保留地块、绘制内容和分析叠加层。
+ * 首次加载超过 12 秒仍未完成的底图也触发降级，避免无错误响应的慢请求留下空白地图。
  * 备用图源失败时不再重试切换，避免错误事件触发无限加载。
  */
 export function installBasemapFallback(
@@ -446,6 +450,7 @@ export function installBasemapFallback(
         "protomaps",
     ]);
     let pending: ReturnType<typeof setTimeout> | undefined;
+    let loadTimeout: ReturnType<typeof setTimeout> | undefined;
     const failedSources = new Map<string, unknown>();
 
     const handleError = (event: { error: Error; sourceId?: string }) => {
@@ -501,10 +506,26 @@ export function installBasemapFallback(
         }, 0);
     };
 
+    const watchInitialTiles = () => {
+        if (loadTimeout !== undefined) clearTimeout(loadTimeout);
+        loadTimeout = setTimeout(() => {
+            loadTimeout = undefined;
+            // 非当前缩放级别的图源会被 MapLibre 判定为已完成，只处理实际阻塞视野的底图请求。
+            for (const sourceId of sourceIds) {
+                if (map.getSource(sourceId) && !map.isSourceLoaded(sourceId)) {
+                    handleError({ sourceId, error: new Error(`Basemap tile loading timed out: ${sourceId}`) });
+                }
+            }
+        }, 12_000);
+    };
+
     map.on("error", handleError);
+    map.on("style.load", watchInitialTiles);
     map.once("remove", () => {
         if (pending !== undefined) clearTimeout(pending);
+        if (loadTimeout !== undefined) clearTimeout(loadTimeout);
         failedSources.clear();
         map.off("error", handleError);
+        map.off("style.load", watchInitialTiles);
     });
 }

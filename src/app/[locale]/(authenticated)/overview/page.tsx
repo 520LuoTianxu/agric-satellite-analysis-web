@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { DROUGHT_CLASS_STYLE, FLOOD_CLASS_STYLE } from "@/lib/agri-heatmap";
 import { OverviewHistory } from "@/components/overview-history";
-import { getBasemapStyle, installBasemapFallback } from "@/lib/pmtiles";
+import { getBasemapStyle, installBasemapFallback, registerPMTilesProtocol } from "@/lib/pmtiles";
 
 /** China approximate bounds [west, south, east, north]. */
 const CHINA_BOUNDS: [[number, number], [number, number]] = [
@@ -377,9 +377,11 @@ export default function OverviewPage() {
     // Init map once
     useEffect(() => {
         if (!mapContainerRef.current || mapRef.current) return;
+        // 全国态势可独立进入，必须自行注册统一底图中的业务高清瓦片协议。
+        registerPMTilesProtocol();
         const map = new maplibregl.Map({
             container: mapContainerRef.current,
-            // 全国态势图也使用统一的高德卫星底图，行政区热力图作为业务图层叠加。
+            // 全国态势沿用统一的 WGS84 卫星底图，行政区热力图作为业务图层叠加。
             style: getBasemapStyle(),
             center: CHINA_CENTER,
             zoom: 3.4,
@@ -416,7 +418,8 @@ export default function OverviewPage() {
         setTimeout(resize, 50);
         setTimeout(resize, 300);
 
-        map.on("load", () => {
+        map.once("style.load", () => {
+            // 行政区边界不等待外部影像瓦片全部完成，避免底图慢请求导致全国态势一直空白。
             resize();
             setMapReady(true);
         });
@@ -717,8 +720,8 @@ export default function OverviewPage() {
                     }
                 };
 
-                if (map.isStyleLoaded()) apply();
-                else map.once("load", apply);
+                // mapReady 已由 style.load 保证样式可用；isStyleLoaded 还会等待底图瓦片，不能再次阻塞边界。
+                apply();
             } catch (err) {
                 console.warn("overview geojson load failed", err);
                 if (!cancelled) setMapError(t("mapLoadFailed"));

@@ -16,9 +16,20 @@ const warnings = [];
 const errors = [];
 const protocolHandlers = new Map();
 const requestedAdminUrls = [];
+// 长加载超时由测试主动触发，避免回归检查真实等待 12 秒。
+const loadTimeouts = new Map();
 const mockMapLibre = { addProtocol: (name, handler) => protocolHandlers.set(name, handler) };
 vm.runInNewContext(code, {
-    module, exports: module.exports, process: { env }, setTimeout, clearTimeout,
+    module, exports: module.exports, process: { env },
+    setTimeout: (callback, delay) => {
+        if (delay !== 12_000) return setTimeout(callback, delay);
+        const timer = {};
+        loadTimeouts.set(timer, callback);
+        return timer;
+    },
+    clearTimeout: (timer) => {
+        if (!loadTimeouts.delete(timer)) clearTimeout(timer);
+    },
     require: (name) => {
         if (name === "maplibre-gl") return { default: mockMapLibre };
         if (name === "pmtiles") return { Protocol: class { tile() {} } };
@@ -39,6 +50,7 @@ assert.equal(satellite.sources["agric-admin-high"].minzoom, 16);
 assert.equal(satellite.sources["agric-admin-high"].maxzoom, 19);
 assert.equal(satellite.sources["agric-admin-high-satellite"].tiles[0], "agric-admin://2025_WGS84_HIGH_Satellite/{z}/{z}-{x}-{y}.png", "高层级必须通过统一高清协议读取管理端卫星瓦片");
 assert.ok(satellite.layers.some((layer) => layer.id === "tianditu-label-layer"), "卫星底图必须包含参考项目的标注层");
+assert.ok(satellite.glyphs, "卫星底图必须支持全国态势的行政区文字标注");
 assert.equal(satellite.layers.find((layer) => layer.id === "agric-admin-high-layer").minzoom, 16, "业务高清层必须从 16 级开始承接");
 assert.ok(getStreetBasemapStyle().sources["gaode-road"].tiles[0].includes("wprd01.is.autonavi.com") && getStreetBasemapStyle().sources["gaode-road"].tiles[0].includes("style=8"), "街道底图必须使用高德道路瓦片");
 assert.ok(!JSON.stringify(MAP_STYLES).includes("arcgisonline.com"), "不能再次请求被拒绝的 Esri 瓦片");
@@ -57,12 +69,14 @@ class TestMap extends EventEmitter {
     constructor(style = getBasemapStyle()) {
         super();
         this.style = structuredClone(style);
+        this.loadingSources = new Set();
         this.style.sources.field = { type: "geojson", data: { type: "FeatureCollection", features: [] } };
         this.style.sources.heatmap = { type: "image", url: "blob:heatmap" };
         this.style.layers.push({ id: "heatmap", source: "heatmap", type: "raster" }, { id: "field", source: "field", type: "line" });
     }
     getStyle() { return this.style; }
     getSource(id) { return this.style.sources[id]; }
+    isSourceLoaded(id) { return !this.loadingSources.has(id); }
     getLayer(id) { return this.style.layers.find((layer) => layer.id === id); }
     removeLayer(id) { this.style.layers = this.style.layers.filter((layer) => layer.id !== id); }
     removeSource(id) {
@@ -142,4 +156,37 @@ assert.equal(bothFailed.getSource("tianditu-satellite"), undefined, "同一批�
 assert.equal(bothFailed.getSource("tianditu-label"), undefined, "同一批次的标注图源失败都应被处理");
 assert.ok(bothFailed.getSource("osm"));
 bothFailed.emit("remove");
-console.log("Basemap checks passed: Tianditu/admin layer stack, overlay preservation, batched failures, no retry loop and cleanup.");
+
+const stalled = new TestMap();
+const stalledField = stalled.getSource("field");
+stalled.loadingSources.add("tianditu-satellite");
+stalled.loadingSources.add("tianditu-label");
+installBasemapFallback(stalled);
+stalled.emit("style.load");
+assert.equal(loadTimeouts.size, 1);
+const triggerLoadTimeout = () => {
+    const [timer, callback] = loadTimeouts.entries().next().value;
+    loadTimeouts.delete(timer);
+    callback();
+};
+triggerLoadTimeout();
+await waitForFallback();
+assert.ok(stalled.getSource("osm"), "无错误响应的底图慢请求必须触发备用底图");
+assert.equal(stalled.getSource("tianditu-satellite"), undefined);
+assert.equal(stalled.getSource("field"), stalledField, "加载超时不能移除地块图层");
+assert.ok(stalled.getSource("agric-admin-high"), "未参与当前视野加载的高清图源不能被误删");
+stalled.emit("remove");
+
+const healthy = new TestMap();
+installBasemapFallback(healthy);
+healthy.emit("style.load");
+triggerLoadTimeout();
+await waitForFallback();
+assert.ok(healthy.getSource("tianditu-satellite"), "正常完成的底图不得因超时检查被替换");
+healthy.emit("style.load");
+healthy.emit("style.load");
+assert.equal(loadTimeouts.size, 1, "切换样式必须取消上一次加载检查");
+healthy.emit("remove");
+assert.equal(loadTimeouts.size, 0, "卸载地图必须清理加载超时");
+assert.equal(healthy.listenerCount("style.load"), 0);
+console.log("Basemap checks passed: layer stack, text glyphs, stalled-request fallback, overlay preservation and cleanup.");
