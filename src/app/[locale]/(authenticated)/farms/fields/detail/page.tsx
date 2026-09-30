@@ -1146,28 +1146,37 @@ function FieldDetailPageContent() {
     // Agri 色斑图 — canvas image film ONLY (blob:/data:); never GeoJSON fill (white seams)
     useEffect(() => {
         const map = mapInstance;
-        if (!map || !map.isStyleLoaded()) return;
-        try {
-            clearAgriHeatmapLayers(map);
-        } catch { /* ignore */ }
+        if (!map) return;
+        const syncHeatmap = () => {
+            try {
+                clearAgriHeatmapLayers(map);
+            } catch { /* ignore */ }
 
-        // Hide solid green fill whenever 色斑 is active so sparse pixels stay visible
-        try {
-            if (map.getLayer("field-fill")) {
-                map.setPaintProperty("field-fill", "fill-opacity", agriHeatmap ? 0 : 0.2);
-            }
-        } catch { /* ignore */ }
+            // 显示色斑时隐藏纯绿色填充，保留地块边界和稀疏像元的可见性。
+            try {
+                if (map.getLayer("field-fill")) {
+                    map.setPaintProperty("field-fill", "fill-opacity", agriHeatmap ? 0 : 0.2);
+                }
+            } catch { /* ignore */ }
 
-        if (!agriHeatmap) return;
+            if (!agriHeatmap) return;
 
-        const landGeom = landRef.current?.boundary_geojson as
-            | GeoJSON.Polygon
-            | GeoJSON.MultiPolygon
-            | undefined;
-        const beforeId = map.getLayer("field-outline") ? "field-outline" : undefined;
-        applyAgriHeatmapToMap(map, agriHeatmap, landGeom, beforeId);
+            const landGeom = landRef.current?.boundary_geojson as
+                | GeoJSON.Polygon
+                | GeoJSON.MultiPolygon
+                | undefined;
+            const beforeId = map.getLayer("field-outline") ? "field-outline" : undefined;
+            applyAgriHeatmapToMap(map, agriHeatmap, landGeom, beforeId);
+        };
+
+        // getStyle 在样式就绪后即有值；isStyleLoaded 还等待底图瓦片，会漏掉首次已准备好的色膜。
+        // 切换底图期间自动等样式就绪后补绘，不能依赖用户再切换一次日期来触发 effect。
+        if (map.getStyle()) syncHeatmap();
+        else map.once("style.load", syncHeatmap);
 
         return () => {
+            // 日期、地块或显隐状态变化后取消旧回调，避免新样式加载时覆盖成旧日期的色膜。
+            map.off("style.load", syncHeatmap);
             try {
                 clearAgriHeatmapLayers(map);
                 if (map.getLayer("field-fill")) {
