@@ -4,9 +4,11 @@ import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "@/i18n/navigation";
 import { useAuth } from "@/components/auth-provider";
+import { useTranslations } from "next-intl";
 
 export default function HomePage() {
     const router = useRouter();
+    const t = useTranslations("farmsPage");
     const { hydrated, session } = useAuth();
 
     useEffect(() => {
@@ -17,8 +19,9 @@ export default function HomePage() {
     }, [hydrated, session, router]);
 
     return (
-        <div className="flex justify-center p-12" aria-label="正在进入项目遥感">
-            <Loader2 className="h-5 w-5 animate-spin" />
+        <div className="flex justify-center p-12" role="status" aria-live="polite">
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+            <span className="sr-only">{t("loading")}</span>
         </div>
     );
 }

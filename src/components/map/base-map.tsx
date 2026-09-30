@@ -16,7 +16,7 @@ export interface BaseMapProps {
     center?: [number, number];
     /** Initial zoom */
     zoom?: number;
-    /** Callback when map is loaded */
+    /** 样式就绪后通知业务层添加数据，不等待外部底图瓦片全部加载。 */
     onMapReady?: (map: maplibregl.Map) => void;
     /** 底图自动降级后同步界面中的图层选中状态。 */
     onBasemapFallback?: (styleId: MapStyleId) => void;
@@ -137,9 +137,10 @@ export default function BaseMap({
         };
         map.addControl(geolocateCtrl as any, "top-left");
 
-        map.on("load", () => {
-            // Try upgrading to PMTiles vector tiles (no-ops if unavailable)
-            tryUpgradeToPMTiles(map).then(() => onReadyCb(map));
+        map.once("style.load", () => {
+            // 样式就绪即可添加地块和定位；load 会等待所有外部瓦片，慢请求不能阻塞业务地图。
+            onReadyCb(map);
+            void tryUpgradeToPMTiles(map);
         });
 
         mapRef.current = map;
