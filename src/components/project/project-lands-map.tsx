@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import maplibregl from "maplibre-gl";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { tokenColor } from "@/lib/design-tokens";
 import { boundsFromGeometries } from "@/lib/land-path";
@@ -58,19 +58,47 @@ function ensureLayers(map: maplibregl.Map) {
 
 export default function ProjectLandsMap({ lands, selectedLandId, onSelect }: ProjectLandsMapProps) {
     const t = useTranslations("projectMonitoring");
+    const locale = useLocale();
+    const areaFormatter = useMemo(() => new Intl.NumberFormat(locale, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }), [locale]);
+    const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
+        dateStyle: "medium",
+        timeZone: "UTC",
+    }), [locale]);
     const { resolvedTheme } = useTheme();
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const popupRef = useRef<maplibregl.Popup | null>(null);
+    const popupLandIdRef = useRef<string | null>(null);
+    const popupContentRef = useRef<{
+        name: HTMLParagraphElement;
+        metadata: HTMLParagraphElement;
+        status: HTMLParagraphElement;
+        date: HTMLParagraphElement;
+    } | null>(null);
     const landsRef = useRef(lands);
     const selectedRef = useRef(selectedLandId);
     const onSelectRef = useRef(onSelect);
     const translationRef = useRef(t);
+    const areaFormatterRef = useRef(areaFormatter);
+    const dateFormatterRef = useRef(dateFormatter);
     const landById = useMemo(() => new Map(lands.map((land) => [land.landId, land])), [lands]);
     const landByIdRef = useRef(landById);
-    useEffect(() => { landsRef.current = lands; landByIdRef.current = landById; }, [lands, landById]);
+    useEffect(() => {
+        landsRef.current = lands;
+        landByIdRef.current = landById;
+        popupLandIdRef.current = null;
+    }, [lands, landById]);
     useEffect(() => { selectedRef.current = selectedLandId; }, [selectedLandId]);
     useEffect(() => { onSelectRef.current = onSelect; translationRef.current = t; }, [onSelect, t]);
+    useEffect(() => {
+        // 项目可切换界面语言；地图回调通过ref取最新格式器，避免重建地图事件监听。
+        areaFormatterRef.current = areaFormatter;
+        dateFormatterRef.current = dateFormatter;
+        popupLandIdRef.current = null;
+    }, [areaFormatter, dateFormatter]);
 
     const fitLands = useCallback((map: maplibregl.Map, items: ProjectLand[], selected = false) => {
         if (!containerRef.current?.clientWidth || !containerRef.current.clientHeight) return;
@@ -96,34 +124,62 @@ export default function ProjectLandsMap({ lands, selectedLandId, onSelect }: Pro
         syncMap(map);
         const selected = landsRef.current.find((land) => land.landId === selectedRef.current);
         fitLands(map, selected ? [selected] : landsRef.current, Boolean(selected));
-        popupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: true, offset: 12, maxWidth: "280px" });
+        const popupRoot = document.createElement("div");
+        popupRoot.className = "space-y-1 p-2 text-xs";
+        const name = document.createElement("p");
+        name.className = "font-semibold";
+        const metadata = document.createElement("p");
+        const status = document.createElement("p");
+        const date = document.createElement("p");
+        popupRoot.append(name, metadata, status, date);
+        popupContentRef.current = { name, metadata, status, date };
+        popupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: true, offset: 12, maxWidth: "280px" })
+            .setDOMContent(popupRoot);
         map.on("mousemove", FILL, (event) => {
             map.getCanvas().style.cursor = "pointer";
-            const land = landByIdRef.current.get(String(event.features?.[0]?.properties?.landId ?? ""));
-            if (!land) return;
-            const translate = translationRef.current;
-            const root = document.createElement("div");
-            root.className = "space-y-1 p-2 text-xs";
-            const name = document.createElement("p");
-            name.className = "font-semibold";
-            name.textContent = land.landName;
-            const metadata = document.createElement("p");
-            metadata.textContent = [land.cropText, land.areaMu === null ? "—" : translate("areaValue", { value: land.areaMu.toFixed(2) })].filter(Boolean).join(" · ");
-            const status = document.createElement("p");
-            status.textContent = translate("risk." + land.riskLevel) + " · " + translate("data." + land.dataStatus);
-            const date = document.createElement("p");
-            date.textContent = translate("observedAt", { date: land.monitoring?.observation?.date ?? "—" });
-            root.append(name, metadata, status, date);
-            popupRef.current?.setLngLat(event.lngLat).setDOMContent(root).addTo(map);
+            const landId = String(event.features?.[0]?.properties?.landId ?? "");
+            const land = landByIdRef.current.get(landId);
+            const content = popupContentRef.current;
+            if (!land || !content) {
+                popupRef.current?.remove();
+                popupLandIdRef.current = null;
+                return;
+            }
+
+            // 鼠标移动事件可能每帧触发；只在地块变化时更新文字，避免持续创建和替换DOM节点。
+            if (popupLandIdRef.current !== landId) {
+                const translate = translationRef.current;
+                content.name.textContent = land.landName;
+                content.metadata.textContent = [
+                    land.cropText,
+                    land.areaMu === null
+                        ? "—"
+                        : translate("areaValue", { value: areaFormatterRef.current.format(land.areaMu) }),
+                ].filter(Boolean).join(" · ");
+                content.status.textContent = translate("risk." + land.riskLevel) + " · " + translate("data." + land.dataStatus);
+                const observationDate = land.monitoring?.observation?.date;
+                // 以观测日期本身而非浏览器本地时区解释日期，避免格式化后跨到前一天。
+                const observationInstant = observationDate
+                    ? new Date(`${observationDate.slice(0, 10)}T00:00:00Z`)
+                    : null;
+                const formattedObservationDate = observationInstant && Number.isFinite(observationInstant.getTime())
+                    ? dateFormatterRef.current.format(observationInstant)
+                    : observationDate ?? "—";
+                content.date.textContent = translate("observedAt", { date: formattedObservationDate });
+                popupLandIdRef.current = landId;
+            }
+            popupRef.current?.setLngLat(event.lngLat).addTo(map);
         });
         map.on("mouseleave", FILL, () => {
             map.getCanvas().style.cursor = "";
             popupRef.current?.remove();
+            popupLandIdRef.current = null;
         });
         map.on("click", FILL, (event) => {
             const id = String(event.features?.[0]?.properties?.landId ?? "");
             if (id) onSelectRef.current(id);
             popupRef.current?.remove();
+            popupLandIdRef.current = null;
         });
         map.on("style.load", () => syncMap(map));
     }, [fitLands, syncMap]);

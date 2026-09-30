@@ -282,6 +282,7 @@ function clampPanelWidthPx(px: number): number {
 
 function FieldDetailPageContent() {
     const t = useTranslations("fieldDetail");
+    const agriPanelT = useTranslations("agriPanel");
     const seasonGrowthT = useTranslations("seasonGrowthReport");
     // 兼容旧版静态消息产物：新短标题缺失时，回退到已存在的报告标题，避免显示翻译键名。
     const seasonGrowthTabLabel = t.has("tabSeasonGrowth")
@@ -1269,7 +1270,7 @@ function FieldDetailPageContent() {
                         }}
                     >
                         <div className={cn("relative flex h-10 w-72 max-w-[calc(100vw-2rem)] items-center rounded-lg", MAP_CHROME)}>
-                            <Search className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" />
+                            <Search className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                             <Input
                                 value={projectLandQuery}
                                 onChange={(event) => {
@@ -1292,7 +1293,7 @@ function FieldDetailPageContent() {
                                         setProjectLandListOpen(false);
                                     }}
                                 >
-                                    <X className="h-4 w-4" />
+                                    <X className="h-4 w-4" aria-hidden="true" />
                                 </button>
                             )}
                         </div>
@@ -1318,7 +1319,7 @@ function FieldDetailPageContent() {
                                                 onClick={() => switchToLand(item.land_id)}
                                                 aria-current={selected ? "page" : undefined}
                                                 className={cn(
-                                                    "w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                                    "w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [content-visibility:auto] [contain-intrinsic-size:2.5rem]",
                                                     selected
                                                         ? "bg-primary text-primary-foreground"
                                                         : "text-foreground hover:bg-surface-3",
@@ -1353,7 +1354,7 @@ function FieldDetailPageContent() {
                         aria-label={t(showAllProjectLands ? "showSelectedProjectLand" : "showAllProjectLands")}
                         title={t(showAllProjectLands ? "showSelectedProjectLand" : "showAllProjectLands")}
                     >
-                        <Layers className="h-4 w-4" />
+                        <Layers className="h-4 w-4" aria-hidden="true" />
                         <span>{t(showAllProjectLands ? "showSelectedProjectLand" : "showAllProjectLands")}</span>
                     </Button>
                 </div>
@@ -1465,10 +1466,10 @@ function FieldDetailPageContent() {
                                         variant={activeIndexType === "EVI" ? "secondary" : "ghost"}
                                         size="sm"
                                         className="h-8 w-8 p-0"
-                                        title="扩展指标"
-                                        aria-label="扩展指标"
+                                        title={agriPanelT("moreIndices")}
+                                        aria-label={agriPanelT("moreIndices")}
                                     >
-                                        <MoreHorizontal className="h-4 w-4" />
+                                        <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="min-w-[8rem]">
