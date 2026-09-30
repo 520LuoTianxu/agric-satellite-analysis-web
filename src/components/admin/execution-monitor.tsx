@@ -112,12 +112,25 @@ function statusLabel(status: string, t: (key: string) => string) {
     return keys[status] ? t(keys[status]) : status || t("statusUnknown");
 }
 
-function formatProgress(progress: Record<string, unknown>) {
+function formatProgress(progress: Record<string, unknown>, t: (key: string) => string) {
     const values = Object.entries(progress);
     if (!values.length) return "—";
-    return values
-        .map(([key, value]) => `${key}: ${truncateText(formatInlineValue(value), MAX_INLINE_TEXT_CHARS)}`)
-        .join(" · ");
+    const progressLabels: Record<string, string> = {
+        dispatch_status: t("dispatchStatus"),
+        dispatch_attempts: t("dispatchAttempts"),
+    };
+    const dispatchStates: Record<string, string> = {
+        pending: t("dispatchPending"),
+        retrying: t("dispatchRetrying"),
+        published: t("dispatchPublished"),
+    };
+    return values.map(([key, value]) => {
+        const label = progressLabels[key] || key;
+        const displayValue = key === "dispatch_status" && typeof value === "string"
+            ? dispatchStates[value] || value
+            : formatInlineValue(value);
+        return `${label}: ${truncateText(displayValue, MAX_INLINE_TEXT_CHARS)}`;
+    }).join(" · ");
 }
 
 function truncateText(value: string, maxLength: number) {
@@ -281,7 +294,7 @@ function ExecutionGroupRow({ group, locale, t, onOpen }: { group: AdminExecution
         <td className="px-3 py-3"><Badge className={statusClass(group.status)}>{statusIcon(group.status)}{statusLabel(group.status, t)}</Badge></td>
         <td className="px-3 py-3"><ChildProgress counts={group.child_counts} t={t} /></td>
         <td className="px-3 py-3 text-muted-foreground">{group.land_id || "—"}</td>
-        <td className="max-w-[300px] px-3 py-3 text-xs text-muted-foreground" title={formatProgress(group.progress_summary)}>{formatProgress(group.progress_summary)}</td>
+        <td className="max-w-[300px] px-3 py-3 text-xs text-muted-foreground" title={formatProgress(group.progress_summary, t)}>{formatProgress(group.progress_summary, t)}</td>
         <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">{formatTime(group.created_at, locale)}</td>
         <td className="px-3 py-3"><Button variant="ghost" size="sm" onClick={onOpen}>{t("viewDetails")}</Button></td>
     </tr>;
@@ -468,11 +481,11 @@ function ChildWorkItemDetail({ item, locale, t }: { item: AdminExecutionWorkItem
 }
 
 function JobSummary({ job, locale, t }: { job: AdminExecutionJob; locale: string; t: (key: string) => string }) {
-    return <><div className="grid gap-3 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("land")}</p><p className="mt-1 font-medium">{job.land_id || "—"}</p></div><div><p className="text-muted-foreground">{t("startedAt")}</p><p className="mt-1 font-medium">{formatTime(job.started_at, locale)}</p></div><div><p className="text-muted-foreground">{t("finishedAt")}</p><p className="mt-1 font-medium">{formatTime(job.finished_at, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", job.error && "text-destructive")}>{job.error ? truncateText(job.error, MAX_INLINE_TEXT_CHARS) : t("noError")}</p></div></div><p className="text-xs text-muted-foreground">{t("progress")}: {formatProgress(job.progress_summary)}</p></>;
+    return <><div className="grid gap-3 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("land")}</p><p className="mt-1 font-medium">{job.land_id || "—"}</p></div><div><p className="text-muted-foreground">{t("startedAt")}</p><p className="mt-1 font-medium">{formatTime(job.started_at, locale)}</p></div><div><p className="text-muted-foreground">{t("finishedAt")}</p><p className="mt-1 font-medium">{formatTime(job.finished_at, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", job.error && "text-destructive")}>{job.error ? truncateText(job.error, MAX_INLINE_TEXT_CHARS) : t("noError")}</p></div></div><p className="text-xs text-muted-foreground">{t("progress")}: {formatProgress(job.progress_summary, t)}</p></>;
 }
 
 function WorkItemSummary({ item, locale, t }: { item: AdminExecutionWorkItem; locale: string; t: (key: string) => string }) {
-    return <><div className="grid gap-3 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("lastClaimedBy")}</p><p className="mt-1 font-medium">{item.last_claimed_by || item.lease_owner || "—"}</p></div><div><p className="text-muted-foreground">{t("attempts")}</p><p className="mt-1 font-medium">{item.attempts}</p></div><div><p className="text-muted-foreground">{t("leaseUntil")}</p><p className="mt-1 font-medium">{formatTime(item.lease_until, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", item.error && "text-destructive")}>{item.error ? truncateText(item.error, MAX_INLINE_TEXT_CHARS) : t("noError")}</p></div></div><p className="text-xs text-muted-foreground">{t("progress")}: {formatProgress(item.progress_summary)}</p></>;
+    return <><div className="grid gap-3 text-xs sm:grid-cols-4"><div><p className="text-muted-foreground">{t("lastClaimedBy")}</p><p className="mt-1 font-medium">{item.last_claimed_by || item.lease_owner || "—"}</p></div><div><p className="text-muted-foreground">{t("attempts")}</p><p className="mt-1 font-medium">{item.attempts}</p></div><div><p className="text-muted-foreground">{t("leaseUntil")}</p><p className="mt-1 font-medium">{formatTime(item.lease_until, locale)}</p></div><div><p className="text-muted-foreground">{t("error")}</p><p className={cn("mt-1 font-medium", item.error && "text-destructive")}>{item.error ? truncateText(item.error, MAX_INLINE_TEXT_CHARS) : t("noError")}</p></div></div><p className="text-xs text-muted-foreground">{t("progress")}: {formatProgress(item.progress_summary, t)}</p></>;
 }
 
 function JobFullDetail({ data, error, isLoading, t }: { data: AdminJobDetail | undefined; error: unknown; isLoading: boolean; t: (key: string) => string }) {

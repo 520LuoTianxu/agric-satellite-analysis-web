@@ -319,8 +319,10 @@ function FieldDetailPageContent() {
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [activeTab, setActiveTab] = useState("land-report");
     const [panelWidthPx, setPanelWidthPx] = useState(PANEL_WIDTH_DEFAULT_PX);
+    const [panelWidthMaxPx, setPanelWidthMaxPx] = useState(PANEL_WIDTH_MAX_PX);
     const [isResizingPanel, setIsResizingPanel] = useState(false);
     const panelWidthRef = useRef(PANEL_WIDTH_DEFAULT_PX);
+    const panelResizeCleanupRef = useRef<(() => void) | null>(null);
 
     // Index overlay
     const [indexLayer, setIndexLayer] = useState<RasterLayer | null>(null);
@@ -399,8 +401,28 @@ function FieldDetailPageContent() {
     }, []);
 
     useEffect(() => {
+        const syncPanelWidthToViewport = () => {
+            const maxWidth = clampPanelWidthPx(PANEL_WIDTH_MAX_PX);
+            setPanelWidthMaxPx(maxWidth);
+            const width = clampPanelWidthPx(panelWidthRef.current);
+            panelWidthRef.current = width;
+            setPanelWidthPx(width);
+        };
+        syncPanelWidthToViewport();
+        window.addEventListener("resize", syncPanelWidthToViewport);
+        return () => window.removeEventListener("resize", syncPanelWidthToViewport);
+    }, []);
+
+    useEffect(() => {
         panelWidthRef.current = panelWidthPx;
     }, [panelWidthPx]);
+
+    useEffect(
+        () => () => {
+            panelResizeCleanupRef.current?.();
+        },
+        [],
+    );
 
     const persistPanelWidth = useCallback((px: number) => {
         try {
@@ -411,32 +433,49 @@ function FieldDetailPageContent() {
     }, []);
 
     const handlePanelResizeStart = useCallback(
-        (e: React.MouseEvent) => {
+        (e: React.PointerEvent<HTMLDivElement>) => {
+            if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
+            panelResizeCleanupRef.current?.();
             e.preventDefault();
             e.stopPropagation();
             setIsResizingPanel(true);
+            const pointerId = e.pointerId;
             const startX = e.clientX;
             const startW = panelWidthRef.current;
+            const previousCursor = document.body.style.cursor;
+            const previousUserSelect = document.body.style.userSelect;
+            let cleanup = () => {};
 
-            const onMove = (ev: MouseEvent) => {
-                // Dragging the left edge: move left → wider panel
+            const onMove = (ev: PointerEvent) => {
+                if (ev.pointerId !== pointerId) return;
+                // 左侧分隔条向左移动会扩展右侧分析面板，同时兼容鼠标和触控笔/触屏。
                 const next = clampPanelWidthPx(startW + (startX - ev.clientX));
                 panelWidthRef.current = next;
                 setPanelWidthPx(next);
             };
-            const onUp = () => {
+            const onUp = (ev: PointerEvent) => {
+                if (ev.pointerId !== pointerId) return;
                 setIsResizingPanel(false);
                 persistPanelWidth(panelWidthRef.current);
-                document.body.style.removeProperty("cursor");
-                document.body.style.removeProperty("user-select");
-                window.removeEventListener("mousemove", onMove);
-                window.removeEventListener("mouseup", onUp);
+                cleanup();
+            };
+            cleanup = () => {
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+                window.removeEventListener("pointercancel", onUp);
+                document.body.style.cursor = previousCursor;
+                document.body.style.userSelect = previousUserSelect;
+                if (panelResizeCleanupRef.current === cleanup) {
+                    panelResizeCleanupRef.current = null;
+                }
             };
 
+            panelResizeCleanupRef.current = cleanup;
             document.body.style.cursor = "col-resize";
             document.body.style.userSelect = "none";
-            window.addEventListener("mousemove", onMove);
-            window.addEventListener("mouseup", onUp);
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onUp);
+            window.addEventListener("pointercancel", onUp);
         },
         [persistPanelWidth],
     );
@@ -446,6 +485,35 @@ function FieldDetailPageContent() {
         setPanelWidthPx(PANEL_WIDTH_DEFAULT_PX);
         persistPanelWidth(PANEL_WIDTH_DEFAULT_PX);
     }, [persistPanelWidth]);
+
+    const handlePanelResizeKeyDown = useCallback(
+        (event: React.KeyboardEvent<HTMLDivElement>) => {
+            const step = event.shiftKey ? 64 : 24;
+            let nextWidth: number;
+            if (event.key === "ArrowLeft") {
+                // 分隔条向左移动会扩展右侧分析面板。
+                nextWidth = panelWidthRef.current + step;
+            } else if (event.key === "ArrowRight") {
+                nextWidth = panelWidthRef.current - step;
+            } else if (event.key === "Home") {
+                nextWidth = PANEL_WIDTH_MIN_PX;
+            } else if (event.key === "End") {
+                nextWidth = clampPanelWidthPx(PANEL_WIDTH_MAX_PX);
+            } else if (event.key === "Enter" || event.key === " ") {
+                nextWidth = PANEL_WIDTH_DEFAULT_PX;
+            } else {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            const width = clampPanelWidthPx(nextWidth);
+            panelWidthRef.current = width;
+            setPanelWidthPx(width);
+            persistPanelWidth(width);
+        },
+        [persistPanelWidth],
+    );
 
     // Alerts
     const [openAlertCount, setOpenAlertCount] = useState(0);
@@ -1468,19 +1536,24 @@ function FieldDetailPageContent() {
             <button
                 type="button"
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className={cn("absolute top-4 right-4 sm:right-[var(--toggle-right)] z-20 rounded-xl p-2.5 transition-all hover:bg-surface-3", MAP_CHROME)}
+                className={cn("absolute top-4 right-4 sm:right-[var(--toggle-right)] z-20 rounded-xl p-2.5 transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", MAP_CHROME)}
                 style={{ "--toggle-right": sidebarOpen ? "calc(var(--panel-w) + 2rem)" : "1rem" } as React.CSSProperties}
-                title={sidebarOpen ? "Hide panel (⌘.)" : "Show panel (⌘.)"}
+                aria-label={t(sidebarOpen ? "hidePanel" : "showPanel")}
+                aria-expanded={sidebarOpen}
+                aria-controls="field-detail-analysis-panel"
+                title={t(sidebarOpen ? "hidePanel" : "showPanel")}
             >
                 {sidebarOpen ? (
-                    <PanelRightClose className="h-4 w-4 text-foreground" />
+                    <PanelRightClose className="h-4 w-4 text-foreground" aria-hidden="true" />
                 ) : (
-                    <PanelRight className="h-4 w-4 text-foreground" />
+                    <PanelRight className="h-4 w-4 text-foreground" aria-hidden="true" />
                 )}
             </button>
 
             {/* Floating tabbed sidebar - right */}
             <div
+                id="field-detail-analysis-panel"
+                inert={!sidebarOpen}
                 className={cn(
                     "absolute right-4 bottom-4 z-10 h-[52%] w-[calc(100%-2rem)] sm:top-4 sm:h-auto sm:w-[var(--panel-w)] max-w-[calc(100%-2rem)]",
                     !isResizingPanel && "transition-transform duration-300 ease-in-out",
@@ -1491,11 +1564,18 @@ function FieldDetailPageContent() {
                 <div
                     role="separator"
                     aria-orientation="vertical"
-                    aria-label="Resize panel"
-                    title="Drag to resize · double-click resets to default"
-                    onMouseDown={handlePanelResizeStart}
+                    aria-label={t("resizePanel")}
+                    aria-valuemin={PANEL_WIDTH_MIN_PX}
+                    aria-valuemax={panelWidthMaxPx}
+                    aria-valuenow={panelWidthPx}
+                    aria-controls="field-detail-analysis-panel"
+                    aria-describedby="field-detail-panel-resize-hint"
+                    tabIndex={0}
+                    title={t("resizePanelHint")}
+                    onPointerDown={handlePanelResizeStart}
+                    onKeyDown={handlePanelResizeKeyDown}
                     onDoubleClick={handlePanelResizeReset}
-                    className="group/resize absolute left-0 top-0 bottom-0 z-20 hidden sm:flex w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center"
+                    className="group/resize absolute left-0 top-0 bottom-0 z-20 hidden sm:flex w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                 >
                     <div
                         className={cn(
@@ -1505,6 +1585,9 @@ function FieldDetailPageContent() {
                         )}
                     />
                 </div>
+                <span id="field-detail-panel-resize-hint" className="sr-only">
+                    {t("resizePanelHint")}
+                </span>
                 <div className={cn("flex h-full flex-col overflow-hidden rounded-xl", MAP_CHROME)}>
                     <Tabs defaultValue="land-report" value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 overflow-hidden">
                         {/* 页签保持紧凑单行，窄侧栏允许横向滚动，不挤占内容高度。 */}

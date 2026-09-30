@@ -300,7 +300,7 @@ function GroupRow({
     return (
         <Link
             href={`/farms/detail?groupId=${encodeURIComponent(groupId)}`}
-            className="flex items-center justify-between gap-3 rounded-lg border p-4 hover:border-primary/30 hover:shadow-md transition-all"
+            className="flex items-center justify-between gap-3 rounded-lg border p-4 transition-[border-color,box-shadow] motion-reduce:transition-none hover:border-primary/30 hover:shadow-md"
         >
             <div className="flex min-w-0 items-center gap-3">
                 <IconWell><FolderKanban className="h-5 w-5 text-primary" /></IconWell>

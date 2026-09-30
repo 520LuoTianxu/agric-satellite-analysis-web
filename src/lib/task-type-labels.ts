@@ -7,6 +7,7 @@ const TASK_TYPE_KEYS: Record<string, string> = {
     "parcel_insights": "taskTypeParcelInsights",
     "overview_daily": "taskTypeOverviewDaily",
     "satellite_batch": "taskTypeSatelliteBatch",
+    "s1_sigma0_calibration_backfill": "taskTypeS1Sigma0Backfill",
     "satellite_analysis": "taskTypeSatelliteAnalysis",
     "satellite_download": "taskTypeSatelliteDownload",
     "assessment_report": "taskTypeAssessmentReport",

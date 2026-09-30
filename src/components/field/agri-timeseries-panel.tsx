@@ -35,13 +35,16 @@ import {
 } from "@/lib/agri-heatmap";
 import {
     classifyDroughtSeries,
-    classifyFloodSeries,
+    classifyFloodSeriesByDate,
     isFloodDayClass,
+    isGoodDecloudQuality,
     isFloodWatchClass,
     isSpringFloodMonth,
     opticalTooltipFields,
     pickOfficialOptical,
     pickOpticalForNdvi,
+    s1CalibrationEpochForScene,
+    s1PlatformForScene,
     sceneCloudDisplay,
     sceneCloudPct,
 } from "@/lib/agri-classify";
@@ -96,18 +99,65 @@ const NdviGradeSharesChart = dynamic(
 );
 
 type SeriesKey = AgriHeatIndex;
+type SceneHistoryCursor = { date: string; sceneId: string };
 type HeatmapMeta = {
+    landId: string;
+    sceneId: string;
     pixels: number;
     date: string;
     index: string;
     sensor: AgriSceneProduct["sensor"];
     mean: number | null;
     source: AgriSceneProduct["pixels_source"];
+    productSource: string | null;
     stacItemId: string | null;
     algorithmVersion: string | null;
     gridSpacingM: { x: number; y: number } | null;
     radiometricCalibration: AgriSceneProduct["radiometric_calibration"];
+    platform: string | null;
+    processingVersion: string | null;
+    calibrationEpoch: string | null;
 };
+
+type SceneProvenanceMeta = Pick<
+    HeatmapMeta,
+    | "sensor"
+    | "source"
+    | "productSource"
+    | "stacItemId"
+    | "algorithmVersion"
+    | "gridSpacingM"
+    | "radiometricCalibration"
+    | "platform"
+    | "processingVersion"
+    | "calibrationEpoch"
+>;
+
+function sceneProvenanceMeta(scene: AgriSceneProduct): SceneProvenanceMeta {
+    const cellSize = scene.analysis_grid?.cell_size_m;
+    const cellSizeX = cellSize?.x;
+    const cellSizeY = cellSize?.y;
+    return {
+        sensor: scene.sensor,
+        source: scene.pixels_source ?? null,
+        productSource: scene.source ?? null,
+        stacItemId: scene.stac_item_id ?? null,
+        algorithmVersion: scene.algorithm_version ?? null,
+        gridSpacingM:
+            typeof cellSizeX === "number" &&
+            Number.isFinite(cellSizeX) &&
+            typeof cellSizeY === "number" &&
+            Number.isFinite(cellSizeY)
+                ? { x: cellSizeX, y: cellSizeY }
+                : null,
+        radiometricCalibration: scene.radiometric_calibration ?? null,
+        platform: scene.sensor === "S1" ? s1PlatformForScene(scene) : null,
+        processingVersion:
+            scene.radiometric_calibration?.processing_version ?? null,
+        calibrationEpoch:
+            scene.sensor === "S1" ? s1CalibrationEpochForScene(scene) : null,
+    };
+}
 
 const SERIES_META: Record<
     SeriesKey,
@@ -190,7 +240,7 @@ function scenesToStats(scenes: AgriSceneProduct[], key: SeriesKey, landId: strin
     const byDate = new Map<string, AgriSceneProduct[]>();
     for (const s of scenes) {
         if (s.sensor !== meta.sensor) continue;
-        if (key === "drought" && isDecloudProduct(s) && s.decloud_quality !== "good") continue;
+        if (key === "drought" && isDecloudProduct(s) && !isGoodDecloudQuality(s.decloud_quality)) continue;
         const arr = byDate.get(s.date) ?? [];
         arr.push(s);
         byDate.set(s.date, arr);
@@ -331,6 +381,12 @@ function sceneSeriesAvg(scene: AgriSceneProduct, key: SeriesKey): number | null 
 const RECENT_DATE_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 const RECENT_DATE_CHIP_CAP = 14;
 const PRIMARY_SERIES_KEYS: SeriesKey[] = ["ndvi", "drought", "flood"];
+
+function compareAgriScenesChronologically(a: AgriSceneProduct, b: AgriSceneProduct): number {
+    return a.date.localeCompare(b.date)
+        || a.sensor.localeCompare(b.sensor)
+        || a.scene_id.localeCompare(b.scene_id);
+}
 
 function seriesIsAvailable(key: SeriesKey, scenes: AgriSceneProduct[]): boolean {
     const meta = SERIES_META[key];
@@ -512,13 +568,22 @@ export default function AgriTimeseriesPanel({
     const [harvestError, setHarvestError] = useState(false);
     const [backfillProgress, setBackfillProgress] = useState<BackfillStatusResponse | null>(null);
     const [reloadKey, setReloadKey] = useState(0);
-    const backfillPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const backfillPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const backfillPollControllerRef = useRef<AbortController | null>(null);
+    const backfillPollGenerationRef = useRef(0);
+    // 地块切换与被动效果清理之间存在提交窗口，旧轮询不得覆盖新地块状态。
+    const currentLandIdRef = useRef(landId);
+    currentLandIdRef.current = landId;
     const [summary, setSummary] = useState<AgriLandScenesSummary | null>(null);
     const [scenes, setScenes] = useState<AgriSceneProduct[]>([]);
+    const [sceneCursors, setSceneCursors] = useState<Record<"S1" | "S2", SceneHistoryCursor | null>>({ S1: null, S2: null });
+    const [loadingEarlierSensor, setLoadingEarlierSensor] = useState<"S1" | "S2" | null>(null);
+    const [loadEarlierError, setLoadEarlierError] = useState(false);
     const [cropOption, setCropOption] = useState<CropOption | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [seriesInternal, setSeriesInternal] = useState<SeriesKey>("ndvi");
+    const earlierScenesRequestRef = useRef<AbortController | null>(null);
     const series = modeProp ?? seriesInternal;
     const setSeries = useCallback(
         (next: SeriesKey) => {
@@ -539,6 +604,9 @@ export default function AgriTimeseriesPanel({
     /** Shared with NdviChart + stacked grade shares — hide cloudy/unrealistic dates. */
     const [onlyRealistic, setOnlyRealistic] = useState(true);
     const gradeSharesFetchKeyRef = useRef<string | null>(null);
+    const initialGradeSharesRangeRef = useRef<{ from: string; to: string } | null>(null);
+    const gradeSharesLoadedRangesRef = useRef(new Set<string>());
+    const gradeSharesRequestsRef = useRef(new Map<string, Promise<boolean>>());
     /** Request generation rejects stale results; the request ref de-duplicates and aborts pixel downloads. */
     const heatmapLoadGenRef = useRef(0);
     const heatmapRequestRef = useRef<{ key: string; controller: AbortController } | null>(null);
@@ -562,6 +630,8 @@ export default function AgriTimeseriesPanel({
         heatmapLoadGenRef.current += 1;
         heatmapRequestRef.current?.controller.abort();
         heatmapRequestRef.current = null;
+        earlierScenesRequestRef.current?.abort();
+        earlierScenesRequestRef.current = null;
     }, []);
 
     useEffect(() => {
@@ -599,6 +669,14 @@ export default function AgriTimeseriesPanel({
 
     useEffect(() => {
         if (!landId) return;
+        earlierScenesRequestRef.current?.abort();
+        earlierScenesRequestRef.current = null;
+        setLoadingEarlierSensor(null);
+        setLoadEarlierError(false);
+        setSceneCursors({ S1: null, S2: null });
+        initialGradeSharesRangeRef.current = null;
+        gradeSharesLoadedRangesRef.current.clear();
+        gradeSharesRequestsRef.current.clear();
         let cancelled = false;
         const controller = new AbortController();
         setLoading(true);
@@ -629,7 +707,25 @@ export default function AgriTimeseriesPanel({
                 setSummary(sum);
                 const s2Items = reverseDescScenesPage(s2Desc.items);
                 const s1Items = reverseDescScenesPage(s1Desc.items);
-                const all = [...s2Items, ...s1Items];
+                const initialGradeDates = s2Items
+                    .filter((scene) => typeof scene.ndvi_avg === "number")
+                    .map((scene) => scene.date)
+                    .sort();
+                initialGradeSharesRangeRef.current = initialGradeDates.length ? {
+                    from: initialGradeDates[0]!,
+                    to: initialGradeDates[initialGradeDates.length - 1]!,
+                } : null;
+                const all = [...s2Items, ...s1Items].sort(compareAgriScenesChronologically);
+                setSceneCursors({
+                    S2: s2Desc.items.length ? {
+                        date: s2Desc.items[s2Desc.items.length - 1]!.date,
+                        sceneId: s2Desc.items[s2Desc.items.length - 1]!.scene_id,
+                    } : null,
+                    S1: s1Desc.items.length ? {
+                        date: s1Desc.items[s1Desc.items.length - 1]!.date,
+                        sceneId: s1Desc.items[s1Desc.items.length - 1]!.scene_id,
+                    } : null,
+                });
                 setScenes(all);
                 const hasS2 = sum.sensors.some((s) => s.sensor === "S2" && s.count > 0);
                 const nextSeries: SeriesKey = modeProp ?? (hasS2 ? "ndvi" : "vv");
@@ -637,10 +733,10 @@ export default function AgriTimeseriesPanel({
                 onModeChange?.(nextSeries);
                 const bestDate = pickBestDefaultDate(all, nextSeries);
                 if (bestDate) setSelectedDate(bestDate);
-                // Prefetch include_pixels=1 as soon as land scenes load (even if 指数 tab
-                // inactive). Map overlay is only published when enabled===true.
+                // 像元色斑预取与场景列表分开加载，避免大像元响应阻塞时间轴首屏。
+                // 即使指数 tab 未激活也预取；地图叠加仍由 enabled 控制是否发布。
                 if (!cancelled && bestDate) {
-                    await loadHeatmapRef.current(bestDate, nextSeries);
+                    void loadHeatmapRef.current(bestDate, nextSeries);
                 }
             } catch (e: any) {
                 if (!cancelled) setError(t("loadFailed"));
@@ -651,6 +747,8 @@ export default function AgriTimeseriesPanel({
         return () => {
             cancelled = true;
             controller.abort();
+            earlierScenesRequestRef.current?.abort();
+            earlierScenesRequestRef.current = null;
             // Do NOT clear heatmap here — React Strict Mode remount races with loadHeatmap
             // and can wipe a just-loaded overlay. Clear only when enabled flips false or unmount via land change handled by next effect.
         };
@@ -658,10 +756,13 @@ export default function AgriTimeseriesPanel({
     }, [landId, reloadKey]);
 
     const stopBackfillPoll = useCallback(() => {
+        backfillPollGenerationRef.current += 1;
         if (backfillPollRef.current) {
-            clearInterval(backfillPollRef.current);
+            clearTimeout(backfillPollRef.current);
             backfillPollRef.current = null;
         }
+        backfillPollControllerRef.current?.abort();
+        backfillPollControllerRef.current = null;
     }, []);
 
     const applyBackfillStatus = useCallback(
@@ -681,33 +782,68 @@ export default function AgriTimeseriesPanel({
     const startBackfillPoll = useCallback(() => {
         if (!landId) return;
         stopBackfillPoll();
-        let wasActive = true;
+        const generation = backfillPollGenerationRef.current;
+        const wasActive = true;
         const tick = async () => {
+            if (
+                generation !== backfillPollGenerationRef.current
+                || currentLandIdRef.current !== landId
+            ) return;
+
+            const controller = new AbortController();
+            backfillPollControllerRef.current = controller;
+            let shouldContinue = false;
             try {
-                const res = await landsApi.backfillStatus(landId);
+                const res = await landsApi.backfillStatus(landId, controller.signal);
+                if (
+                    controller.signal.aborted
+                    || generation !== backfillPollGenerationRef.current
+                    || currentLandIdRef.current !== landId
+                ) return;
+
                 const stillActive = applyBackfillStatus(res, { wasActive });
                 if (stillActive) {
-                    wasActive = true;
+                    shouldContinue = true;
                 } else {
-                    wasActive = false;
                     stopBackfillPoll();
+                    return;
                 }
             } catch {
-                /* ignore transient poll errors */
+                // 只对当前地块的瞬时失败继续轮询；切换地块或清理产生的取消直接结束。
+                shouldContinue = !controller.signal.aborted
+                    && generation === backfillPollGenerationRef.current
+                    && currentLandIdRef.current === landId;
+            } finally {
+                if (backfillPollControllerRef.current === controller) {
+                    backfillPollControllerRef.current = null;
+                }
+            }
+
+            // 串行调度可避免慢响应期间堆叠请求及旧状态覆盖新状态。
+            if (
+                shouldContinue
+                && generation === backfillPollGenerationRef.current
+                && currentLandIdRef.current === landId
+            ) {
+                backfillPollRef.current = setTimeout(() => void tick(), 5000);
             }
         };
         void tick();
-        backfillPollRef.current = setInterval(tick, 5000);
     }, [landId, applyBackfillStatus, stopBackfillPoll]);
 
     // One-shot on mount: resume polling only if a current-wave job is truly active
     useEffect(() => {
         if (!landId) return;
         let cancelled = false;
+        const controller = new AbortController();
         (async () => {
             try {
-                const res = await landsApi.backfillStatus(landId);
-                if (cancelled) return;
+                const res = await landsApi.backfillStatus(landId, controller.signal);
+                if (
+                    cancelled
+                    || controller.signal.aborted
+                    || currentLandIdRef.current !== landId
+                ) return;
                 const active = applyBackfillStatus(res);
                 if (active) startBackfillPoll();
             } catch {
@@ -716,6 +852,7 @@ export default function AgriTimeseriesPanel({
         })();
         return () => {
             cancelled = true;
+            controller.abort();
             stopBackfillPoll();
         };
     }, [landId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1038,24 +1175,13 @@ export default function AgriTimeseriesPanel({
                 const nextMeta: HeatmapMeta | null =
                     img
                         ? {
+                              landId,
+                              sceneId: scene.scene_id,
                               pixels: img.pixelCount,
                               date,
                               index: t(`indexLabels.${index}`),
-                              sensor: scene.sensor,
                               mean: img.mean,
-                              source: scene.pixels_source ?? null,
-                              stacItemId: scene.stac_item_id ?? null,
-                              algorithmVersion: scene.algorithm_version ?? null,
-                              radiometricCalibration:
-                                  scene.radiometric_calibration ?? null,
-                              gridSpacingM:
-                                  Number.isFinite(scene.analysis_grid?.cell_size_m?.x) &&
-                                  Number.isFinite(scene.analysis_grid?.cell_size_m?.y)
-                                      ? {
-                                            x: scene.analysis_grid!.cell_size_m!.x!,
-                                            y: scene.analysis_grid!.cell_size_m!.y!,
-                                        }
-                                      : null,
+                              ...sceneProvenanceMeta(scene),
                           }
                         : null;
                 cachedHeatmapRef.current = { landId, date, index, img, meta: nextMeta };
@@ -1088,16 +1214,20 @@ export default function AgriTimeseriesPanel({
 
     /** One bulk API call — server aggregates lonlat_v1 pixels (no include_pixels loop). */
     const loadDayGradeShares = useCallback(
-        async (from?: string, to?: string, signal?: AbortSignal) => {
-            if (!landId) return;
-            try {
-                const res = await agriApi.ndviDayGradeShares(landId, {
-                    from,
-                    to,
-                    limit: 500,
-                    signal,
-                });
-                if (signal?.aborted) return;
+        async (from?: string, to?: string, signal?: AbortSignal): Promise<boolean> => {
+            if (!landId) return false;
+            const rangeKey = `${landId}:${from ?? ""}:${to ?? ""}`;
+            if (gradeSharesLoadedRangesRef.current.has(rangeKey)) return true;
+            const inFlight = gradeSharesRequestsRef.current.get(rangeKey);
+            if (inFlight) return inFlight;
+
+            const request = agriApi.ndviDayGradeShares(landId, {
+                from,
+                to,
+                limit: 500,
+                signal,
+            }).then((res) => {
+                if (signal?.aborted) return false;
                 const next: Record<string, DayGradeShare> = {};
                 for (const item of res.items ?? []) {
                     const d = String(item.date).slice(0, 10);
@@ -1120,12 +1250,132 @@ export default function AgriTimeseriesPanel({
                     };
                 }
                 setDayGradeByDate((prev) => ({ ...prev, ...next }));
-            } catch {
-                /* ignore — stacked chart stays empty until retry / heatmap fill */
-            }
+                gradeSharesLoadedRangesRef.current.add(rangeKey);
+                return true;
+            }).catch(() => false).finally(() => {
+                if (gradeSharesRequestsRef.current.get(rangeKey) === request) {
+                    gradeSharesRequestsRef.current.delete(rangeKey);
+                }
+            });
+            gradeSharesRequestsRef.current.set(rangeKey, request);
+            return request;
         },
         [landId],
     );
+
+    const loadEarlierScenes = useCallback(async (sensor: "S1" | "S2") => {
+        if (!landId || earlierScenesRequestRef.current) return;
+        const sensorScenes = scenes.filter((scene) => scene.sensor === sensor);
+        const cursor = sceneCursors[sensor];
+        if (!sensorScenes.length || !cursor) return;
+        const controller = new AbortController();
+        earlierScenesRequestRef.current = controller;
+        setLoadingEarlierSensor(sensor);
+        setLoadEarlierError(false);
+        try {
+            const page = await agriApi.scenes(landId, {
+                sensor,
+                limit: 500,
+                order: "desc",
+                beforeDate: cursor.date,
+                beforeSceneId: cursor.sceneId,
+                signal: controller.signal,
+            });
+            if (controller.signal.aborted) return;
+
+            const pageScenes = reverseDescScenesPage(page.items);
+            const existingKeys = new Set(scenes.map((scene) => (
+                `${scene.sensor}:${scene.date}:${scene.scene_id}`
+            )));
+            const uniquePageScenes = pageScenes.filter((scene) => {
+                const key = `${scene.sensor}:${scene.date}:${scene.scene_id}`;
+                if (existingKeys.has(key)) return false;
+                existingKeys.add(key);
+                return true;
+            });
+
+            // 时序行可能按景分页，但图一分级按天选景；先完整拿到本页日期的分级结果，再扩展可见历史。
+            if (sensor === "S2") {
+                const initialGradeRange = initialGradeSharesRangeRef.current;
+                if (initialGradeRange) {
+                    const loadedGradesReady = await loadDayGradeShares(
+                        initialGradeRange.from,
+                        initialGradeRange.to,
+                        controller.signal,
+                    );
+                    if (!loadedGradesReady && !controller.signal.aborted) {
+                        throw new Error("当前 NDVI 日分级数据加载失败");
+                    }
+                }
+                const gradeDates = uniquePageScenes
+                    .filter((scene) => typeof scene.ndvi_avg === "number")
+                    .map((scene) => scene.date)
+                    .sort();
+                if (gradeDates.length) {
+                    const gradesLoaded = await loadDayGradeShares(
+                        gradeDates[0],
+                        gradeDates[gradeDates.length - 1],
+                        controller.signal,
+                    );
+                    if (!gradesLoaded && !controller.signal.aborted) {
+                        throw new Error("NDVI 日分级数据加载失败");
+                    }
+                }
+            }
+            if (controller.signal.aborted) return;
+
+            const lastPageScene = page.items[page.items.length - 1];
+            if (lastPageScene) {
+                setSceneCursors((current) => ({
+                    ...current,
+                    [sensor]: { date: lastPageScene.date, sceneId: lastPageScene.scene_id },
+                }));
+            }
+            setSummary((current) => {
+                if (!current) return current;
+                const previousCount = current.sensors.find((item) => item.sensor === sensor)?.count ?? 0;
+                return {
+                    ...current,
+                    total: Math.max(0, current.total + page.total - previousCount),
+                    sensors: current.sensors.map((item) => (
+                        item.sensor === sensor ? { ...item, count: page.total } : item
+                    )),
+                };
+            });
+
+            if (!uniquePageScenes.length) {
+                // 游标之后无旧数据通常表示载入窗口期间有新场景入库，重载最新页以对齐总数。
+                if (page.total > sensorScenes.length) setReloadKey((key) => key + 1);
+                return;
+            }
+
+            const mergedScenes = [...scenes, ...uniquePageScenes].sort(compareAgriScenesChronologically);
+            const mergedS2Dates = mergedScenes
+                .filter((scene) => scene.sensor === "S2" && typeof scene.ndvi_avg === "number")
+                .map((scene) => scene.date)
+                .sort();
+            // 新旧页的图一分级分别请求；标记扩展后的窗口，避免 state 更新后再重复拉整段历史。
+            if (mergedS2Dates.length) {
+                gradeSharesFetchKeyRef.current = `${landId}:${mergedS2Dates[0]}:${mergedS2Dates[mergedS2Dates.length - 1]}`;
+            }
+            setScenes(mergedScenes);
+
+            if (
+                page.items.length < page.limit
+                && sensorScenes.length + uniquePageScenes.length < page.total
+            ) {
+                // 页尾与服务端总数不吻合说明分页期间数据发生变化，回到最新窗口校准列表。
+                setReloadKey((key) => key + 1);
+            }
+        } catch {
+            if (!controller.signal.aborted) setLoadEarlierError(true);
+        } finally {
+            if (earlierScenesRequestRef.current === controller) {
+                earlierScenesRequestRef.current = null;
+                setLoadingEarlierSensor(null);
+            }
+        }
+    }, [landId, loadDayGradeShares, sceneCursors, scenes]);
 
     const selectDateExplicit = useCallback(
         (date: string) => {
@@ -1241,8 +1491,24 @@ export default function AgriTimeseriesPanel({
 
     const floodByDate = useMemo(() => {
         const s1 = scenes.filter((s) => s.sensor === "S1");
-        return classifyFloodSeries(s1);
+        return classifyFloodSeriesByDate(s1);
     }, [scenes]);
+
+    const floodUnclassifiedDates = useMemo(() => {
+        const dates = new Set(
+            scenes
+                .filter(
+                    (scene) =>
+                        scene.sensor === "S1" &&
+                        typeof scene.vv_avg === "number" &&
+                        Number.isFinite(scene.vv_avg) &&
+                        Boolean(scene.date),
+                )
+                .map((scene) => scene.date),
+        );
+        for (const date of floodByDate.keys()) dates.delete(date);
+        return dates;
+    }, [scenes, floodByDate]);
 
     const droughtEventMarks = useMemo(
         () =>
@@ -1374,6 +1640,26 @@ export default function AgriTimeseriesPanel({
         return matches[0] ?? null;
     }, [scenes, selectedDate, series]);
 
+    // 无像元、低质量或被算法门控的场景仍可查看来源与定标信息。
+    const selectedSceneMeta = selectedScene
+        ? sceneProvenanceMeta(selectedScene)
+        : null;
+    const activeHeatmapMeta =
+        heatmapMeta?.landId === landId &&
+        heatmapMeta.date === selectedDate &&
+        heatmapMeta.sensor === sensorForIndex(series) &&
+        heatmapMeta.sceneId === selectedScene?.scene_id
+            ? heatmapMeta
+            : null;
+    const detailsMeta = activeHeatmapMeta ?? selectedSceneMeta;
+    const productSourceLabel = detailsMeta?.productSource
+        ? {
+              stac_direct: t("productSourceStacDirect"),
+              stac_s1_direct: t("productSourceStacS1Direct"),
+              uncrtaints_decloud: t("productSourceDecloud"),
+          }[detailsMeta.productSource] ?? detailsMeta.productSource
+        : null;
+
     const selectedCloud = useMemo(() => {
         if (!selectedScene || sensorForIndex(series) !== "S2") {
             return { pct: null as number | null, source: null as "parcel" | "stac" | null };
@@ -1458,6 +1744,7 @@ export default function AgriTimeseriesPanel({
         // 地块或统计日期窗口改变时停止旧聚合请求，防止同日期键把前一块地的分级结果写入当前图表。
         const controller = new AbortController();
         let settled = false;
+        const gradeSharesRequests = gradeSharesRequestsRef.current;
         void loadDayGradeShares(from, to, controller.signal).finally(() => {
             settled = true;
         });
@@ -1466,11 +1753,28 @@ export default function AgriTimeseriesPanel({
             // 被新窗口取代的请求不能留下已占用的去重键，否则新请求会被误判为重复。
             if (!settled && gradeSharesFetchKeyRef.current === fetchKey) {
                 gradeSharesFetchKeyRef.current = null;
+                gradeSharesRequests.delete(fetchKey);
             }
         };
     }, [landId, scenes, loadDayGradeShares]);
 
     const total = summary?.total ?? 0;
+    const loadedSceneCounts = useMemo(
+        () => scenes.reduce((counts, scene) => {
+            counts[scene.sensor] += 1;
+            return counts;
+        }, { S1: 0, S2: 0 }),
+        [scenes],
+    );
+    const partialSensors = useMemo(
+        () => (summary?.sensors ?? []).filter(
+            (sensor) => loadedSceneCounts[sensor.sensor] < sensor.count,
+        ),
+        [summary, loadedSceneCounts],
+    );
+    const partialSceneCounts = partialSensors
+        .map((sensor) => `${sensor.sensor} ${loadedSceneCounts[sensor.sensor]}/${sensor.count}`)
+        .join(" · ");
 
     if (!landId) return null;
     if (!loading && hasMonitoringData && total === 0) return null;
@@ -1535,6 +1839,43 @@ export default function AgriTimeseriesPanel({
                                         {s.sensor} {s.count}
                                     </Badge>
                                 ))}
+                            </div>
+                        )}
+                        {partialSceneCounts && (
+                            <div className="max-w-[20rem] space-y-1 text-right">
+                                <p role="status" aria-live="polite" className="text-[11px] leading-snug text-muted-foreground">
+                                    {t("historyWindowPartial", { sensors: partialSceneCounts })}
+                                </p>
+                                {series === "drought" && partialSensors.some((sensor) => sensor.sensor === "S2") ? (
+                                    <p className="text-[11px] leading-snug text-muted-foreground">
+                                        {t("droughtHistoryPartial")}
+                                    </p>
+                                ) : null}
+                                <div className="flex flex-wrap justify-end gap-1">
+                                    {partialSensors.map((sensor) => (
+                                        <Button
+                                            key={sensor.sensor}
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 px-2 text-[10px]"
+                                            disabled={loading || !sceneCursors[sensor.sensor] || loadingEarlierSensor !== null}
+                                            aria-label={`${t("loadEarlier")} ${sensor.sensor}`}
+                                            onClick={() => void loadEarlierScenes(sensor.sensor)}
+                                        >
+                                            {loadingEarlierSensor === sensor.sensor ? (
+                                                <Loader2 className="mr-1 h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                                            ) : null}
+                                            {loadingEarlierSensor === sensor.sensor ? t("loadingEarlier") : t("loadEarlier")}
+                                            <span className="ml-1 tabular-nums">{sensor.sensor}</span>
+                                        </Button>
+                                    ))}
+                                </div>
+                                {loadEarlierError ? (
+                                    <p role="alert" className="text-[11px] leading-snug text-destructive">
+                                        {t("loadEarlierFailed")}
+                                    </p>
+                                ) : null}
                             </div>
                         )}
                     </div>
@@ -1818,7 +2159,11 @@ export default function AgriTimeseriesPanel({
                                     ? ` · ${t("droughtDaysCount", { drought: droughtDayCount, clear: clearS2Count })}`
                                     : ""}
                                 {series === "flood"
-                                    ? ` · ${t("floodDaysCount", { flood: floodDayCount, watch: floodWatchCount })}`
+                                    ? ` · ${t("floodDaysCount", {
+                                          flood: floodDayCount,
+                                          watch: floodWatchCount,
+                                          unknown: floodUnclassifiedDates.size,
+                                      })}`
                                     : ""}
                             </p>
                         )}
@@ -1945,6 +2290,11 @@ export default function AgriTimeseriesPanel({
                                 {series === "flood" && selectedDate && isSpringFloodMonth(selectedDate)
                                     ? ` · ${t("floodSpringNote")}`
                                     : ""}
+                                {series === "flood" &&
+                                selectedDate &&
+                                floodUnclassifiedDates.has(selectedDate)
+                                    ? ` · ${t("floodBaselineUnavailable")}`
+                                    : ""}
                                 {heatmapLoading ? (
                                     <span role="status" aria-live="polite">{t("rendering")}</span>
                                 ) : ""}
@@ -1964,46 +2314,79 @@ export default function AgriTimeseriesPanel({
                                         {t("floodCalibrationOverlayUnavailable")}
                                     </p>
                                 )}
-                            {heatmapMeta && (
+                            {detailsMeta && (
                                 <details className="text-[11px] text-muted-foreground">
                                     <summary className="cursor-pointer">{t("dataDetails")}</summary>
-                                    <p className="mt-1 tabular-nums">{t("pixelsMeta", { pixels: heatmapMeta.pixels })}{heatmapMeta.mean != null ? t("meanMeta", { mean: heatmapMeta.mean.toFixed(2) }) : ""}</p>
-                                    {heatmapMeta.source && (
-                                        <p>{t("pixelSource", { source: t(`pixelSource${heatmapMeta.source === "db_lonlat" ? "DbLonlat" : heatmapMeta.source === "oss" ? "Oss" : "LegacyGrid"}`) })}</p>
+                                    {activeHeatmapMeta && (
+                                        <p className="mt-1 tabular-nums">{t("pixelsMeta", { pixels: activeHeatmapMeta.pixels })}{activeHeatmapMeta.mean != null ? t("meanMeta", { mean: activeHeatmapMeta.mean.toFixed(2) }) : ""}</p>
                                     )}
-                                    {heatmapMeta.gridSpacingM && (
-                                        <p>
-                                            {t("gridSpacingMeta", {
-                                                x: gridSpacingFormatter.format(heatmapMeta.gridSpacingM.x),
-                                                y: gridSpacingFormatter.format(heatmapMeta.gridSpacingM.y),
+                                    {detailsMeta.source && (
+                                        <p>{t("pixelSource", { source: t(`pixelSource${detailsMeta.source === "db_lonlat" ? "DbLonlat" : detailsMeta.source === "oss" ? "Oss" : "LegacyGrid"}`) })}</p>
+                                    )}
+                                    {productSourceLabel && (
+                                        <p className="break-all">
+                                            {t("productSourceMeta", {
+                                                source: productSourceLabel,
                                             })}
                                         </p>
                                     )}
-                                    {heatmapMeta.stacItemId && (
-                                        <p className="break-all">
-                                            {t("stacItemMeta", { id: heatmapMeta.stacItemId })}
+                                    {detailsMeta.gridSpacingM && (
+                                        <p>
+                                            {t("gridSpacingMeta", {
+                                                x: gridSpacingFormatter.format(detailsMeta.gridSpacingM.x),
+                                                y: gridSpacingFormatter.format(detailsMeta.gridSpacingM.y),
+                                            })}
                                         </p>
                                     )}
-                                    {heatmapMeta.algorithmVersion && (
-                                        <p>{t("algorithmVersionMeta", { version: heatmapMeta.algorithmVersion })}</p>
+                                    {detailsMeta.stacItemId && (
+                                        <p className="break-all">
+                                            {t("stacItemMeta", { id: detailsMeta.stacItemId })}
+                                        </p>
                                     )}
-                                    {heatmapMeta.radiometricCalibration && (
+                                    {detailsMeta.platform && (
+                                        <p>{t("s1PlatformMeta", { platform: detailsMeta.platform })}</p>
+                                    )}
+                                    {detailsMeta.algorithmVersion && (
+                                        <p>{t("algorithmVersionMeta", { version: detailsMeta.algorithmVersion })}</p>
+                                    )}
+                                    {detailsMeta.processingVersion && (
+                                        <p>
+                                            {t("s1ProcessingVersionMeta", {
+                                                version: detailsMeta.processingVersion,
+                                            })}
+                                        </p>
+                                    )}
+                                    {detailsMeta.calibrationEpoch && (
+                                        <p>
+                                            {detailsMeta.calibrationEpoch ===
+                                            "s1c-auxcal-pre-2026-02-03"
+                                                ? t("s1CalibrationEpochPre")
+                                                : detailsMeta.calibrationEpoch ===
+                                                    "s1c-auxcal-post-2026-02-03"
+                                                  ? t("s1CalibrationEpochPost")
+                                                  : t("s1CalibrationEpochUnknown")}
+                                        </p>
+                                    )}
+                                    {detailsMeta.calibrationEpoch?.startsWith("s1c-auxcal-") && (
+                                        <p>{t("s1CalibrationEpochScope")}</p>
+                                    )}
+                                    {detailsMeta.radiometricCalibration && (
                                         <>
                                             <p>
-                                                {heatmapMeta.radiometricCalibration.method === "esa_sigma_nought_lut"
+                                                {detailsMeta.radiometricCalibration.method === "esa_sigma_nought_lut"
                                                     ? t("radiometricCalibrationLut")
                                                     : t("radiometricCalibrationApprox", {
                                                           scale:
-                                                              heatmapMeta.radiometricCalibration.fallback_scale ?? "—",
+                                                              detailsMeta.radiometricCalibration.fallback_scale ?? "—",
                                                       })}
                                             </p>
-                                            {heatmapMeta.radiometricCalibration.thermal_noise_correction === "not_performed_by_this_pipeline" && (
+                                            {detailsMeta.radiometricCalibration.thermal_noise_correction === "not_performed_by_this_pipeline" && (
                                                 <p>{t("thermalNoiseNotApplied")}</p>
                                             )}
                                         </>
                                     )}
-                                    {heatmapMeta.sensor === "S1" &&
-                                        !heatmapMeta.radiometricCalibration && (
+                                    {detailsMeta.sensor === "S1" &&
+                                        !detailsMeta.radiometricCalibration && (
                                             <p>{t("radiometricCalibrationUnknown")}</p>
                                         )}
                                 </details>
@@ -2071,6 +2454,11 @@ export default function AgriTimeseriesPanel({
                                                                   : t("floodChip_moderate")}
                                                         </span>
                                                     )}
+                                                    {series === "flood" && floodUnclassifiedDates.has(date) && (
+                                                        <span className="rounded px-0.5 text-[9px] font-medium bg-muted text-muted-foreground">
+                                                            {t("floodChip_unknown")}
+                                                        </span>
+                                                    )}
                                                     {active && chipCloud != null && (
                                                         <span
                                                             className={cn(
@@ -2125,11 +2513,15 @@ export default function AgriTimeseriesPanel({
                                                                             : t("floodChip_moderate")
                                                                   }`
                                                                 : "";
+                                                        const floodUnknownBit =
+                                                            series === "flood" && floodUnclassifiedDates.has(date)
+                                                                ? ` · ${t("floodChip_unknown")}`
+                                                                : "";
                                                         const cloudBit =
                                                             pct != null
                                                                 ? ` · ${formatCloudCoverLabel(pct, cloud?.source, t)}`
                                                                 : "";
-                                                        const label = `${date}${cloudBit}${droughtBit}${floodBit}`;
+                                                        const label = `${date}${cloudBit}${droughtBit}${floodBit}${floodUnknownBit}`;
                                                         return (
                                                             <SelectItem
                                                                 key={date}

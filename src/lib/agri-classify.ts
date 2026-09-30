@@ -56,6 +56,7 @@ export const WATCH_VV_MAX = -15;
 export const WATCH_VV_DROP = -2;
 export const WATCH_VH_MAX = -20;
 export const FLOOD_VV_SEVERE = -20;
+/** Minimum comparable scenes required before a date can be labeled dry or confirmed flood. */
 export const MIN_ORBIT_SAMPLES = 3;
 export const VV_VH_DIFF_PCTL = 40;
 export const FLOOD_SPRING_MONTHS = [3, 4, 5] as const;
@@ -92,13 +93,24 @@ export type OpticalSceneLike = {
 export type SarSceneLike = {
     date?: string | null;
     scene_id?: string | null;
+    stac_item_id?: string | null;
     relative_orbit?: number | null;
+    platform?: string | null;
+    processing_version?: string | null;
+    calibration_epoch?: string | null;
+    acquisition_datetime?: string | null;
+    calibration_method?: string | null;
+    calibration_scale?: number | null;
     vv_avg?: number | null;
     vh_avg?: number | null;
     sensor?: string | null;
     radiometric_calibration?: {
         method?: string;
         fallback_scale?: number | null;
+        platform?: string;
+        processing_version?: string;
+        calibration_epoch?: string;
+        acquisition_datetime?: string;
     } | null;
 };
 
@@ -113,13 +125,89 @@ export type OpticalTooltipFields = {
     mayBeUnreliable: boolean;
 };
 
-const S1_ORBIT_OFFSET: Record<string, number> = { S1A: 73, S1B: 27, S1C: 172 };
+const S1_ORBIT_OFFSET: Record<string, number> = { S1A: 73, S1B: 27, S1C: 172, S1D: 42 };
 const S1_ID_RE =
-    /^(S1[ABC])_IW_GRD[HM]?_1S[DS][VH]_\d{8}T\d{6}_\d{8}T\d{6}_(\d{6})/i;
+    /^(S1[ABCD])_IW_GRD[HM]?_1S[DS][VH]_(\d{8}T\d{6})_\d{8}T\d{6}_(\d{6})/i;
+const S1C_CALIBRATION_CUTOFF_UTC = Date.UTC(2026, 1, 3, 15, 14);
+const S1C_CALIBRATION_EPOCH_PRE = "s1c-auxcal-pre-2026-02-03";
+const S1C_CALIBRATION_EPOCH_POST = "s1c-auxcal-post-2026-02-03";
+const S1C_CALIBRATION_EPOCH_UNKNOWN = "s1c-auxcal-transition-unknown";
+
+export function parseS1Platform(
+    platform: string | null | undefined,
+    sceneId?: string | null,
+): string | null {
+    const normalized = String(platform ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (/^S1[ABCD]$/.test(normalized)) return normalized;
+    if (/^SENTINEL1[ABCD]$/.test(normalized)) return `S1${normalized.slice(-1)}`;
+    const match = S1_ID_RE.exec(String(sceneId ?? "").trim());
+    return match?.[1]?.toUpperCase() ?? null;
+}
+
+function parseS1AcquisitionDateTime(scene: SarSceneLike): Date | null {
+    const raw = scene.radiometric_calibration?.acquisition_datetime || scene.acquisition_datetime;
+    if (typeof raw === "string" && (raw.includes("T") || raw.includes(" "))) {
+        // 没有时区的STAC时间按UTC解释，与Python后端保持一致。
+        const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : `${raw}Z`;
+        const parsed = new Date(normalized);
+        if (Number.isFinite(parsed.getTime())) return parsed;
+    }
+    for (const id of [scene.scene_id, scene.stac_item_id]) {
+        const match = S1_ID_RE.exec(String(id ?? "").trim());
+        if (!match?.[2]) continue;
+        const stamp = match[2];
+        const parsed = new Date(
+            `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`,
+        );
+        if (Number.isFinite(parsed.getTime())) return parsed;
+    }
+    return null;
+}
+
+function inferS1CalibrationEpoch(scene: SarSceneLike, platform: string | null): string {
+    if (platform !== "S1C") return "not_applicable";
+    const calibration = scene.radiometric_calibration;
+    const declared = String(calibration?.calibration_epoch || scene.calibration_epoch || "").trim();
+    if (declared) return declared;
+    const acquisition = parseS1AcquisitionDateTime(scene);
+    if (acquisition) {
+        return acquisition.getTime() < S1C_CALIBRATION_CUTOFF_UTC
+            ? S1C_CALIBRATION_EPOCH_PRE
+            : S1C_CALIBRATION_EPOCH_POST;
+    }
+    const dateText = String(scene.date ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return "s1c-auxcal-unknown";
+    const observationDay = Date.parse(`${dateText}T00:00:00Z`);
+    const cutoffDay = Date.UTC(2026, 1, 3);
+    if (observationDay < cutoffDay) return S1C_CALIBRATION_EPOCH_PRE;
+    if (observationDay > cutoffDay) return S1C_CALIBRATION_EPOCH_POST;
+    return S1C_CALIBRATION_EPOCH_UNKNOWN;
+}
+
+export function s1PlatformForScene(scene: SarSceneLike): string | null {
+    return parseS1Platform(
+        scene.radiometric_calibration?.platform || scene.platform,
+        scene.scene_id || scene.stac_item_id,
+    );
+}
+
+export function s1CalibrationEpochForScene(scene: SarSceneLike): string | null {
+    const declared = String(
+        scene.radiometric_calibration?.calibration_epoch || scene.calibration_epoch || "",
+    ).trim();
+    if (declared) return declared;
+    const platform = s1PlatformForScene(scene);
+    return platform === "S1C" ? inferS1CalibrationEpoch(scene, platform) : null;
+}
 
 function finiteNum(v: unknown): number | null {
     if (typeof v !== "number" || !Number.isFinite(v)) return null;
     return v;
+}
+
+function calibrationScale(v: unknown): number | null {
+    const parsed = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN;
+    return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function computeNddi(ndvi: number, ndmi: number): number | null {
@@ -159,8 +247,13 @@ export function isDecloudProduct(scene: {
     source?: string | null;
     scene_id?: string | null;
 }): boolean {
-    if (scene.source === DECLOUD_SOURCE) return true;
+    if ((scene.source ?? "").trim().toLowerCase() === DECLOUD_SOURCE) return true;
     return typeof scene.scene_id === "string" && scene.scene_id.endsWith(DECLOUD_SCENE_ID_SUFFIX);
+}
+
+export function isGoodDecloudQuality(quality?: string | null): boolean {
+    // 与后端规则一致：旧产品标记允许大小写或首尾空白差异。
+    return (quality ?? "").trim().toLowerCase() === "good";
 }
 
 export function parcelCloudIsUntrustedClear(scene: {
@@ -254,12 +347,13 @@ export function isOfficialOpticalScene(scene: {
     clear_frac?: number | null;
 }): boolean {
     if (isDecloudProduct(scene)) {
-        return scene.decloud_quality === "good";
+        return isGoodDecloudQuality(scene.decloud_quality);
     }
     const pct = sceneCloudPct(scene);
     if (pct != null) return pct <= DROUGHT_CLOUD_MAX_PCT;
     if (scene.cloud_cover_over_30 === true) return false;
     if (scene.cloud_cover_over_30 === false) return true;
+    // 无云量和阈值标记表示质量未知，前后端均不将它当作晴空基线。
     return false;
 }
 
@@ -388,7 +482,7 @@ export function pickOfficialOptical<T extends OpticalSceneLike>(
     if (!scenes.length) return null;
     const rawScenes = scenes.filter((s) => !isDecloudProduct(s));
     const goodDecloud = scenes.filter(
-        (s) => isDecloudProduct(s) && s.decloud_quality === "good",
+        (s) => isDecloudProduct(s) && isGoodDecloudQuality(s.decloud_quality),
     );
     const byCloud = (a: T, b: T) => {
         const [pa, ia] = cloudSortKey(a);
@@ -430,7 +524,7 @@ export function pickOpticalForNdvi<T extends OpticalSceneLike>(
     };
     const rawScenes = scenes.filter((s) => !isDecloudProduct(s));
     const goodDecloud = scenes.filter(
-        (s) => isDecloudProduct(s) && s.decloud_quality === "good",
+        (s) => isDecloudProduct(s) && isGoodDecloudQuality(s.decloud_quality),
     );
     const bestRaw = rawScenes.length ? [...rawScenes].sort(byCloud)[0]! : null;
     const bestDecloud = goodDecloud.length ? [...goodDecloud].sort(byCloud)[0]! : null;
@@ -688,29 +782,39 @@ export function parseS1RelativeOrbit(
     const m = S1_ID_RE.exec(sceneId.trim());
     if (!m) return null;
     const mission = m[1]!.toUpperCase();
-    const absOrbit = Number(m[2]);
+    const absOrbit = Number(m[3]);
     if (!Number.isFinite(absOrbit)) return null;
     const offset = S1_ORBIT_OFFSET[mission] ?? 73;
     return ((((absOrbit - offset) % 175) + 175) % 175) + 1;
 }
 
 export function orbitGroupKey(scene: SarSceneLike): string {
-    const rel = parseS1RelativeOrbit(scene.scene_id, scene.relative_orbit);
+    const rel = parseS1RelativeOrbit(scene.scene_id || scene.stac_item_id, scene.relative_orbit);
     return rel == null ? "unknown" : `ron${rel}`;
 }
 
 function floodCalibrationGroupKey(scene: SarSceneLike): string {
-    const method = String(scene.radiometric_calibration?.method ?? "").trim();
-    if (!method) return "legacy_unknown";
-    if (method === "fixed_amplitude_scale_approximation") {
-        const scale = finiteNum(scene.radiometric_calibration?.fallback_scale);
-        return `${method}:${scale == null ? "unknown" : scale}`;
-    }
-    return method;
+    const calibration = scene.radiometric_calibration;
+    const method =
+        String(calibration?.method || scene.calibration_method || "").trim() || "legacy_unknown";
+    const scale = calibrationScale(calibration?.fallback_scale ?? scene.calibration_scale);
+    const platform = s1PlatformForScene(scene);
+    const processingVersion =
+        String(calibration?.processing_version || scene.processing_version || "").trim() ||
+        "unknown_processing_version";
+    const epoch = s1CalibrationEpochForScene(scene) ?? "not_applicable";
+    // 旧记录即使缺少定标方法，只要保留了比例也不能与其他数值尺度共用基线。
+    return JSON.stringify([
+        platform ?? "unknown_platform",
+        epoch,
+        processingVersion,
+        method,
+        scale == null ? "none" : String(scale),
+    ]);
 }
 
 function floodBaselineGroupKey(scene: SarSceneLike): string {
-    return `${orbitGroupKey(scene)}|${floodCalibrationGroupKey(scene)}`;
+    return JSON.stringify([orbitGroupKey(scene), floodCalibrationGroupKey(scene)]);
 }
 
 export function classifyFloodScene(
@@ -740,6 +844,8 @@ export function classifyFloodScene(
     const watchDrop = drop != null && drop <= WATCH_VV_DROP;
     const watchVh = vhF != null && vhF <= WATCH_VH_MAX;
     if (watchVv && (watchDrop || watchVh || helper || lowVv)) return "watch";
+    // 没有足够同口径观测时无法证明“干燥”；静态水体候选仍可保留为关注。
+    if (baselineVv == null || !Number.isFinite(baselineVv)) return null;
     return "dry";
 }
 
@@ -768,7 +874,10 @@ export function classifyFloodSeries(scenes: SarSceneLike[]): Map<string, AgriFlo
             if (vv != null && vh != null) diffs.push(vv - vh);
         }
         if (vvs.length >= MIN_ORBIT_SAMPLES) {
-            baselines.set(key, { vv: median(vvs), p40: percentile(diffs, VV_VH_DIFF_PCTL) });
+            baselines.set(key, {
+                vv: median(vvs),
+                p40: diffs.length >= MIN_ORBIT_SAMPLES ? percentile(diffs, VV_VH_DIFF_PCTL) : null,
+            });
         } else {
             // 轨道样本不足时仅回退到同定标尺度的其他轨道，避免新旧产品数值混算。
             const calibrationRows = calibrationGroups.get(floodCalibrationGroupKey(rows[0]!)) ?? [];
@@ -781,15 +890,13 @@ export function classifyFloodSeries(scenes: SarSceneLike[]): Map<string, AgriFlo
                 const vh = finiteNum(row.vh_avg);
                 if (vv != null && vh != null) compatibleDiff.push(vv - vh);
             }
+            // “不足3景则取全部中位数”会让1-2景也产生确认分级；样本不够时保留未知。
             baselines.set(key, {
-                vv:
-                    compatibleVv.length >= MIN_ORBIT_SAMPLES
-                        ? median(compatibleVv)
-                        : median(vvs),
+                vv: compatibleVv.length >= MIN_ORBIT_SAMPLES ? median(compatibleVv) : null,
                 p40:
                     compatibleDiff.length >= MIN_ORBIT_SAMPLES
                         ? percentile(compatibleDiff, VV_VH_DIFF_PCTL)
-                        : percentile(diffs, VV_VH_DIFF_PCTL),
+                        : null,
             });
         }
     }
@@ -818,6 +925,151 @@ function floodRank(cls: AgriFloodClass): number {
     if (cls === "flood_moderate") return 2;
     if (cls === "watch") return 1;
     return 0;
+}
+
+type FloodBaselineSamples = { vv: number[]; differences: number[] };
+
+function floodSamplesForKey(
+    groups: Map<string, FloodBaselineSamples>,
+    key: string,
+): FloodBaselineSamples {
+    let samples = groups.get(key);
+    if (!samples) {
+        samples = { vv: [], differences: [] };
+        groups.set(key, samples);
+    }
+    return samples;
+}
+
+function insertSortedValue(values: number[], value: number): void {
+    let low = 0;
+    let high = values.length;
+    while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (values[middle]! <= value) low = middle + 1;
+        else high = middle;
+    }
+    values.splice(low, 0, value);
+}
+
+function addFloodBaselineSamples(
+    target: FloodBaselineSamples,
+    scenes: SarSceneLike[],
+): void {
+    for (const scene of scenes) {
+        const vv = finiteNum(scene.vv_avg);
+        if (vv == null) continue;
+        insertSortedValue(target.vv, vv);
+        const vh = finiteNum(scene.vh_avg);
+        if (vh != null && Number.isFinite(vv - vh)) {
+            insertSortedValue(target.differences, vv - vh);
+        }
+    }
+}
+
+function medianFromSorted(values: number[]): number | null {
+    if (!values.length) return null;
+    const middle = Math.floor(values.length / 2);
+    return values.length % 2
+        ? values[middle]!
+        : (values[middle - 1]! + values[middle]!) / 2;
+}
+
+function percentileFromSorted(values: number[], p: number): number | null {
+    if (!values.length) return null;
+    if (values.length === 1) return values[0]!;
+    const position = (Math.max(0, Math.min(100, p)) / 100) * (values.length - 1);
+    const lower = Math.floor(position);
+    const upper = Math.ceil(position);
+    if (lower === upper) return values[lower]!;
+    const weight = position - lower;
+    return values[lower]! * (1 - weight) + values[upper]! * weight;
+}
+
+function floodBaselineFromSamples(
+    samples: FloodBaselineSamples,
+): { vv: number | null; p40: number | null } {
+    return {
+        vv:
+            samples.vv.length >= MIN_ORBIT_SAMPLES
+                ? medianFromSorted(samples.vv)
+                : null,
+        p40:
+            samples.differences.length >= MIN_ORBIT_SAMPLES
+                ? percentileFromSorted(samples.differences, VV_VH_DIFF_PCTL)
+                : null,
+    };
+}
+
+/**
+ * 为每个历史日期只使用截至当日的样本，并在一次正向遍历中累计基线。
+ * 同一日期的多轨场景仍共同参与当日统计，保持日期级展示口径。
+ */
+export function classifyFloodSeriesByDate(
+    scenes: SarSceneLike[],
+): Map<string, AgriFloodClass> {
+    const scenesByDate = new Map<
+        string,
+        Map<string, { calibrationKey: string; scenes: SarSceneLike[] }>
+    >();
+    for (const scene of scenes) {
+        if (finiteNum(scene.vv_avg) == null) continue;
+        const date = String(scene.date ?? "");
+        // 没有日期就无法证明它属于哪个时间前缀，不能混入历史基线。
+        if (!date) continue;
+        const orbitKey = floodBaselineGroupKey(scene);
+        const calibrationKey = floodCalibrationGroupKey(scene);
+        const groupsForDate = scenesByDate.get(date) ?? new Map();
+        const group = groupsForDate.get(orbitKey) ?? { calibrationKey, scenes: [] };
+        group.scenes.push(scene);
+        groupsForDate.set(orbitKey, group);
+        scenesByDate.set(date, groupsForDate);
+    }
+
+    const orbitSamples = new Map<string, FloodBaselineSamples>();
+    const calibrationSamples = new Map<string, FloodBaselineSamples>();
+    const output = new Map<string, AgriFloodClass>();
+    for (const date of [...scenesByDate.keys()].sort((a, b) => a.localeCompare(b))) {
+        const groupsForDate = scenesByDate.get(date)!;
+
+        // 先累计整日所有轨道，再分类，避免同日多景的结果受输入顺序影响。
+        for (const [orbitKey, group] of groupsForDate) {
+            addFloodBaselineSamples(
+                floodSamplesForKey(orbitSamples, orbitKey),
+                group.scenes,
+            );
+            addFloodBaselineSamples(
+                floodSamplesForKey(calibrationSamples, group.calibrationKey),
+                group.scenes,
+            );
+        }
+
+        for (const [orbitKey, group] of groupsForDate) {
+            let baseline = floodBaselineFromSamples(
+                floodSamplesForKey(orbitSamples, orbitKey),
+            );
+            if (baseline.vv == null) {
+                baseline = floodBaselineFromSamples(
+                    floodSamplesForKey(calibrationSamples, group.calibrationKey),
+                );
+            }
+            for (const scene of group.scenes) {
+                const cls = classifyFloodScene(
+                    finiteNum(scene.vv_avg),
+                    finiteNum(scene.vh_avg),
+                    baseline.vv,
+                    baseline.p40,
+                );
+                if (cls) {
+                    const previous = output.get(date);
+                    if (!previous || floodRank(cls) > floodRank(previous)) {
+                        output.set(date, cls);
+                    }
+                }
+            }
+        }
+    }
+    return output;
 }
 
 export function isFloodDayClass(cls: AgriFloodClass | null | undefined): boolean {

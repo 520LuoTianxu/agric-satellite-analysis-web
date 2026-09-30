@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import maplibregl from "maplibre-gl";
 import {
     scoutingApi,
@@ -48,7 +48,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { tokenColor } from "@/lib/design-tokens";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 /* ── Constants ─────────────────────────────────────────────── */
 
@@ -70,7 +70,18 @@ interface ScoutingTabProps {
 
 export default function ScoutingTab({ landId, mapInstance, activeTab }: ScoutingTabProps) {
     const t = useTranslations("scoutingTab");
+    const locale = useLocale();
     const confirm = useConfirm();
+    const observationDateFormatter = useMemo(
+        () => new Intl.DateTimeFormat(locale, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        }),
+        [locale],
+    );
 
     // Data
     const [observations, setObservations] = useState<ScoutingObservation[]>([]);
@@ -793,43 +804,43 @@ export default function ScoutingTab({ landId, mapInstance, activeTab }: Scouting
                     <div
                         key={obs.id}
                         id={`scouting-obs-${obs.id}`}
-                        className="rounded-lg border bg-card shadow-sm p-3 transition-all hover:shadow-md"
+                        className="rounded-lg border bg-card shadow-sm p-3 transition-shadow hover:shadow-md"
                     >
                         {/* Header row */}
                         <div className="flex items-start justify-between gap-2">
-                            <div
-                                className="flex-1 min-w-0 cursor-pointer"
+                            <button
+                                type="button"
+                                className="flex-1 min-w-0 cursor-pointer rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                                 onClick={() => flyToObservation(obs)}
+                                aria-label={t("viewObservationOnMap", { title: obs.title })}
                             >
-                                <h4 className="text-sm font-medium leading-tight">
+                                <span className="block text-sm font-medium leading-tight">
                                     {obs.title}
-                                </h4>
-                                <p className="text-[10px] text-muted-foreground mt-0.5">
-                                    {new Date(obs.created_at).toLocaleDateString(undefined, {
-                                        year: "numeric",
-                                        month: "short",
-                                        day: "numeric",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                    })}
+                                </span>
+                                <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                                    <time dateTime={obs.created_at}>
+                                        {observationDateFormatter.format(new Date(obs.created_at))}
+                                    </time>
                                     {obs.geom_point && (
                                         <span className="ml-1.5">
                                             <MapPin className="h-2.5 w-2.5 inline -mt-0.5" />{" "}
-                                            {obs.geom_point.coordinates[1].toFixed(4)},{" "}
+                                            {/* 坐标使用小数点分隔数值，避免与经纬度之间的逗号分隔符混淆。 */}
+                                            {obs.geom_point.coordinates[1].toFixed(4)}, {" "}
                                             {obs.geom_point.coordinates[0].toFixed(4)}
                                         </span>
                                     )}
-                                </p>
-                            </div>
+                                </span>
+                            </button>
                             <div className="flex items-center gap-0.5 shrink-0">
                                 <Button
                                     variant="ghost"
                                     size="sm"
                                     className="h-9 w-9 p-0"
                                     onClick={() => openEditForm(obs)}
+                                    aria-label={t("editObservation")}
                                     title={t("editObservation")}
                                 >
-                                    <Edit3 className="h-3 w-3" />
+                                    <Edit3 className="h-3 w-3" aria-hidden="true" />
                                 </Button>
                                 <Button
                                     variant="ghost"
@@ -837,12 +848,13 @@ export default function ScoutingTab({ landId, mapInstance, activeTab }: Scouting
                                     className="h-9 w-9 p-0 text-destructive hover:text-destructive"
                                     onClick={() => handleDelete(obs.id)}
                                     disabled={deletingId === obs.id}
+                                    aria-label={t("delete")}
                                     title={t("delete")}
                                 >
                                     {deletingId === obs.id ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                                     ) : (
-                                        <Trash2 className="h-3 w-3" />
+                                        <Trash2 className="h-3 w-3" aria-hidden="true" />
                                     )}
                                 </Button>
                             </div>
@@ -877,17 +889,25 @@ export default function ScoutingTab({ landId, mapInstance, activeTab }: Scouting
                         {/* Photo thumbnail */}
                         {obs.photo_uri && (
                             <div className="mt-2 rounded-md overflow-hidden border">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                    src={getPhotoUrl(obs.photo_uri)}
-                                    alt={obs.title}
-                                    className="w-full h-24 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                <button
+                                    type="button"
+                                    className="block w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                                    aria-label={t("viewPhoto", { title: obs.title })}
                                     onClick={() => {
                                         setLightboxUrl(getPhotoUrl(obs.photo_uri!));
                                         setLightboxTitle(obs.title);
                                     }}
-                                    loading="lazy"
-                                />
+                                >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                        src={getPhotoUrl(obs.photo_uri)}
+                                        alt=""
+                                        width={640}
+                                        height={96}
+                                        className="h-24 w-full object-cover transition-opacity hover:opacity-90"
+                                        loading="lazy"
+                                    />
+                                </button>
                             </div>
                         )}
 

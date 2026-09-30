@@ -179,7 +179,7 @@ function StatBar({
                 </span>
             </div>
             <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full transition-all" style={{ width: `${p}%`, background: color }} />
+                <div className="h-full rounded-full transition-[width,background-color]" style={{ width: `${p}%`, background: color }} />
             </div>
         </div>
     );
@@ -1112,7 +1112,7 @@ export default function OverviewPage() {
                             </div>
                             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                                 <div
-                                    className="h-full rounded-full bg-amber-500 transition-all"
+                                    className="h-full rounded-full bg-amber-500 transition-[width]"
                                     style={{ width: `${pct(stats?.weak_growth.parcel_count ?? 0, total)}%` }}
                                 />
                             </div>

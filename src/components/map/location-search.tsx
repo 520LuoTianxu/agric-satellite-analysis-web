@@ -103,7 +103,7 @@ export default function LocationSearch({ onSelect, className = "" }: LocationSea
     return (
         <div ref={containerRef} className={`relative ${className}`}>
             <div
-                className={`${MAP_CHROME} flex h-10 items-center rounded-lg transition-all duration-300 ease-in-out overflow-hidden ${expanded ? "w-72" : "w-10"
+                className={`${MAP_CHROME} flex h-10 items-center rounded-lg transition-[width] duration-300 ease-in-out motion-reduce:transition-none overflow-hidden ${expanded ? "w-72" : "w-10"
                     }`}
             >
                 {/* Search icon / toggle */}
@@ -129,7 +129,7 @@ export default function LocationSearch({ onSelect, className = "" }: LocationSea
                         if (e.key === "Escape") handleClose();
                     }}
                     placeholder={t("searchPlaceholder")}
-                    className={`flex-1 h-9 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none pr-1 transition-all duration-300 ${expanded ? "w-full opacity-100" : "w-0 opacity-0"
+                    className={`flex-1 h-9 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none pr-1 transition-[width,opacity] duration-300 motion-reduce:transition-none ${expanded ? "w-full opacity-100" : "w-0 opacity-0"
                         }`}
                 />
 

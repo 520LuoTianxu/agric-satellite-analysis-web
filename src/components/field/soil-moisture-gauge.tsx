@@ -46,7 +46,7 @@ export default function SoilMoistureGauge({ data }: SoilMoistureGaugeProps) {
                         </span>
                         <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden relative">
                             <div
-                                className={cn("h-full rounded-full transition-all", getMoistureColor(value))}
+                                className={cn("h-full rounded-full transition-[width,background-color]", getMoistureColor(value))}
                                 style={{ width: `${pct}%` }}
                             />
                         </div>

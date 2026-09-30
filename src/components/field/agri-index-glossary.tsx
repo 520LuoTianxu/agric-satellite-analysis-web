@@ -38,21 +38,23 @@ function glossaryAsset(fileName: string): string {
     return `${GLOSSARY_ASSET_BASE}/${fileName}`;
 }
 
-// 保留已有专业配图作为补充；白话说明不依赖图片加载成功。
-const GLOSSARY_IMAGES: Partial<Record<GlossaryKey, string>> = {
-    sentinel2: "sentinel-s2.png",
-    sentinel1: "sentinel-s1.png",
-    ndvi: "ndvi-20260915.png",
-    evi: "evi.png",
-    drought: "drought.png",
-    flood: "flood.png",
-    vv: "vv-20260915.png",
-    vh: "vh-20260915.png",
-    ndmi: "ndmi.png",
-    ndre: "ndre.png",
+type GlossaryImage = { file: string; width: number; height: number };
+
+// 远程配图先声明真实像素尺寸，浏览器可在下载前预留正确比例，避免弹窗内容跳动。
+const GLOSSARY_IMAGES: Partial<Record<GlossaryKey, GlossaryImage>> = {
+    sentinel2: { file: "sentinel-s2.png", width: 1672, height: 941 },
+    sentinel1: { file: "sentinel-s1.png", width: 1448, height: 1086 },
+    ndvi: { file: "ndvi-20260915.png", width: 1448, height: 1086 },
+    evi: { file: "evi.png", width: 1448, height: 1086 },
+    drought: { file: "drought.png", width: 1448, height: 1086 },
+    flood: { file: "flood.png", width: 1448, height: 1086 },
+    vv: { file: "vv-20260915.png", width: 1672, height: 941 },
+    vh: { file: "vh-20260915.png", width: 1672, height: 941 },
+    ndmi: { file: "ndmi.png", width: 1672, height: 941 },
+    ndre: { file: "ndre.png", width: 1672, height: 941 },
     // 历史资源的 CIRE 与 MNDWI 图片内容对调，按实际语义关联。
-    cire: "mndwi.png",
-    mndwi: "cire.png",
+    cire: { file: "mndwi.png", width: 1672, height: 941 },
+    mndwi: { file: "cire.png", width: 1672, height: 941 },
 };
 
 const GLOSSARY_ENTRIES = REMOTE_SENSING_KEYS.map((key) => ({
@@ -82,7 +84,7 @@ export function AgriIndexGlossary({
 
     const entryTitle = t(`indexLabels.${selected}`);
     const entryName = t(`indexGuideNames.${selected}`);
-    const imageFile = GLOSSARY_IMAGES[selected];
+    const image = GLOSSARY_IMAGES[selected];
 
     function handleOpenChange(nextOpen: boolean) {
         // 每次打开都从当前指标开始，避免上次浏览的条目与当前图层不一致。
@@ -177,7 +179,7 @@ export function AgriIndexGlossary({
                                 </h3>
                                 <p className="mt-1 text-xs text-muted-foreground">{entryName}</p>
                             </div>
-                            <div className={cn("grid gap-4", imageFile && "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.9fr)]")}>
+                            <div className={cn("grid gap-4", image && "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.9fr)]")}>
                                 <div className="min-w-0 space-y-3">
                                     <dl className="space-y-4 text-sm leading-relaxed">
                                         {[
@@ -203,14 +205,16 @@ export function AgriIndexGlossary({
                                         </dl>
                                     </details>
                                 </div>
-                                {imageFile ? (
+                                {image ? (
                                     // 专业图与说明并排展示，桌面端滚动文字时保持图片在视野内。
                                     <figure key={selected} className="rounded-lg border bg-muted/20 p-3 lg:sticky lg:top-0 lg:self-start">
                                     <figcaption className="text-xs font-medium">{t("indexGuideFigureCaption")}</figcaption>
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
                                         <img
-                                            src={glossaryAsset(imageFile)}
+                                            src={glossaryAsset(image.file)}
                                             alt={t("indexGuideFigureAlt", { name: entryName })}
+                                            width={image.width}
+                                            height={image.height}
                                             loading="lazy"
                                             className="mx-auto mt-3 max-h-[min(65vh,36rem)] w-full object-contain"
                                         />

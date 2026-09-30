@@ -591,7 +591,7 @@ export interface BackfillStatusResponse {
 }
 
 export const landsApi = {
-    list: (opts: { farm_id?: string; group_id?: string; q?: string; limit?: number; offset?: number } = {}) => {
+    list: (opts: { farm_id?: string; group_id?: string; q?: string; limit?: number; offset?: number } = {}, signal?: AbortSignal) => {
         const params = new URLSearchParams({
             limit: String(opts.limit ?? 200),
             offset: String(opts.offset ?? 0),
@@ -599,9 +599,9 @@ export const landsApi = {
         if (opts.farm_id) params.set("farm_id", opts.farm_id);
         if (opts.group_id) params.set("group_id", opts.group_id);
         if (opts.q?.trim()) params.set("q", opts.q.trim());
-        return apiFetch<Paginated<LandParcel>>(`/lands?${params.toString()}`);
+        return apiFetch<Paginated<LandParcel>>(`/lands?${params.toString()}`, { signal });
     },
-    get: (landId: string) => apiFetch<LandParcel>(`/lands/${landId}`),
+    get: (landId: string, signal?: AbortSignal) => apiFetch<LandParcel>(`/lands/${landId}`, { signal }),
     create: (data: {
         land_id: string;
         farm_id?: string;
@@ -688,9 +688,10 @@ export const landsApi = {
             { method: "POST", body: JSON.stringify(body) },
         );
     },
-    backfillStatus: (landId: string) =>
+    backfillStatus: (landId: string, signal?: AbortSignal) =>
         apiFetch<BackfillStatusResponse>(
             `/lands/${landId}/backfill-status`,
+            { signal },
         ),
 };
 
@@ -734,7 +735,8 @@ export const jobsApi = {
             method: "POST",
             body: JSON.stringify({ index_type: indexType.toLowerCase(), date_from: dateFrom, date_to: dateTo, ...params }),
         }),
-    get: (jobId: string) => apiFetch<NdviJob>(`/jobs/${jobId}`),
+    get: (jobId: string, signal?: AbortSignal) =>
+        apiFetch<NdviJob>(`/jobs/${jobId}`, { signal }),
 };
 
 // ── Alerts ───────────────────────────────────────────────────────────
@@ -911,11 +913,12 @@ export const assessmentApi = {
         }),
     getBatch: (batchId: string) =>
         apiFetch<AssessmentBatchResponse>(`/lands/assessment-reports/batch/${encodeURIComponent(batchId)}`),
-    latestMeta: (landId: string) =>
-        apiFetch<NdviJob>(`/lands/${landId}/assessment-report/latest/meta`),
-    latestScorecard: (landId: string) =>
+    latestMeta: (landId: string, signal?: AbortSignal) =>
+        apiFetch<NdviJob>(`/lands/${landId}/assessment-report/latest/meta`, { signal }),
+    latestScorecard: (landId: string, signal?: AbortSignal) =>
         apiFetch<AssessmentScorecard>(
             `/lands/${landId}/assessment-report/latest/scorecard`,
+            { signal },
         ),
     downloadLatest: async (landId: string) => {
         const res = await fetch(
@@ -1578,6 +1581,10 @@ export interface AgriSceneProduct {
         polarizations?: Record<string, string>;
         fallback_scale?: number | null;
         thermal_noise_correction?: string;
+        platform?: string;
+        processing_version?: string;
+        calibration_epoch?: string;
+        acquisition_datetime?: string;
     } | null;
     /** Per-band valid parcel pixel fraction and the method used to calculate it. */
     quality_metrics?: Record<
@@ -1801,6 +1808,9 @@ export const agriApi = {
             to?: string;
             limit?: number;
             offset?: number;
+            /** Stable descending keyset cursor from the final item on the previous page. */
+            beforeDate?: string;
+            beforeSceneId?: string;
             /** asc (default) oldest-first; desc newest-first (timeseries should reverse client-side). */
             order?: "asc" | "desc";
             /** If 1, prefer DB lonlat_v1 pixels (pixels_lonlat); grid pixel_data is fallback. */
@@ -1812,6 +1822,8 @@ export const agriApi = {
         if (opts.sensor) params.set("sensor", opts.sensor);
         if (opts.from) params.set("from", opts.from);
         if (opts.to) params.set("to", opts.to);
+        if (opts.beforeDate != null) params.set("before_date", opts.beforeDate);
+        if (opts.beforeSceneId != null) params.set("before_scene_id", opts.beforeSceneId);
         if (opts.includePixels != null) params.set("include_pixels", String(opts.includePixels));
         if (opts.order) params.set("order", opts.order);
         params.set("limit", String(opts.limit ?? 200));
@@ -2061,7 +2073,7 @@ export interface AdminTaskRun {
     label: string;
     task_name: string;
     celery_task_id: string | null;
-    status: "queued" | "running" | "success" | "failed" | "cancelled";
+    status: "queued" | "running" | "success" | "failed" | "cancelled" | "partial";
     params: Record<string, unknown>;
     result: unknown;
     error: string | null;

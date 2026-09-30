@@ -18,7 +18,7 @@ import type { LandStat, IndexType, WeatherDaily } from "@/lib/api";
 import { INDEX_CONFIG } from "@/lib/api";
 import { tokenColor } from "@/lib/design-tokens";
 import { useTranslations } from "next-intl";
-import { DECLOUD_SOURCE } from "@/lib/agri-classify";
+import { DECLOUD_SOURCE, isGoodDecloudQuality } from "@/lib/agri-classify";
 import {
     axisLabel,
     baseTooltip,
@@ -204,7 +204,7 @@ export default function NdviChart({
         });
         const altName = t("decloudAltSeries");
         const altData = (decloudAltStats ?? []).map((s) => {
-            const unreliable = s.may_be_unreliable || s.decloud_quality !== "good";
+            const unreliable = s.may_be_unreliable || !isGoodDecloudQuality(s.decloud_quality);
             return {
                 value: [s.date, s.mean ?? null] as [string, number | null],
                 itemStyle: {
@@ -339,7 +339,8 @@ export default function NdviChart({
                 axisPointer: { type: "cross" as const },
                 formatter: (params: any) => {
                     if (!Array.isArray(params) || params.length === 0) return "";
-                    const date = params[0]?.axisValueLabel || params[0]?.value?.[0] || "";
+                    // ECharts HTML tooltip 通过 innerHTML 渲染，日期和外部场景原因必须按文本转义。
+                    const date = escapeTooltipHtml(params[0]?.axisValueLabel || params[0]?.value?.[0] || "");
                     const lines = [`<b>${date}</b>`];
                     let extras: {
                         cloudCover?: number | null;
@@ -681,6 +682,18 @@ const DECLOUD_REASON_KEYS = new Set([
     "non_finite_reconstruction",
 ]);
 
+const TOOLTIP_HTML_ESCAPE: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+};
+
+function escapeTooltipHtml(value: unknown): string {
+    return String(value ?? "").replace(/[&<>\"']/g, (character) => TOOLTIP_HTML_ESCAPE[character]);
+}
+
 export function formatCloudLine(
     cloudCover: number | null | undefined,
     t: (key: string, values?: Record<string, string | number>) => string,
@@ -705,7 +718,7 @@ export function formatDecloudLine(
         info.source === DECLOUD_SOURCE ||
         (typeof info.sceneId === "string" && info.sceneId.endsWith("_decloud"));
     const reasonText = (info.reasons ?? [])
-        .map((r) => (DECLOUD_REASON_KEYS.has(r) ? t(`reason_${r}`) : r))
+        .map((r) => (DECLOUD_REASON_KEYS.has(r) ? t(`reason_${r}`) : escapeTooltipHtml(r)))
         .filter(Boolean)
         .join("; ");
     if (isDecloud) {
