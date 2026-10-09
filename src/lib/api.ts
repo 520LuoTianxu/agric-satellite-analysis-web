@@ -1872,7 +1872,60 @@ export const agriApi = {
             { signal: opts.signal },
         );
     },
+    /** 按影像日期的已收获面积占比（后端首版 NDVI 启发式估算）。 */
+    harvestProgress: (
+        landId: string,
+        opts: { from?: string; to?: string; includeZero?: boolean; signal?: AbortSignal } = {},
+    ) => {
+        const params = new URLSearchParams();
+        if (opts.from) params.set("from", opts.from);
+        if (opts.to) params.set("to", opts.to);
+        if (opts.includeZero != null) params.set("include_zero", String(opts.includeZero));
+        const q = params.toString();
+        return apiFetch<HarvestProgressResult>(
+            `/agri/lands/${encodeURIComponent(landId)}/harvest-progress${q ? `?${q}` : ""}`,
+            { signal: opts.signal },
+        );
+    },
 };
+
+export type HarvestProgressStatus =
+    | "no_growth"
+    | "growing"
+    | "not_harvested"
+    | "harvesting"
+    | "harvested";
+
+export interface HarvestProgressItem {
+    date: string;
+    sensor: string;
+    /** 已收获像元占有效像元百分比 0–100 */
+    harvested_pct: number;
+    /** 较上一有效观测日新增的百分点（不为负） */
+    newly_harvested_pct: number;
+    harvested_area_mu?: number | null;
+    status: HarvestProgressStatus | string;
+    valid_pct: number;
+    mean_ndvi?: number | null;
+    peak_ndvi?: number | null;
+    peak_date?: string | null;
+    scene_id?: string | null;
+    official?: boolean;
+}
+
+export interface HarvestProgressResult {
+    land_id: string;
+    date_from: string;
+    date_to: string;
+    include_zero: boolean;
+    parcel_area_mu?: number | null;
+    method_version: string;
+    heuristic: boolean;
+    rule_zh: string;
+    source: "stored" | "live";
+    thresholds?: Record<string, number>;
+    items: HarvestProgressItem[];
+}
 
 export interface HarvestDetectResult {
     land_id: string;

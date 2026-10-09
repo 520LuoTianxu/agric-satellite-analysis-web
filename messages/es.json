@@ -415,6 +415,7 @@
     "tabWeather": "Clima",
     "tabSoil": "Suelo",
     "tabSeasonGrowth": "Crecimiento de temporada",
+    "tabHarvest": "Cosecha",
     "hidePanel": "Contraer el panel de análisis",
     "showPanel": "Expandir el panel de análisis",
     "resizePanel": "Cambiar el ancho del panel de análisis",
@@ -2033,5 +2034,30 @@
     "periodInvalid": "El rango no es válido para este modo. Revise el orden y la fecha final; no debe superar 550 días.",
     "referenceYearInvalid": "El año de referencia debe ser un entero desde 2015 hasta antes del inicio del análisis, o dejarse vacío.",
     "inferenceMismatch": "El resultado no coincide con la parcela o el período actual. Repite la detección."
+  },
+  "harvestTab": {
+    "title": "Avance de cosecha",
+    "description": "Porcentaje estimado de la parcela ya cosechado en cada fecha de imagen satelital y cuánto se añadió desde la imagen anterior.",
+    "thisYear": "Este año",
+    "includeZero": "Mostrar fechas sin cosecha",
+    "refresh": "Actualizar",
+    "retry": "Reintentar",
+    "loadFailed": "No se pudieron cargar los datos de cosecha",
+    "emptyTitle": "Aún no se detecta cosecha",
+    "emptyDesc": "No se detectó superficie cosechada en las imágenes del año seleccionado. Marca “Mostrar fechas sin cosecha” para ver todas las observaciones.",
+    "emptyDescAll": "Aún no hay imágenes Sentinel-2 sin nubes para el año seleccionado.",
+    "latestPct": "Última cosecha",
+    "latestNewly": "Nuevo vs. anterior",
+    "latestArea": "Cosechado (mu)",
+    "ofTotalMu": "de {total} mu",
+    "unitMu": "mu",
+    "chartTitle": "Avance de cosecha por fecha de imagen",
+    "seriesHarvested": "Porcentaje cosechado",
+    "seriesNewly": "Nuevo vs. anterior",
+    "colDate": "Fecha",
+    "colPct": "Cosechado",
+    "colNewly": "Nuevo",
+    "colArea": "Área (mu)",
+    "heuristicNote": "Estimación: deducida de la caída del NDVI por píxel en imágenes satelitales; verifíquela en campo."
   }
 }

@@ -415,6 +415,7 @@
     "tabWeather": "气象",
     "tabSoil": "土壤",
     "tabSeasonGrowth": "生育期长势",
+    "tabHarvest": "收获",
     "hidePanel": "收起分析侧栏",
     "showPanel": "展开分析侧栏",
     "resizePanel": "调整分析侧栏宽度",
@@ -2033,5 +2034,30 @@
     "periodInvalid": "当前模式下日期范围无效；请检查起止顺序、截止日，并确保区间不超过550天。",
     "referenceYearInvalid": "对照年份须为2015年至分析起始年份之前的整数年份；不需要对照时可留空。",
     "inferenceMismatch": "识别结果与当前地块或日期区间不一致，请重新识别。"
+  },
+  "harvestTab": {
+    "title": "收获进度",
+    "description": "按卫星影像日期估算地块已收获面积占比，对比每一期较上一期新增了多少。",
+    "thisYear": "今年",
+    "includeZero": "显示未收获日期",
+    "refresh": "刷新",
+    "retry": "重试",
+    "loadFailed": "收获数据加载失败",
+    "emptyTitle": "暂无收获记录",
+    "emptyDesc": "所选年份的影像中还没有识别到已收获区域。勾选“显示未收获日期”可查看全部观测日。",
+    "emptyDescAll": "所选年份还没有可用的无云 S2 影像。",
+    "latestPct": "最新收获占比",
+    "latestNewly": "较上期新增",
+    "latestArea": "已收获面积(亩)",
+    "ofTotalMu": "共 {total} 亩",
+    "unitMu": "亩",
+    "chartTitle": "按影像日期的收获进度",
+    "seriesHarvested": "收获占比",
+    "seriesNewly": "较上期新增",
+    "colDate": "影像日期",
+    "colPct": "收获占比",
+    "colNewly": "较上期新增",
+    "colArea": "收获面积(亩)",
+    "heuristicNote": "估算值：按卫星影像像元 NDVI 回落推算，仅供参考，请以实地情况为准。"
   }
 }

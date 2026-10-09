@@ -169,6 +169,17 @@ const SeasonGrowthReportTab = dynamic(() => import("@/components/field/season-gr
     ),
 });
 
+// 收获进度按需加载：只有切到「收获」页签才请求后端占比序列。
+const HarvestTab = dynamic(() => import("@/components/field/harvest-tab"), {
+    ssr: false,
+    loading: () => (
+        <div className="p-4 space-y-3">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-24 w-full" />
+        </div>
+    ),
+});
+
 /* ── Index overlay helpers ───────────────────────────────────── */
 
 function indexSourceId(indexType: IndexType) {
@@ -1653,6 +1664,13 @@ function FieldDetailPageContent() {
                             >
                                 {seasonGrowthTabLabel}
                             </TabsTrigger>
+                            <TabsTrigger
+                                value="harvest"
+                                variant="underline"
+                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                            >
+                                {t("tabHarvest")}
+                            </TabsTrigger>
                             </TabsList>
                             {/* 编辑收纳到页签栏右上角，避免操作按钮挤占报告内容区域。 */}
                             <Button
@@ -1831,6 +1849,10 @@ function FieldDetailPageContent() {
 
                                     <TabsContent value="season-growth" className="mt-0">
                                         <SeasonGrowthReportTab landId={landId} groupId={land.group_id} />
+                                    </TabsContent>
+
+                                    <TabsContent value="harvest" className="mt-0">
+                                        <HarvestTab landId={landId} />
                                     </TabsContent>
 
                                     <TabsContent value="share" className="mt-0">
