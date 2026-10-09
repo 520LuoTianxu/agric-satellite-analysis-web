@@ -1167,6 +1167,7 @@
       "vh": "VH",
       "drought": "Sequía",
       "flood": "Inundación",
+      "harvest": "Estado de cosecha",
       "sentinel2": "Sentinel-2 · Óptico",
       "sentinel1": "Sentinel-1 · Radar"
     },
@@ -2092,6 +2093,18 @@
     "colSuspected": "Sospechada",
     "combined": "Total",
     "latestSuspected": "más {pct} sospechada",
-    "suspectedHint": "Cosecha sospechada: cambio tipo rastrojo tras la madurez (seco, más claro, sin rebrote) que no se distingue del cultivo seco en pie; no se incluye en el porcentaje cosechado. Pasa a cosechado cuando imágenes posteriores muestran suelo desnudo o el radar lo confirma."
+    "suspectedHint": "Cosecha sospechada: cambio tipo rastrojo tras la madurez (seco, más claro, sin rebrote) que no se distingue del cultivo seco en pie; no se incluye en el porcentaje cosechado. Pasa a cosechado cuando imágenes posteriores muestran suelo desnudo o el radar lo confirma.",
+    "pixelMapTitle": "Estado de cosecha por píxel",
+    "pixelDate": "Fecha de imagen",
+    "showOnMap": "Mostrar en el mapa",
+    "stateUnharvested": "Sin cosechar",
+    "stateSuspected": "Sospechada",
+    "stateHarvested": "Cosechada",
+    "stateNodata": "Sin datos (nubes/no válido)",
+    "pixelCount": "{count} píxeles de cultivo",
+    "pixelLoadFailed": "No se pudo cargar el estado por píxel",
+    "pixelLive": "Aún no almacenado; calculado al momento.",
+    "pixelDateFallback": "No hay imagen válida en esa fecha; se muestra {date}.",
+    "pixelMapHint": "Cada celda mide unos 10 m; mismo algoritmo que los porcentajes de arriba. En una temporada un píxel solo avanza (sin cosechar → sospechada → cosechada). Porcentajes sobre los píxeles de cultivo de la temporada."
   }
 }

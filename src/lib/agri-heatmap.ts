@@ -68,6 +68,9 @@ export type AgriHeatIndex =
     | "drought"
     | "flood";
 
+/** 地图色膜种类：指数/风险模式之外，另有收获逐像元状态（收获页签）。 */
+export type AgriOverlayIndex = AgriHeatIndex | "harvest";
+
 export interface AgriPixelGrid {
     epsg: number;
     width: number;
@@ -433,7 +436,7 @@ export interface AgriHeatmapImage {
     grid: AgriPixelGrid;
     width: number;
     height: number;
-    index: AgriHeatIndex;
+    index: AgriOverlayIndex;
     pixelCount: number;
     /** Mean of continuous index values (or NDDI / VV for modes). */
     mean: number | null;
@@ -1492,23 +1495,22 @@ function fillNearestNeighborHoles(
     ctx.putImageData(img, 0, 0);
 }
 
-/**
- * Rasterize OSS lon/lat point list into a ~10 m WebMercator color film + GeoJSON cells.
- * Continuous canvas paint (fractional fx/fy + overlapping squares sized by median NN
- * spacing) — not sparse integer-bin occupancy — so MapLibre nearest raster has no
- * dark seam lattice between ~10 m samples.
- */
-export function rasterizeAgriLonLatPixels(
-    pixels: AgriLonLatPixel[],
-    index: AgriHeatIndex,
-    sensor: "S1" | "S2",
-    rescale?: [number, number],
-    fieldGeom?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null,
-    resM = 10,
-): AgriHeatmapImage | null {
-    const painted = collectLonLatPainted(pixels, index, sensor, rescale);
-    if (!painted) return null;
-
+/** lon/lat 着色像元 → ~10 m WebMercator 连续色膜（canvas PNG）+ 网格多边形。 */
+function filmFromLonLatCells(
+    cells: Omit<LonLatPainted, "row" | "col">[],
+    fieldGeom: GeoJSON.Polygon | GeoJSON.MultiPolygon | null | undefined,
+    resM: number,
+): {
+    dataUrl?: string;
+    coordinates: AgriHeatmapImage["coordinates"];
+    geojson: AgriHeatmapGeoJSON;
+    grid: AgriPixelGrid;
+    width: number;
+    height: number;
+    pixelCount: number;
+} | null {
+    if (!cells.length) return null;
+    const painted = { cells };
     const merc = painted.cells.map((c) => {
         const [x, y] = lonLatToWebMercator(c.lon, c.lat);
         return { ...c, x, y };
@@ -1634,6 +1636,29 @@ export function rasterizeAgriLonLatPixels(
         /* canvas optional */
     }
 
+    return { dataUrl, coordinates, geojson, grid, width, height, pixelCount: cellsWithRc.length };
+}
+
+/**
+ * Rasterize OSS lon/lat point list into a ~10 m WebMercator color film + GeoJSON cells.
+ * Continuous canvas paint (fractional fx/fy + overlapping squares sized by median NN
+ * spacing) — not sparse integer-bin occupancy — so MapLibre nearest raster has no
+ * dark seam lattice between ~10 m samples.
+ */
+export function rasterizeAgriLonLatPixels(
+    pixels: AgriLonLatPixel[],
+    index: AgriHeatIndex,
+    sensor: "S1" | "S2",
+    rescale?: [number, number],
+    fieldGeom?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null,
+    resM = 10,
+): AgriHeatmapImage | null {
+    const painted = collectLonLatPainted(pixels, index, sensor, rescale);
+    if (!painted) return null;
+
+    const film = filmFromLonLatCells(painted.cells, fieldGeom, resM);
+    if (!film) return null;
+
     const legend =
         index === "drought"
             ? droughtLegend()
@@ -1641,15 +1666,15 @@ export function rasterizeAgriLonLatPixels(
               ? floodLegend()
               : continuousLegend(index as Exclude<AgriHeatIndex, "drought" | "flood">);
 
-    const paintedCount = cellsWithRc.length;
+    const paintedCount = film.pixelCount;
     return {
-        dataUrl,
-        coordinates,
-        geojson,
+        dataUrl: film.dataUrl,
+        coordinates: film.coordinates,
+        geojson: film.geojson,
         fromLonLat: true,
-        grid,
-        width,
-        height,
+        grid: film.grid,
+        width: film.width,
+        height: film.height,
         index,
         pixelCount: paintedCount,
         mean: paintedCount > 0 ? painted.sum / paintedCount : null,
@@ -1660,8 +1685,74 @@ export function rasterizeAgriLonLatPixels(
 }
 
 
+/** 收获逐像元状态：0 未收获、1 疑似收获、2 已收获；255 无数据（不着色）。 */
+export const HARVEST_PIXEL_NODATA = 255;
+export type HarvestPixelStateKey = "unharvested" | "suspected" | "harvested";
+export const HARVEST_STATE_KEYS: Record<number, HarvestPixelStateKey> = {
+    0: "unharvested",
+    1: "suspected",
+    2: "harvested",
+};
+export const HARVEST_STATE_STYLE: Record<
+    HarvestPixelStateKey,
+    { color: string; rgba: [number, number, number, number] }
+> = {
+    unharvested: { color: "#22a05a", rgba: [34, 160, 90, 225] },
+    suspected: { color: "#fdba74", rgba: [253, 186, 116, 235] },
+    harvested: { color: "#b45309", rgba: [180, 83, 9, 235] },
+};
+
+export interface HarvestStatePixel {
+    lon: number;
+    lat: number;
+    state: number;
+}
+
+/**
+ * 收获逐像元状态 → 地图色膜（复用 lon/lat 连续色膜绘制）。
+ * ``labels`` 为图例文字（可含百分比）；无数据像元不着色。
+ */
+export function rasterizeHarvestStatePixels(
+    pixels: HarvestStatePixel[],
+    labels: Record<HarvestPixelStateKey, string> & { title: string },
+    fieldGeom?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null,
+    resM = 10,
+): AgriHeatmapImage | null {
+    const cells: Omit<LonLatPainted, "row" | "col">[] = [];
+    const counts: Record<HarvestPixelStateKey, number> = { unharvested: 0, suspected: 0, harvested: 0 };
+    for (const p of pixels) {
+        const key = HARVEST_STATE_KEYS[p.state];
+        if (!key || !Number.isFinite(p.lon) || !Number.isFinite(p.lat)) continue;
+        const style = HARVEST_STATE_STYLE[key];
+        counts[key] += 1;
+        cells.push({ lon: p.lon, lat: p.lat, color: style.color, rgba: style.rgba, value: p.state, class: key });
+    }
+    const film = filmFromLonLatCells(cells, fieldGeom, resM);
+    if (!film) return null;
+    const order: HarvestPixelStateKey[] = ["unharvested", "suspected", "harvested"];
+    return {
+        dataUrl: film.dataUrl,
+        coordinates: film.coordinates,
+        geojson: film.geojson,
+        fromLonLat: true,
+        grid: film.grid,
+        width: film.width,
+        height: film.height,
+        index: "harvest",
+        pixelCount: film.pixelCount,
+        mean: null,
+        min: null,
+        max: null,
+        legend: {
+            kind: "classes",
+            label: labels.title,
+            classes: order.map((key) => ({ key, label: labels[key], color: HARVEST_STATE_STYLE[key].color })),
+        },
+    };
+}
+
 /** Mode labels for UI chips (Chinese). */
-export const AGRI_MODE_LABELS: Record<AgriHeatIndex, string> = {
+export const AGRI_MODE_LABELS: Record<AgriOverlayIndex, string> = {
     // 地图快捷入口面向业务用户显示“长势分析”，内部仍使用 ndvi 计算模式。
     ndvi: "长势分析",
     evi: "EVI",
@@ -1673,6 +1764,7 @@ export const AGRI_MODE_LABELS: Record<AgriHeatIndex, string> = {
     vh: "VH",
     drought: "干旱",
     flood: "洪涝",
+    harvest: "收获状态",
 };
 
 /** 地图底部主入口：EVI 作为补充指标，不在快捷按钮中直接展示。 */
