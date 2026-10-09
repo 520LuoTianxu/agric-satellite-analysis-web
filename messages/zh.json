@@ -2058,6 +2058,30 @@
     "colPct": "收获占比",
     "colNewly": "较上期新增",
     "colArea": "收获面积(亩)",
-    "heuristicNote": "估算值：按卫星影像像元 NDVI 回落推算，仅供参考，请以实地情况为准。"
+    "heuristicNote": "估算值：按卫星影像像元绿度（NDVI/EVI）较本季峰值回落、并经下一期影像确认推算，仅供参考，请以实地情况为准。",
+    "interpolateDaily": "按日插值",
+    "interpolateHint": "在相邻两期影像之间按日线性补点（虚线），仅用于展示，不是真实观测。",
+    "seriesInterpolated": "按日插值",
+    "colConfidence": "置信度",
+    "confidence": "置信度",
+    "provisional": "待确认",
+    "provisionalHint": "含尚待下一期影像确认的候选像元，后续可能小幅修正。",
+    "confidenceNote": "置信度综合有效像元、与上一期间隔、绿度离阈值的余量、下一期确认及雷达（Sentinel-1）一致性；悬停徽标查看原因。",
+    "level": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "reason": {
+      "low_valid_pct": "无云像元偏少",
+      "few_pixels": "有效像元过少",
+      "long_gap": "与上一期间隔较长",
+      "small_margin": "绿度接近判定阈值",
+      "unconfirmed": "待下一期影像确认",
+      "s1_confirmed": "已由雷达影像佐证",
+      "s1_agree": "雷达影像一致",
+      "s1_disagree": "雷达影像不一致",
+      "interpolated": "插值点，非真实观测"
+    }
   }
 }

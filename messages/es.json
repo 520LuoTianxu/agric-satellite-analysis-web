@@ -2058,6 +2058,30 @@
     "colPct": "Cosechado",
     "colNewly": "Nuevo",
     "colArea": "Área (mu)",
-    "heuristicNote": "Estimación: deducida de la caída del NDVI por píxel en imágenes satelitales; verifíquela en campo."
+    "heuristicNote": "Estimación: deducida de la caída del verdor por píxel (NDVI/EVI) respecto al pico de la campaña y confirmada por la imagen siguiente; verifíquela en campo.",
+    "interpolateDaily": "Interpolación diaria",
+    "interpolateHint": "Rellena linealmente los días entre dos imágenes (línea discontinua). Solo para visualización; no son observaciones reales.",
+    "seriesInterpolated": "Interpolado",
+    "colConfidence": "Confianza",
+    "confidence": "Confianza",
+    "provisional": "pendiente",
+    "provisionalHint": "Incluye píxeles candidatos pendientes de confirmar con la próxima imagen; puede ajustarse ligeramente.",
+    "confidenceNote": "La confianza combina la cobertura de píxeles despejados, el intervalo desde la imagen anterior, el margen respecto al umbral, la confirmación por la imagen siguiente y la concordancia con el radar (Sentinel-1). Pase el cursor sobre la etiqueta para ver los motivos.",
+    "level": {
+      "high": "Alta",
+      "medium": "Media",
+      "low": "Baja"
+    },
+    "reason": {
+      "low_valid_pct": "Pocos píxeles despejados",
+      "few_pixels": "Muy pocos píxeles válidos",
+      "long_gap": "Intervalo largo desde la imagen anterior",
+      "small_margin": "Verdor cercano al umbral",
+      "unconfirmed": "Pendiente de la próxima imagen",
+      "s1_confirmed": "Confirmado por radar",
+      "s1_agree": "El radar coincide",
+      "s1_disagree": "El radar no coincide",
+      "interpolated": "Interpolado, no observado"
+    }
   }
 }
