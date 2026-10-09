@@ -2081,7 +2081,17 @@
       "s1_confirmed": "已由雷达影像佐证",
       "s1_agree": "雷达影像一致",
       "s1_disagree": "雷达影像不一致",
-      "interpolated": "插值点，非真实观测"
-    }
+      "interpolated": "插值点，非真实观测",
+      "residue_signature": "含按秸秆残茬确认的像元",
+      "suspected_harvest": "另有疑似收获像元",
+      "promoted_bare": "疑似像元已到裸土，转为已收获",
+      "promoted_abrupt": "疑似像元突变，转为已收获",
+      "promoted_s1": "雷达佐证，疑似转为已收获"
+    },
+    "seriesSuspected": "疑似收获",
+    "colSuspected": "疑似收获",
+    "combined": "合计",
+    "latestSuspected": "另有疑似收获 {pct}",
+    "suspectedHint": "疑似收获：成熟后出现秸秆残茬样变化（变干、变亮、不再返青），但与枯黄未收的站秆难以区分，不计入收获占比；后续影像到裸土或雷达佐证后转为已收获。"
   }
 }

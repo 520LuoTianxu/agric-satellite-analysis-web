@@ -2081,7 +2081,17 @@
       "s1_confirmed": "Confirmado por radar",
       "s1_agree": "El radar coincide",
       "s1_disagree": "El radar no coincide",
-      "interpolated": "Interpolado, no observado"
-    }
+      "interpolated": "Interpolado, no observado",
+      "residue_signature": "Incluye píxeles confirmados por rastrojo",
+      "suspected_harvest": "Hay píxeles de cosecha sospechada",
+      "promoted_bare": "Píxeles sospechados llegaron a suelo desnudo",
+      "promoted_abrupt": "Píxeles sospechados con cambio brusco",
+      "promoted_s1": "El radar confirmó píxeles sospechados"
+    },
+    "seriesSuspected": "Cosecha sospechada",
+    "colSuspected": "Sospechada",
+    "combined": "Total",
+    "latestSuspected": "más {pct} sospechada",
+    "suspectedHint": "Cosecha sospechada: cambio tipo rastrojo tras la madurez (seco, más claro, sin rebrote) que no se distingue del cultivo seco en pie; no se incluye en el porcentaje cosechado. Pasa a cosechado cuando imágenes posteriores muestran suelo desnudo o el radar lo confirma."
   }
 }

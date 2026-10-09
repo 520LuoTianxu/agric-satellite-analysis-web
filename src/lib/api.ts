@@ -1910,6 +1910,11 @@ export type HarvestConfidenceReason =
     | "s1_confirmed"
     | "s1_agree"
     | "s1_disagree"
+    | "residue_signature"
+    | "suspected_harvest"
+    | "promoted_bare"
+    | "promoted_abrupt"
+    | "promoted_s1"
     | "interpolated";
 
 export interface HarvestProgressItem {
@@ -1944,6 +1949,12 @@ export interface HarvestProgressItem {
     s1_delta_ratio_db?: number | null;
     s1_agreement?: "agree" | "disagree" | "ambiguous" | null;
     threshold_source?: string | null;
+    /** 疑似收获占比 0–100（秸秆残茬样、与枯熟站秆难以区分；不含在 harvested_pct 内）；旧版结果为空 */
+    suspected_harvest_pct?: number | null;
+    /** 已收获 + 疑似收获，0–100，季内单调不减；旧版结果为空 */
+    harvested_or_suspected_pct?: number | null;
+    /** harvested_pct 中由疑似晋升（经确认）的部分 */
+    residue_harvested_pct?: number | null;
     /** true：按日插值的展示点，非真实观测 */
     interpolated?: boolean;
 }
