@@ -415,6 +415,7 @@
     "tabWeather": "Weather",
     "tabSoil": "Soil",
     "tabSeasonGrowth": "Season growth",
+    "tabHarvest": "Harvest",
     "hidePanel": "Collapse analysis sidebar",
     "showPanel": "Expand analysis sidebar",
     "resizePanel": "Resize analysis sidebar",
@@ -2033,5 +2034,30 @@
     "periodInvalid": "The date range is invalid for this mode. Check its order and end date, and keep it within 550 days.",
     "referenceYearInvalid": "The reference year must be an integer from 2015 up to the year before the analysis starts, or be left blank.",
     "inferenceMismatch": "The result does not match the current parcel or date range. Please detect again."
+  },
+  "harvestTab": {
+    "title": "Harvest progress",
+    "description": "Estimated share of the parcel already harvested on each satellite image date, and how much was added since the previous image.",
+    "thisYear": "This year",
+    "includeZero": "Show dates with no harvest",
+    "refresh": "Refresh",
+    "retry": "Retry",
+    "loadFailed": "Failed to load harvest data",
+    "emptyTitle": "No harvest detected yet",
+    "emptyDesc": "No harvested area was detected in imagery for the selected year. Tick “Show dates with no harvest” to see every observation.",
+    "emptyDescAll": "No usable cloud-free Sentinel-2 imagery for the selected year yet.",
+    "latestPct": "Latest harvested",
+    "latestNewly": "New since previous",
+    "latestArea": "Harvested (mu)",
+    "ofTotalMu": "of {total} mu",
+    "unitMu": "mu",
+    "chartTitle": "Harvest progress by image date",
+    "seriesHarvested": "Harvested share",
+    "seriesNewly": "New since previous",
+    "colDate": "Image date",
+    "colPct": "Harvested",
+    "colNewly": "New",
+    "colArea": "Area (mu)",
+    "heuristicNote": "Estimate: inferred from the drop in pixel NDVI on satellite imagery; verify in the field."
   }
 }
