@@ -2081,7 +2081,17 @@
       "s1_confirmed": "Confirmed by radar",
       "s1_agree": "Radar agrees",
       "s1_disagree": "Radar disagrees",
-      "interpolated": "Interpolated, not observed"
-    }
+      "interpolated": "Interpolated, not observed",
+      "residue_signature": "Includes pixels confirmed via residue",
+      "suspected_harvest": "Suspected-harvest pixels present",
+      "promoted_bare": "Suspected pixels reached bare soil",
+      "promoted_abrupt": "Suspected pixels changed abruptly",
+      "promoted_s1": "Radar confirmed suspected pixels"
+    },
+    "seriesSuspected": "Suspected harvest",
+    "colSuspected": "Suspected",
+    "combined": "Total",
+    "latestSuspected": "plus {pct} suspected",
+    "suspectedHint": "Suspected harvest: post-maturity residue-like change (dry, brighter, no regrowth) that cannot be told apart from dried standing crop; not included in the harvested share. Promoted to harvested once later imagery reaches bare soil or radar confirms."
   }
 }

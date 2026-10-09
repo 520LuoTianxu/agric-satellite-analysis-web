@@ -16,6 +16,8 @@ interface HarvestProgressChartProps {
     items: HarvestProgressItem[];
     labels: {
         harvested: string;
+        suspected: string;
+        combined: string;
         newly: string;
         interpolated: string;
         confidence: string;
@@ -27,14 +29,20 @@ interface HarvestProgressChartProps {
 const LEVEL_SIZE: Record<string, number> = { high: 8, medium: 6, low: 4 };
 
 /**
- * 已收获占比（折线，累计状态）+ 较上期新增（柱）。
+ * 已收获占比（折线，累计状态）+ 疑似收获（浅色面积，叠在已收获之上到“已收获+疑似”）+ 较上期新增（柱）。
  * 实线与圆点为真实观测（点越大置信度越高），虚线为按日插值（仅在开启插值时出现）。
  */
 export default function HarvestProgressChart({ items, labels, height = 220 }: HarvestProgressChartProps) {
     const option = useMemo(() => {
         const dates = items.map((it) => it.date.slice(5));
         const hasInterp = items.some((it) => it.interpolated);
-        const legend = [labels.harvested, labels.newly, ...(hasInterp ? [labels.interpolated] : [])];
+        const hasSuspected = items.some((it) => (it.suspected_harvest_pct ?? 0) > 0);
+        const legend = [
+            labels.harvested,
+            ...(hasSuspected ? [labels.suspected] : []),
+            labels.newly,
+            ...(hasInterp ? [labels.interpolated] : []),
+        ];
         const byIndex = new Map(items.map((it, i) => [i, it]));
         return {
             animation: false,
@@ -49,6 +57,14 @@ export default function HarvestProgressChart({ items, labels, height = 220 }: Ha
                     const lines = [`${it.date}${it.interpolated ? ` · ${labels.interpolated}` : ""}`];
                     for (const p of params) {
                         if (p.value == null) continue;
+                        if (p.seriesName === labels.suspected) {
+                            // 面积画到“已收获+疑似”，提示里显示疑似本身与合计。
+                            const s = it.suspected_harvest_pct ?? 0;
+                            lines.push(
+                                `${p.marker}${labels.suspected}: ${s.toFixed(1)}%（${labels.combined} ${Number(p.value).toFixed(1)}%）`,
+                            );
+                            continue;
+                        }
                         lines.push(`${p.marker}${p.seriesName}: ${Number(p.value).toFixed(1)}%`);
                     }
                     if (it.confidence != null) {
@@ -74,6 +90,25 @@ export default function HarvestProgressChart({ items, labels, height = 220 }: Ha
                     barMaxWidth: 14,
                     itemStyle: { color: viz(3, 0.75), borderRadius: [2, 2, 0, 0] },
                 },
+                ...(hasSuspected
+                    ? [
+                          {
+                              name: labels.suspected,
+                              type: "line" as const,
+                              data: items.map(
+                                  (it) =>
+                                      it.harvested_or_suspected_pct ??
+                                      it.harvested_pct + (it.suspected_harvest_pct ?? 0),
+                              ),
+                              showSymbol: false,
+                              lineStyle: { width: 1, type: "dotted" as const, color: tokenColor("--primary", 0.5) },
+                              itemStyle: { color: tokenColor("--primary", 0.4) },
+                              // 浅色：叠在已收获面积之上，只露出疑似部分。
+                              areaStyle: { color: tokenColor("--primary", 0.07) },
+                              z: 0,
+                          },
+                      ]
+                    : []),
                 ...(hasInterp
                     ? [
                           {

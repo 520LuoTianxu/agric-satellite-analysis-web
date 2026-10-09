@@ -41,6 +41,11 @@ const KNOWN_REASONS = new Set([
     "s1_confirmed",
     "s1_agree",
     "s1_disagree",
+    "residue_signature",
+    "suspected_harvest",
+    "promoted_bare",
+    "promoted_abrupt",
+    "promoted_s1",
     "interpolated",
 ]);
 
@@ -113,9 +118,13 @@ export default function HarvestTab({ landId }: HarvestTabProps) {
     const observed = useMemo(() => items.filter((it) => !it.interpolated), [items]);
     const latest = observed.length ? observed[observed.length - 1] : null;
     const rowsDesc = useMemo(() => [...observed].reverse(), [observed]);
+    // 旧版结果没有疑似字段：不显示疑似列。
+    const showSuspected = useMemo(() => observed.some((it) => it.suspected_harvest_pct != null), [observed]);
     const chartLabels = useMemo(
         () => ({
             harvested: t("seriesHarvested"),
+            suspected: t("seriesSuspected"),
+            combined: t("combined"),
             newly: t("seriesNewly"),
             interpolated: t("seriesInterpolated"),
             confidence: t("confidence"),
@@ -217,6 +226,11 @@ export default function HarvestTab({ landId }: HarvestTabProps) {
                         <div className="rounded-lg border bg-card p-2.5">
                             <p className="text-[11px] text-muted-foreground">{t("latestPct")}</p>
                             <p className="mt-0.5 text-lg font-bold text-primary tabular-nums">{fmtPct(latest?.harvested_pct)}</p>
+                            {latest && (latest.suspected_harvest_pct ?? 0) > 0 ? (
+                                <p className="text-[10px] tabular-nums text-primary/60" title={t("suspectedHint")}>
+                                    {t("latestSuspected", { pct: fmtPct(latest.suspected_harvest_pct) })}
+                                </p>
+                            ) : null}
                             <p className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-1">
                                 {latest?.date}
                                 {latest ? <ConfidenceBadge item={latest} /> : null}
@@ -246,6 +260,11 @@ export default function HarvestTab({ landId }: HarvestTabProps) {
                                 <tr className="border-b text-left text-[11px] text-muted-foreground">
                                     <th className="py-1.5 font-medium">{t("colDate")}</th>
                                     <th className="py-1.5 text-right font-medium">{t("colPct")}</th>
+                                    {showSuspected ? (
+                                        <th className="py-1.5 text-right font-medium" title={t("suspectedHint")}>
+                                            {t("colSuspected")}
+                                        </th>
+                                    ) : null}
                                     <th className="py-1.5 text-right font-medium">{t("colNewly")}</th>
                                     <th className="py-1.5 text-right font-medium">{t("colArea")}</th>
                                     <th className="py-1.5 text-right font-medium">{t("colConfidence")}</th>
@@ -266,6 +285,23 @@ export default function HarvestTab({ landId }: HarvestTabProps) {
                                                 </span>
                                             ) : null}
                                         </td>
+                                        {showSuspected ? (
+                                            <td
+                                                className={cn(
+                                                    "py-1.5 text-right tabular-nums",
+                                                    (it.suspected_harvest_pct ?? 0) > 0
+                                                        ? "text-primary/60"
+                                                        : "text-muted-foreground",
+                                                )}
+                                                title={
+                                                    (it.suspected_harvest_pct ?? 0) > 0
+                                                        ? `${t("combined")} ${fmtPct(it.harvested_or_suspected_pct)}`
+                                                        : undefined
+                                                }
+                                            >
+                                                {(it.suspected_harvest_pct ?? 0) > 0 ? fmtPct(it.suspected_harvest_pct) : "—"}
+                                            </td>
+                                        ) : null}
                                         <td
                                             className={cn(
                                                 "py-1.5 text-right tabular-nums",
@@ -283,6 +319,9 @@ export default function HarvestTab({ landId }: HarvestTabProps) {
                             </tbody>
                         </table>
                         <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">{t("confidenceNote")}</p>
+                        {showSuspected ? (
+                            <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">{t("suspectedHint")}</p>
+                        ) : null}
                     </div>
                 </>
             )}
