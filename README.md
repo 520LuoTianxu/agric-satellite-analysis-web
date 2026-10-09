@@ -21,7 +21,7 @@ python scripts/check-i18n-keys.py
 
 默认前端地址为 `http://localhost:3000`，API 地址通过 `NEXT_PUBLIC_API_URL` 配置。
 
-本地 `npm run dev` 将 `/bapi`、`/agric-api`、`/admin-api` 转发到正式网关 `https://joint-venture.cdfinance.com.cn`（`JOINT_VENTURE_PROXY`），`/satellite-api` 独立转发到测试网关 `https://joint-venture-test.cdfinance.com.cn`（`SATELLITE_API_PROXY`）。
+本地 `npm run dev` 将 `/bapi`、`/agric-api`、`/admin-api` 和 `/satellite-api` 全部转发到测试网关 `https://joint-venture-test.cdfinance.com.cn`。前端业务 API 不再访问正式网关。
 
 ## 地图底图
 
@@ -36,13 +36,13 @@ python scripts/check-i18n-keys.py
 
 测试环境使用仓库中的 `.env.test`（仅包含前端公开配置和网关地址），构建命令为 `npm run build:test`。该命令显式加载测试站点子路径和直连网关配置，检查必需配置，并禁用覆盖卫星样式的 PMTiles 自动升级。测试发布平台应使用此命令；仅执行 `npm run build` 不会自动加载 `.env.test`。直连网关必须允许测试站点来源的 CORS 请求。不要在该文件中添加数据库密码或服务端密钥。
 
-生产环境使用未提交的 `.env.prod`，构建命令为 `npm run build:prod`。可先复制 `.env.prod.example`，再填写生产域名；同源反向代理部署保持 `NEXT_PUBLIC_DIRECT_API_PROXY=false`，直连网关部署则需要同时填写两个 `NEXT_PUBLIC_*_PROXY` 地址。
+生产站点构建使用 `.env.prod`，构建命令为 `npm run build:prod`。站点元数据可以使用生产站点地址，但前端 API 网关仍固定为测试域名；静态构建必须启用直连，并校验两个网关配置均为 `https://joint-venture-test.cdfinance.com.cn`。
 
 地图回归检查：`node scripts/verify-basemap.mjs`；真实浏览器瓦片与 403 降级验证：`python scripts/verify-basemap-ui.py`（需 Playwright、Chromium 和 Pillow）。
 
 ## 静态部署
 
-本项目使用 Next.js 静态导出，构建产物为 `out/`，不需要启动 Node 服务。静态构建不会执行 `next.config.js` 的 rewrites，因此测试构建通过 `NEXT_PUBLIC_DIRECT_API_PROXY=true` 将 API 网关地址直接写入浏览器代码：`/bapi/`、`/agric-api/`、`/admin-api/` 访问正式网关 `https://joint-venture.cdfinance.com.cn`，`/satellite-api/` 访问测试网关 `https://joint-venture-test.cdfinance.com.cn`，无需依赖部署端 Nginx 反代。直连模式要求两个网关允许测试站点来源的 CORS 请求。
+本项目使用 Next.js 静态导出，构建产物为 `out/`，不需要启动 Node 服务。静态构建不会执行 `next.config.js` 的 rewrites，因此构建会将 `/bapi/`、`/agric-api/`、`/admin-api/`、`/satellite-api/` 的请求统一指向测试网关 `https://joint-venture-test.cdfinance.com.cn`，并在构建时校验网关域名，避免误连生产接口。直连模式要求测试网关允许站点来源的 CORS 请求。
 
 部署到子路径时，仍需在构建前设置路径前缀和同源 API 前缀：
 
