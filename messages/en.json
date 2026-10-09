@@ -2058,6 +2058,30 @@
     "colPct": "Harvested",
     "colNewly": "New",
     "colArea": "Area (mu)",
-    "heuristicNote": "Estimate: inferred from the drop in pixel NDVI on satellite imagery; verify in the field."
+    "heuristicNote": "Estimate: inferred from the drop in pixel greenness (NDVI/EVI) from this season's peak, confirmed by the next image; verify in the field.",
+    "interpolateDaily": "Daily interpolation",
+    "interpolateHint": "Linearly fills the days between two images (dashed line). For display only; not real observations.",
+    "seriesInterpolated": "Interpolated",
+    "colConfidence": "Confidence",
+    "confidence": "Confidence",
+    "provisional": "pending",
+    "provisionalHint": "Includes candidate pixels awaiting confirmation by the next image; may be revised slightly.",
+    "confidenceNote": "Confidence combines clear-pixel coverage, gap since the previous image, margin to the threshold, confirmation by the next image and radar (Sentinel-1) agreement. Hover a badge for reasons.",
+    "level": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "reason": {
+      "low_valid_pct": "Few clear pixels",
+      "few_pixels": "Too few valid pixels",
+      "long_gap": "Long gap since previous image",
+      "small_margin": "Greenness close to threshold",
+      "unconfirmed": "Awaiting next image",
+      "s1_confirmed": "Confirmed by radar",
+      "s1_agree": "Radar agrees",
+      "s1_disagree": "Radar disagrees",
+      "interpolated": "Interpolated, not observed"
+    }
   }
 }

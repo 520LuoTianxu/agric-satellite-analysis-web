@@ -1872,15 +1872,22 @@ export const agriApi = {
             { signal: opts.signal },
         );
     },
-    /** 按影像日期的已收获面积占比（后端首版 NDVI 启发式估算）。 */
+    /** 按影像日期的已收获面积占比（后端分季启发式估算，带逐期置信度；可选按日插值）。 */
     harvestProgress: (
         landId: string,
-        opts: { from?: string; to?: string; includeZero?: boolean; signal?: AbortSignal } = {},
+        opts: {
+            from?: string;
+            to?: string;
+            includeZero?: boolean;
+            interpolate?: "none" | "daily";
+            signal?: AbortSignal;
+        } = {},
     ) => {
         const params = new URLSearchParams();
         if (opts.from) params.set("from", opts.from);
         if (opts.to) params.set("to", opts.to);
         if (opts.includeZero != null) params.set("include_zero", String(opts.includeZero));
+        if (opts.interpolate && opts.interpolate !== "none") params.set("interpolate", opts.interpolate);
         const q = params.toString();
         return apiFetch<HarvestProgressResult>(
             `/agri/lands/${encodeURIComponent(landId)}/harvest-progress${q ? `?${q}` : ""}`,
@@ -1889,28 +1896,56 @@ export const agriApi = {
     },
 };
 
-export type HarvestProgressStatus =
-    | "no_growth"
-    | "growing"
-    | "not_harvested"
-    | "harvesting"
-    | "harvested";
+export type HarvestProgressStatus = "off_season" | "growing" | "harvesting" | "harvested";
+
+export type HarvestConfidenceLevel = "high" | "medium" | "low";
+
+/** 置信度原因码（后端可能新增，前端未识别的原样显示）。 */
+export type HarvestConfidenceReason =
+    | "low_valid_pct"
+    | "few_pixels"
+    | "long_gap"
+    | "small_margin"
+    | "unconfirmed"
+    | "s1_confirmed"
+    | "s1_agree"
+    | "s1_disagree"
+    | "interpolated";
 
 export interface HarvestProgressItem {
     date: string;
     sensor: string;
-    /** 已收获像元占有效像元百分比 0–100 */
+    /** 本季已收获作物像元占比 0–100，季内单调不减 */
     harvested_pct: number;
-    /** 较上一有效观测日新增的百分点（不为负） */
+    /** 较同季上一期新增的百分点（不为负）；插值行为日增量 */
     newly_harvested_pct: number;
     harvested_area_mu?: number | null;
     status: HarvestProgressStatus | string;
-    valid_pct: number;
+    /** 无云有效像元占比；插值行为空 */
+    valid_pct?: number | null;
     mean_ndvi?: number | null;
-    peak_ndvi?: number | null;
+    greenness?: number | null;
+    peak_greenness?: number | null;
     peak_date?: string | null;
+    season_start?: string | null;
+    vegetation_index?: string | null;
+    /** false：含待下一期影像确认的候选像元 */
+    confirmed?: boolean;
+    confirmed_by?: "s2" | "s1" | null;
     scene_id?: string | null;
     official?: boolean;
+    /** 置信度 0–1 */
+    confidence?: number | null;
+    confidence_level?: HarvestConfidenceLevel | null;
+    confidence_reasons?: (HarvestConfidenceReason | string)[];
+    gap_days?: number | null;
+    s1_date?: string | null;
+    s1_delta_vh_db?: number | null;
+    s1_delta_ratio_db?: number | null;
+    s1_agreement?: "agree" | "disagree" | "ambiguous" | null;
+    threshold_source?: string | null;
+    /** true：按日插值的展示点，非真实观测 */
+    interpolated?: boolean;
 }
 
 export interface HarvestProgressResult {
@@ -1924,6 +1959,8 @@ export interface HarvestProgressResult {
     rule_zh: string;
     source: "stored" | "live";
     thresholds?: Record<string, number>;
+    threshold_source?: string | null;
+    interpolate?: "none" | "daily";
     items: HarvestProgressItem[];
 }
 
