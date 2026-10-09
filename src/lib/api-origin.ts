@@ -1,8 +1,8 @@
 /**
  * 浏览器直连网关的开关和地址。
  *
- * 测试静态站点没有可执行的 Next.js rewrite 时，构建配置会开启直连，
- * 让浏览器把业务和卫星请求分别发往对应网关；本地开发保持关闭，继续使用
+ * 静态站点没有可执行的 Next.js rewrite 时，构建配置会开启直连，
+ * 让浏览器把所有业务 API 请求发往测试网关；本地开发保持关闭，继续使用
  * next.config.js 的同源代理，避免改变现有联调方式。
  */
 const DIRECT_API_PROXY = process.env.NEXT_PUBLIC_DIRECT_API_PROXY === "true";

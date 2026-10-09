@@ -15,6 +15,8 @@ if (process.env.NEXT_PUBLIC_DIRECT_API_PROXY !== "true") {
     throw new Error("测试静态构建必须开启 NEXT_PUBLIC_DIRECT_API_PROXY=true，避免依赖 Nginx 反代。");
 }
 
+require("./validate-test-api-origin")();
+
 // 禁止旧 CI 的 PMTiles 配置在地图加载后把卫星底图替换成矢量底图。
 process.env.NEXT_PUBLIC_PROTOMAPS_URL = "";
 const result = spawnSync(process.execPath, [process.env.npm_execpath, "run", "build"], {

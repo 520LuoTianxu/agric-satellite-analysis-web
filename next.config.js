@@ -14,11 +14,36 @@ const BASE_PATH_NAME = (configuredBasePath ?? ciDefaultBasePath)
     .replace(/^\/+|\/+$/g, "");
 const BASE_PATH = BASE_PATH_NAME ? `/${BASE_PATH_NAME}` : "";
 
-const JOINT_VENTURE_PROXY =
-    process.env.JOINT_VENTURE_PROXY || "https://joint-venture.cdfinance.com.cn";
-// 卫星分析仍使用测试数据，必须与正式环境的登录、农业业务代理分开配置。
-const SATELLITE_API_PROXY =
-    process.env.SATELLITE_API_PROXY || "https://joint-venture-test.cdfinance.com.cn";
+const TEST_API_ORIGIN = "https://joint-venture-test.cdfinance.com.cn";
+
+// 本地代理和静态构建的前端网关都限定到测试域名，配置漂移时直接失败，避免误调生产接口。
+function getTestApiOrigin(name) {
+    const origin = (process.env[name] || TEST_API_ORIGIN).trim().replace(/\/+$/, "");
+    if (origin !== TEST_API_ORIGIN) {
+        throw new Error(`${name} 必须配置为测试 API 域名 ${TEST_API_ORIGIN}`);
+    }
+    return origin;
+}
+
+const JOINT_VENTURE_PROXY = getTestApiOrigin("JOINT_VENTURE_PROXY");
+const SATELLITE_API_PROXY = getTestApiOrigin("SATELLITE_API_PROXY");
+const NEXT_PUBLIC_JOINT_VENTURE_PROXY = getTestApiOrigin("NEXT_PUBLIC_JOINT_VENTURE_PROXY");
+const NEXT_PUBLIC_SATELLITE_API_PROXY = getTestApiOrigin("NEXT_PUBLIC_SATELLITE_API_PROXY");
+const DIRECT_API_PROXY =
+    process.env.NEXT_PUBLIC_DIRECT_API_PROXY ??
+    (process.env.NODE_ENV === "development" ? "false" : "true");
+const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || "/satellite-api";
+
+if (process.env.NODE_ENV === "production" && DIRECT_API_PROXY !== "true") {
+    throw new Error("静态构建必须启用 API 直连，确保所有前端 API 请求使用测试网关。");
+}
+
+if (
+    process.env.NODE_ENV === "production" &&
+    (!NEXT_PUBLIC_API_URL.startsWith("/") || NEXT_PUBLIC_API_URL.startsWith("//"))
+) {
+    throw new Error("静态构建的 NEXT_PUBLIC_API_URL 必须使用路径，API 域名由测试网关统一注入。");
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -28,13 +53,16 @@ const nextConfig = {
     // 将自动推导出的前缀注入浏览器代码，保证 API、分享链接和地图资源也使用同一前缀。
     env: {
         NEXT_PUBLIC_BASE_PATH: BASE_PATH,
+        NEXT_PUBLIC_DIRECT_API_PROXY: DIRECT_API_PROXY,
+        NEXT_PUBLIC_JOINT_VENTURE_PROXY,
+        NEXT_PUBLIC_SATELLITE_API_PROXY,
     },
 };
 
 if (process.env.NODE_ENV === "production") {
     nextConfig.output = "export";
 } else {
-    // 静态导出没有 rewrite。本地登录和农业业务走正式网关，卫星分析保留测试网关。
+    // 静态导出没有 rewrite；本地登录、农业业务和卫星分析统一使用测试网关。
     nextConfig.rewrites = async () => [
         // 卫星 OSS 未允许 localhost 跨域；开发环境同源代理，生产静态站点直连业务域名白名单图源。
         {
