@@ -1894,6 +1894,14 @@ export const agriApi = {
             { signal: opts.signal },
         );
     },
+    /** 逐像元收获状态（lonlat_v1 点集）：0 未收获、1 疑似收获、2 已收获、255 无数据。 */
+    harvestPixels: (landId: string, opts: { date?: string; signal?: AbortSignal } = {}) => {
+        const q = opts.date ? `?date=${encodeURIComponent(opts.date)}` : "";
+        return apiFetch<HarvestPixelsResult>(
+            `/agri/lands/${encodeURIComponent(landId)}/harvest-pixels${q}`,
+            { signal: opts.signal },
+        );
+    },
 };
 
 export type HarvestProgressStatus = "off_season" | "growing" | "harvesting" | "harvested";
@@ -1957,6 +1965,39 @@ export interface HarvestProgressItem {
     residue_harvested_pct?: number | null;
     /** true：按日插值的展示点，非真实观测 */
     interpolated?: boolean;
+}
+
+export interface HarvestPixelStats {
+    unharvested: number;
+    suspected: number;
+    harvested: number;
+    nodata: number;
+}
+
+export interface HarvestPixelsResult {
+    land_id: string;
+    requested_date: string;
+    /** 实际使用的观测日（不晚于 requested_date 的最近一期） */
+    date: string;
+    method_version: string;
+    source: "stored" | "live";
+    status?: string | null;
+    season_start?: string | null;
+    scene_id?: string | null;
+    harvested_pct?: number | null;
+    suspected_harvest_pct?: number | null;
+    harvested_or_suspected_pct?: number | null;
+    valid_pct?: number | null;
+    crop_pixel_count?: number | null;
+    format: "lonlat_v1";
+    /** 无数据值（云/无效/季外/非作物） */
+    nodata: number;
+    state_labels: Record<string, string>;
+    pixel_count: number;
+    counts: HarvestPixelStats;
+    /** 占本季作物像元百分比 */
+    crop_pct: HarvestPixelStats;
+    pixels_lonlat: { lon: number; lat: number; state: number }[];
 }
 
 export interface HarvestProgressResult {

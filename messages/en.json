@@ -1167,6 +1167,7 @@
       "vh": "VH",
       "drought": "Drought",
       "flood": "Flood",
+      "harvest": "Harvest state",
       "sentinel2": "Sentinel-2 · Optical",
       "sentinel1": "Sentinel-1 · Radar"
     },
@@ -2092,6 +2093,18 @@
     "colSuspected": "Suspected",
     "combined": "Total",
     "latestSuspected": "plus {pct} suspected",
-    "suspectedHint": "Suspected harvest: post-maturity residue-like change (dry, brighter, no regrowth) that cannot be told apart from dried standing crop; not included in the harvested share. Promoted to harvested once later imagery reaches bare soil or radar confirms."
+    "suspectedHint": "Suspected harvest: post-maturity residue-like change (dry, brighter, no regrowth) that cannot be told apart from dried standing crop; not included in the harvested share. Promoted to harvested once later imagery reaches bare soil or radar confirms.",
+    "pixelMapTitle": "Per-pixel harvest state",
+    "pixelDate": "Image date",
+    "showOnMap": "Show on map",
+    "stateUnharvested": "Not harvested",
+    "stateSuspected": "Suspected",
+    "stateHarvested": "Harvested",
+    "stateNodata": "No data (cloud/invalid)",
+    "pixelCount": "{count} crop pixels",
+    "pixelLoadFailed": "Failed to load pixel states",
+    "pixelLive": "Not stored yet; computed on the fly.",
+    "pixelDateFallback": "No valid image on that date; showing {date}.",
+    "pixelMapHint": "Each cell is about 10 m; same algorithm as the shares above. Within a season a pixel only moves forward (not harvested → suspected → harvested). Percentages are of this season's crop pixels."
   }
 }

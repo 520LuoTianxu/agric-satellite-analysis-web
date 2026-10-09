@@ -339,6 +339,9 @@ function FieldDetailPageContent() {
     // Index overlay
     const [indexLayer, setIndexLayer] = useState<RasterLayer | null>(null);
     const [agriHeatmap, setAgriHeatmap] = useState<AgriHeatmapImage | null>(null);
+    // 收获页签的逐像元状态色膜单独存放：NDVI 面板在后台切换日期时会清空 agriHeatmap，不能互相覆盖。
+    const [harvestHeatmap, setHarvestHeatmap] = useState<AgriHeatmapImage | null>(null);
+    const shownHeatmap = activeTab === "harvest" ? harvestHeatmap : agriHeatmap;
     const [agriHeatMode, setAgriHeatMode] = useState<AgriHeatIndex>("ndvi");
     const [activeIndexType, setActiveIndexType] = useState<IndexType>("NDVI");
     const indexLayerRef = useRef<RasterLayer | null>(null);
@@ -576,8 +579,8 @@ function FieldDetailPageContent() {
         landRef.current = land;
     }, [land]);
     useEffect(() => {
-        agriHeatmapRef.current = agriHeatmap;
-    }, [agriHeatmap]);
+        agriHeatmapRef.current = shownHeatmap;
+    }, [shownHeatmap]);
 
 
     const loadField = useCallback(async () => {
@@ -592,6 +595,7 @@ function FieldDetailPageContent() {
         setProjectLands([]);
         setIndexLayer(null);
         setAgriHeatmap(null);
+        setHarvestHeatmap(null);
         setAvailableTypes([]);
         setActiveIndexType("NDVI");
         try {
@@ -1166,18 +1170,18 @@ function FieldDetailPageContent() {
             // 显示色斑时隐藏纯绿色填充，保留地块边界和稀疏像元的可见性。
             try {
                 if (map.getLayer("field-fill")) {
-                    map.setPaintProperty("field-fill", "fill-opacity", agriHeatmap ? 0 : 0.2);
+                    map.setPaintProperty("field-fill", "fill-opacity", shownHeatmap ? 0 : 0.2);
                 }
             } catch { /* ignore */ }
 
-            if (!agriHeatmap) return;
+            if (!shownHeatmap) return;
 
             const landGeom = landRef.current?.boundary_geojson as
                 | GeoJSON.Polygon
                 | GeoJSON.MultiPolygon
                 | undefined;
             const beforeId = map.getLayer("field-outline") ? "field-outline" : undefined;
-            applyAgriHeatmapToMap(map, agriHeatmap, landGeom, beforeId);
+            applyAgriHeatmapToMap(map, shownHeatmap, landGeom, beforeId);
         };
 
         // getStyle 在样式就绪后即有值；isStyleLoaded 还等待底图瓦片，会漏掉首次已准备好的色膜。
@@ -1195,7 +1199,7 @@ function FieldDetailPageContent() {
                 }
             } catch { /* ignore */ }
         };
-    }, [agriHeatmap, mapInstance, land, applyAgriHeatmapToMap, clearAgriHeatmapLayers]);
+    }, [shownHeatmap, mapInstance, land, applyAgriHeatmapToMap, clearAgriHeatmapLayers]);
 
     const handleShowLayer = useCallback((layer: RasterLayer | null, indexType: IndexType) => {
         setIndexLayer(layer);
@@ -1422,10 +1426,10 @@ function FieldDetailPageContent() {
             )}
 
             {/* Index / agri 色斑 Legend - bottom-left */}
-            {(agriHeatmap || indexLayer) && (
+            {(shownHeatmap || indexLayer) && (
                 <div className="absolute bottom-6 left-4 z-20 transition-opacity duration-200">
-                    {agriHeatmap ? (
-                        <AgriHeatmapLegend heatmap={agriHeatmap} />
+                    {shownHeatmap ? (
+                        <AgriHeatmapLegend heatmap={shownHeatmap} />
                     ) : indexLayer ? (
                         <NdviLegend layer={indexLayer} indexType={activeIndexType} />
                     ) : null}
@@ -1512,7 +1516,7 @@ function FieldDetailPageContent() {
                 {/* Satellite, date, cloud cover and colormap in one mono
                     line: the reproducibility claim, made visible where the
                     user is actually looking. */}
-                {agriHeatmap && (
+                {shownHeatmap && (
                     <div
                         className="max-w-full rounded-lg border border-border px-3.5 py-2"
                         style={{ background: "hsl(var(--map-scrim) / 0.82)" }}
@@ -1520,10 +1524,10 @@ function FieldDetailPageContent() {
                         <p className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
                             <Satellite className="h-3 w-3 shrink-0" aria-hidden="true" />
                             {[
-                                agriHeatmap.index === "flood" ? "Sentinel-1" : "Sentinel-2",
-                                AGRI_MODE_LABELS[agriHeatmap.index],
-                                agriHeatmap.mean != null ? `均≈${agriHeatmap.mean.toFixed(2)}` : null,
-                                `${agriHeatmap.pixelCount} px`,
+                                shownHeatmap.index === "flood" ? "Sentinel-1" : "Sentinel-2",
+                                AGRI_MODE_LABELS[shownHeatmap.index],
+                                shownHeatmap.mean != null ? `均≈${shownHeatmap.mean.toFixed(2)}` : null,
+                                `${shownHeatmap.pixelCount} px`,
                             ]
                                 .filter(Boolean)
                                 .join(" · ")}
@@ -1531,7 +1535,7 @@ function FieldDetailPageContent() {
                     </div>
                 )}
 
-                {!agriHeatmap && indexLayer && (
+                {!shownHeatmap && indexLayer && (
                     <div
                         className="max-w-full rounded-lg border border-border px-3.5 py-2"
                         style={{ background: "hsl(var(--map-scrim) / 0.82)" }}
@@ -1852,7 +1856,16 @@ function FieldDetailPageContent() {
                                     </TabsContent>
 
                                     <TabsContent value="harvest" className="mt-0">
-                                        <HarvestTab landId={landId} />
+                                        <HarvestTab
+                                            landId={landId}
+                                            fieldGeom={
+                                                land.boundary_geojson as
+                                                    | GeoJSON.Polygon
+                                                    | GeoJSON.MultiPolygon
+                                                    | undefined
+                                            }
+                                            onMapOverlayChange={setHarvestHeatmap}
+                                        />
                                     </TabsContent>
 
                                     <TabsContent value="share" className="mt-0">

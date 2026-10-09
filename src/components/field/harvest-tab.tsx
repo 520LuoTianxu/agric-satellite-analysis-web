@@ -7,6 +7,7 @@ import { AlertTriangle, Info, Loader2, RefreshCw, Wheat } from "lucide-react";
 import { agriApi, type HarvestProgressItem, type HarvestProgressResult } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { AgriHeatmapImage } from "@/lib/agri-heatmap";
 import { cn } from "@/lib/utils";
 
 const HarvestProgressChart = dynamic(() => import("@/components/charts/harvest-progress-chart"), {
@@ -14,8 +15,17 @@ const HarvestProgressChart = dynamic(() => import("@/components/charts/harvest-p
     loading: () => <Skeleton className="h-[220px] w-full rounded-lg" />,
 });
 
+const HarvestPixelMap = dynamic(() => import("@/components/field/harvest-pixel-map"), {
+    ssr: false,
+    loading: () => <Skeleton className="h-[160px] w-full rounded-lg" />,
+});
+
 interface HarvestTabProps {
     landId: string;
+    /** 地块边界：用于逐像元色膜裁剪与页签内预览描边 */
+    fieldGeom?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
+    /** 把逐像元收获状态色膜交给地块地图（null 表示移除） */
+    onMapOverlayChange?: (img: AgriHeatmapImage | null) => void;
 }
 
 function fmtPct(v: number | null | undefined): string {
@@ -69,7 +79,7 @@ function ConfidenceBadge({ item }: { item: HarvestProgressItem }) {
 }
 
 /** 地块「收获」页签：按影像日期展示已收获面积占比与较上期新增（后端启发式估算）。 */
-export default function HarvestTab({ landId }: HarvestTabProps) {
+export default function HarvestTab({ landId, fieldGeom, onMapOverlayChange }: HarvestTabProps) {
     const t = useTranslations("harvestTab");
     const thisYear = new Date().getFullYear();
     const years = useMemo(() => [thisYear, thisYear - 1, thisYear - 2], [thisYear]);
@@ -119,6 +129,7 @@ export default function HarvestTab({ landId }: HarvestTabProps) {
     const latest = observed.length ? observed[observed.length - 1] : null;
     const rowsDesc = useMemo(() => [...observed].reverse(), [observed]);
     // 旧版结果没有疑似字段：不显示疑似列。
+    const pixelDates = useMemo(() => rowsDesc.map((it) => it.date), [rowsDesc]);
     const showSuspected = useMemo(() => observed.some((it) => it.suspected_harvest_pct != null), [observed]);
     const chartLabels = useMemo(
         () => ({
@@ -253,6 +264,13 @@ export default function HarvestTab({ landId }: HarvestTabProps) {
                         <p className="text-xs font-semibold">{t("chartTitle")}</p>
                         <HarvestProgressChart items={items} labels={chartLabels} />
                     </div>
+
+                    <HarvestPixelMap
+                        landId={landId}
+                        dates={pixelDates}
+                        fieldGeom={fieldGeom}
+                        onMapOverlayChange={onMapOverlayChange}
+                    />
 
                     <div className="rounded-lg border bg-card p-3">
                         <table className="w-full text-xs">
