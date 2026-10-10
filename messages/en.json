@@ -30,7 +30,8 @@
     "projectRemoteSensing": "Remote sensing",
     "landReports": "Land reports",
     "operations": "Operations",
-    "parcelInsights": "Field insights"
+    "parcelInsights": "Field insights",
+    "harvestReport": "Harvest report"
   },
   "sidebar": {
     "workspaces": "Workspaces",
@@ -2106,5 +2107,77 @@
     "pixelLive": "Not stored yet; computed on the fly.",
     "pixelDateFallback": "No valid image on that date; showing {date}.",
     "pixelMapHint": "Each cell is about 10 m; same algorithm as the shares above. Within a season a pixel only moves forward (not harvested → suspected → harvested). Percentages are of this season's crop pixels."
+  },
+  "harvestReport": {
+    "title": "Harvest progress report",
+    "subtitle": "Harvest progress (harvested + suspected) for all parcels from stored harvest results; observation dates with a combined share not above {minSave}% are not stored and count as not harvested.",
+    "from": "From",
+    "to": "To",
+    "group": "Group",
+    "allGroups": "All groups",
+    "crop": "Crop",
+    "allCrops": "All crops",
+    "status": "Progress band",
+    "allStatus": "All bands",
+    "minPct": "Min combined %",
+    "search": "Parcel ID / name",
+    "reset": "Reset",
+    "export": "Export Excel",
+    "exporting": "Exporting…",
+    "exportFailed": "Export failed: {error}",
+    "loadFailed": "Failed to load: {error}",
+    "loading": "Loading…",
+    "empty": "No parcels match the filters",
+    "kpi": {
+      "parcels": "Parcels",
+      "parcelsHint": "{computed} computed",
+      "area": "Total area",
+      "harvestedArea": "Harvested area",
+      "combinedArea": "Harvested + suspected area",
+      "avgPct": "Average progress",
+      "avgHint": "Area-weighted {weighted}",
+      "mu": "{value} mu"
+    },
+    "bucket": {
+      "none": "Not harvested",
+      "lt30": "<30%",
+      "30_90": "30–90%",
+      "ge90": "≥90%",
+      "not_computed": "Not computed"
+    },
+    "statusLabel": {
+      "growing": "Growing",
+      "harvesting": "Harvesting",
+      "harvested": "Harvested"
+    },
+    "confidence": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "col": {
+      "land": "Parcel",
+      "group": "Group",
+      "crop": "Crop",
+      "region": "Region",
+      "area": "Area (mu)",
+      "firstHarvest": "First harvest",
+      "latest": "Latest result",
+      "harvested": "Harvested",
+      "suspected": "Suspected",
+      "combined": "Combined",
+      "combinedArea": "Harvested (mu)",
+      "newly": "Since prev.",
+      "status": "Status",
+      "confidence": "Confidence",
+      "lastImage": "Last image",
+      "bucket": "Band"
+    },
+    "days": "{n} d",
+    "provisional": "Provisional",
+    "notComputedHint": "Not computed yet (run harvest backfill)",
+    "pageInfo": "Page {page}/{pages}, {total} parcels",
+    "prev": "Previous",
+    "next": "Next"
   }
 }

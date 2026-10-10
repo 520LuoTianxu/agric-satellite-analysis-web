@@ -2380,3 +2380,112 @@ export const shareApi = {
 };
 
 export default apiFetch;
+
+// ── 全部地块收获进度报表 ─────────────────────────────────────────────
+
+/** 进度分档（按最新合计% = 已收获 + 疑似收获）。none = 已计算但均未超过落库门槛。 */
+export type HarvestReportBucket = "none" | "lt30" | "30_90" | "ge90" | "not_computed";
+
+export interface HarvestReportItem {
+    land_id: string;
+    land_name: string | null;
+    group_id: string | null;
+    group_name: string | null;
+    farm_id: string | null;
+    crop_type: string | null;
+    province_name: string | null;
+    city_name: string | null;
+    county_name: string | null;
+    area_mu: number | null;
+    computed: boolean;
+    coverage: "stored" | "full" | "partial" | "none";
+    latest_obs_date: string | null;
+    days_since_last_image: number | null;
+    obs_count: number;
+    first_harvest_date: string | null;
+    latest_date: string | null;
+    status: string | null;
+    harvested_pct: number | null;
+    suspected_pct: number | null;
+    combined_pct: number | null;
+    harvested_area_mu: number | null;
+    combined_area_mu: number | null;
+    newly_combined_pct: number | null;
+    newly_harvested_pct: number | null;
+    season_start: string | null;
+    confidence: number | null;
+    confidence_level: string | null;
+    confirmed: boolean | null;
+    method_version: string | null;
+    bucket: HarvestReportBucket;
+}
+
+export interface HarvestReportSummary {
+    parcel_count: number;
+    computed_count: number;
+    total_area_mu: number;
+    computed_area_mu: number;
+    harvested_area_mu: number;
+    combined_area_mu: number;
+    avg_combined_pct: number | null;
+    area_weighted_combined_pct: number | null;
+    bucket_counts: Record<HarvestReportBucket, number>;
+    min_save_pct: number;
+}
+
+export interface HarvestReportResult {
+    items: HarvestReportItem[];
+    total: number;
+    page: number;
+    page_size: number;
+    summary: HarvestReportSummary;
+    facets: {
+        groups: { id: string; name: string | null; count: number }[];
+        crops: { id: string; count: number }[];
+    };
+    filters: Record<string, unknown>;
+    method_version: string;
+}
+
+export interface HarvestReportQuery {
+    from?: string;
+    to?: string;
+    groupId?: string;
+    crop?: string;
+    status?: HarvestReportBucket[];
+    minPct?: number | null;
+    q?: string;
+    sort?: string;
+    order?: "asc" | "desc";
+    page?: number;
+    pageSize?: number;
+}
+
+function harvestReportParams(opts: HarvestReportQuery): URLSearchParams {
+    const params = new URLSearchParams();
+    if (opts.from) params.set("from", opts.from);
+    if (opts.to) params.set("to", opts.to);
+    if (opts.groupId) params.set("group_id", opts.groupId);
+    if (opts.crop) params.set("crop", opts.crop);
+    if (opts.status?.length) params.set("status", opts.status.join(","));
+    if (opts.minPct != null && opts.minPct > 0) params.set("min_pct", String(opts.minPct));
+    if (opts.q) params.set("q", opts.q);
+    if (opts.sort) params.set("sort", opts.sort);
+    if (opts.order) params.set("order", opts.order);
+    return params;
+}
+
+export const harvestReportApi = {
+    list: (opts: HarvestReportQuery = {}, signal?: AbortSignal) => {
+        const params = harvestReportParams(opts);
+        if (opts.page) params.set("page", String(opts.page));
+        if (opts.pageSize) params.set("page_size", String(opts.pageSize));
+        return apiFetch<HarvestReportResult>(`/agri/harvest-report?${params.toString()}`, { signal });
+    },
+    /** 导出 Excel（汇总/逐日明细/透视/说明），筛选条件与列表一致。 */
+    exportXlsx: (opts: HarvestReportQuery = {}) =>
+        apiDownload(
+            `/agri/harvest-report/export.xlsx?${harvestReportParams(opts).toString()}`,
+            `harvest-report_${opts.from ?? ""}_${opts.to ?? ""}.xlsx`,
+        ),
+};

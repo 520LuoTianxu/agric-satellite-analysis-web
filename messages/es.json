@@ -30,7 +30,8 @@
     "projectRemoteSensing": "Teledetección",
     "landReports": "Informes de terreno",
     "operations": "Operaciones",
-    "parcelInsights": "Análisis de parcelas"
+    "parcelInsights": "Análisis de parcelas",
+    "harvestReport": "Informe de cosecha"
   },
   "sidebar": {
     "workspaces": "Espacios de trabajo",
@@ -2106,5 +2107,77 @@
     "pixelLive": "Aún no almacenado; calculado al momento.",
     "pixelDateFallback": "No hay imagen válida en esa fecha; se muestra {date}.",
     "pixelMapHint": "Cada celda mide unos 10 m; mismo algoritmo que los porcentajes de arriba. En una temporada un píxel solo avanza (sin cosechar → sospechada → cosechada). Porcentajes sobre los píxeles de cultivo de la temporada."
+  },
+  "harvestReport": {
+    "title": "Informe de avance de cosecha",
+    "subtitle": "Avance de cosecha (cosechado + sospechoso) de todas las parcelas a partir de los resultados almacenados; las fechas con un porcentaje combinado no superior al {minSave}% no se guardan y cuentan como no cosechadas.",
+    "from": "Desde",
+    "to": "Hasta",
+    "group": "Grupo",
+    "allGroups": "Todos los grupos",
+    "crop": "Cultivo",
+    "allCrops": "Todos los cultivos",
+    "status": "Rango de avance",
+    "allStatus": "Todos los rangos",
+    "minPct": "% combinado mín.",
+    "search": "ID / nombre de parcela",
+    "reset": "Restablecer",
+    "export": "Exportar Excel",
+    "exporting": "Exportando…",
+    "exportFailed": "Error al exportar: {error}",
+    "loadFailed": "Error al cargar: {error}",
+    "loading": "Cargando…",
+    "empty": "Ninguna parcela coincide con los filtros",
+    "kpi": {
+      "parcels": "Parcelas",
+      "parcelsHint": "{computed} calculadas",
+      "area": "Superficie total",
+      "harvestedArea": "Superficie cosechada",
+      "combinedArea": "Cosechada + sospechosa",
+      "avgPct": "Avance medio",
+      "avgHint": "Ponderado por superficie {weighted}",
+      "mu": "{value} mu"
+    },
+    "bucket": {
+      "none": "Sin cosechar",
+      "lt30": "<30%",
+      "30_90": "30–90%",
+      "ge90": "≥90%",
+      "not_computed": "Sin calcular"
+    },
+    "statusLabel": {
+      "growing": "En crecimiento",
+      "harvesting": "Cosechando",
+      "harvested": "Cosechada"
+    },
+    "confidence": {
+      "high": "Alta",
+      "medium": "Media",
+      "low": "Baja"
+    },
+    "col": {
+      "land": "Parcela",
+      "group": "Grupo",
+      "crop": "Cultivo",
+      "region": "Región",
+      "area": "Superficie (mu)",
+      "firstHarvest": "Primera cosecha",
+      "latest": "Último resultado",
+      "harvested": "Cosechado",
+      "suspected": "Sospechoso",
+      "combined": "Combinado",
+      "combinedArea": "Cosechado (mu)",
+      "newly": "Desde ant.",
+      "status": "Estado",
+      "confidence": "Confianza",
+      "lastImage": "Última imagen",
+      "bucket": "Rango"
+    },
+    "days": "{n} d",
+    "provisional": "Provisional",
+    "notComputedHint": "Aún sin calcular (ejecutar reproceso de cosecha)",
+    "pageInfo": "Página {page}/{pages}, {total} parcelas",
+    "prev": "Anterior",
+    "next": "Siguiente"
   }
 }
