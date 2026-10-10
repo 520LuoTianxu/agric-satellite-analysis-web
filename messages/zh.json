@@ -30,7 +30,8 @@
     "projectRemoteSensing": "项目遥感",
     "landReports": "选地报告",
     "operations": "系统运维",
-    "parcelInsights": "地块分析"
+    "parcelInsights": "地块分析",
+    "harvestReport": "收获报表"
   },
   "sidebar": {
     "workspaces": "工作区",
@@ -2106,5 +2107,77 @@
     "pixelLive": "尚未落库，为现场计算结果。",
     "pixelDateFallback": "该日无有效影像，显示 {date}。",
     "pixelMapHint": "每格约 10 米；与上方占比同一算法，单个像元季内只会从未收获→疑似→已收获，不会倒退。百分比为占本季作物像元的比例。"
+  },
+  "harvestReport": {
+    "title": "收获进度报表",
+    "subtitle": "全部地块的收获进度（已收获 + 疑似收获），数据来自已落库的收获计算结果；合计占比未超过 {minSave}% 的观测日不入库，视为未收获。",
+    "from": "开始日期",
+    "to": "结束日期",
+    "group": "分组",
+    "allGroups": "全部分组",
+    "crop": "作物",
+    "allCrops": "全部作物",
+    "status": "进度分档",
+    "allStatus": "全部分档",
+    "minPct": "最低合计%",
+    "search": "地块ID/名称",
+    "reset": "重置",
+    "export": "导出 Excel",
+    "exporting": "导出中…",
+    "exportFailed": "导出失败：{error}",
+    "loadFailed": "加载失败：{error}",
+    "loading": "加载中…",
+    "empty": "没有符合条件的地块",
+    "kpi": {
+      "parcels": "地块数",
+      "parcelsHint": "其中已计算 {computed} 块",
+      "area": "总面积",
+      "harvestedArea": "已收获面积",
+      "combinedArea": "合计收获面积",
+      "avgPct": "平均合计进度",
+      "avgHint": "面积加权 {weighted}",
+      "mu": "{value} 亩"
+    },
+    "bucket": {
+      "none": "未收获",
+      "lt30": "<30%",
+      "30_90": "30–90%",
+      "ge90": "≥90%",
+      "not_computed": "未计算"
+    },
+    "statusLabel": {
+      "growing": "生长中",
+      "harvesting": "收获中",
+      "harvested": "已收获"
+    },
+    "confidence": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "col": {
+      "land": "地块",
+      "group": "分组",
+      "crop": "作物",
+      "region": "省/市/县",
+      "area": "面积(亩)",
+      "firstHarvest": "首次收获",
+      "latest": "最新结果",
+      "harvested": "已收获",
+      "suspected": "疑似",
+      "combined": "合计",
+      "combinedArea": "收获面积(亩)",
+      "newly": "较上期",
+      "status": "状态",
+      "confidence": "置信度",
+      "lastImage": "距影像",
+      "bucket": "分档"
+    },
+    "days": "{n} 天",
+    "provisional": "暂定",
+    "notComputedHint": "尚未计算（需运行收获回填）",
+    "pageInfo": "第 {page}/{pages} 页，共 {total} 块",
+    "prev": "上一页",
+    "next": "下一页"
   }
 }
