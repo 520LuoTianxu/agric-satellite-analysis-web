@@ -36,21 +36,24 @@ python scripts/check-i18n-keys.py
 
 测试环境使用仓库中的 `.env.test`（仅包含前端公开配置和网关地址），构建命令为 `npm run build:test`。该命令显式加载测试站点子路径和直连网关配置，检查必需配置，并禁用覆盖卫星样式的 PMTiles 自动升级。测试发布平台应使用此命令；仅执行 `npm run build` 不会自动加载 `.env.test`。直连网关必须允许测试站点来源的 CORS 请求。不要在该文件中添加数据库密码或服务端密钥。
 
-生产站点构建使用 `.env.prod`，构建命令为 `npm run build:prod`。站点元数据可以使用生产站点地址，但前端 API 网关仍固定为测试域名；静态构建必须启用直连，并校验两个网关配置均为 `https://joint-venture-test.cdfinance.com.cn`。
+生产站点构建使用 `.env.prod`，构建命令为 `npm run build:prod`。生产静态构建会将业务和卫星 API 直连到正式网关 `https://joint-venture.cdfinance.com.cn`，并在构建时校验两个网关均与 `API_ENV=production` 匹配。测试构建仍使用 `.env.test` 中的测试网关。
 
 地图回归检查：`node scripts/verify-basemap.mjs`；真实浏览器瓦片与 403 降级验证：`python scripts/verify-basemap-ui.py`（需 Playwright、Chromium 和 Pillow）。
 
 ## 静态部署
 
-本项目使用 Next.js 静态导出，构建产物为 `out/`，不需要启动 Node 服务。静态构建不会执行 `next.config.js` 的 rewrites，因此构建会将 `/bapi/`、`/agric-api/`、`/admin-api/`、`/satellite-api/` 的请求统一指向测试网关 `https://joint-venture-test.cdfinance.com.cn`，并在构建时校验网关域名，避免误连生产接口。直连模式要求测试网关允许站点来源的 CORS 请求。
+本项目使用 Next.js 静态导出，构建产物为 `out/`，不需要启动 Node 服务。静态构建不会执行 `next.config.js` 的 rewrites，因此 `/bapi/`、`/agric-api/`、`/admin-api/`、`/satellite-api/` 会由浏览器直连构建目标环境配置的网关：`npm run build:test` 使用测试网关，`npm run build:prod` 使用正式网关。构建会校验 API_ENV 与网关地址，避免环境串用；目标网关需允许对应站点来源的 CORS 请求。
 
 部署到子路径时，仍需在构建前设置路径前缀和同源 API 前缀：
 
 ```bash
 export NEXT_PUBLIC_BASE_PATH=/agric-satellite-analysis-web
 export NEXT_PUBLIC_API_URL=/satellite-api
-export NEXT_PUBLIC_SITE_URL=https://joint-venture-test.cdfinance.com.cn/agric-satellite-analysis-web
-rm -rf node_modules && rm -rf .next && rm -rf out && npm install && npm run build
+export API_ENV=production
+export NEXT_PUBLIC_JOINT_VENTURE_PROXY=https://joint-venture.cdfinance.com.cn
+export NEXT_PUBLIC_SATELLITE_API_PROXY=https://joint-venture.cdfinance.com.cn
+export NEXT_PUBLIC_SITE_URL=https://joint-venture.cdfinance.com.cn/agric-satellite-analysis-web
+rm -rf node_modules && rm -rf .next && rm -rf out && npm install && npm run build:prod
 ```
 
 平台 Node 版本使用 `.nvmrc` 中的 Node 20，推荐出包路径填写 `out/`。如果平台固定使用旧配置 `target=.next/standalone` 也可以，构建后的 `postbuild` 会把静态文件同步到该目录，`deploy.sh` 会自动识别。服务器发布目录可使用 `/data/mwbase/agric-satellite-analysis-web`，再执行仓库中的 `deploy.sh`。`NEXT_PUBLIC_BASE_PATH`、`NEXT_PUBLIC_API_URL` 和直连开关都必须在构建前设置；`JOINT_VENTURE_PROXY`、`SATELLITE_API_PROXY` 仅用于本地 Next 代理。
