@@ -2102,6 +2102,7 @@
     "stateSuspected": "Sospechada",
     "stateHarvested": "Cosechada",
     "stateNodata": "Sin datos (nubes/no válido)",
+    "stateNoHistory": "Sin historial de la temporada",
     "pixelCount": "{count} píxeles de cultivo",
     "pixelLoadFailed": "No se pudo cargar el estado por píxel",
     "pixelLive": "Aún no almacenado; calculado al momento.",

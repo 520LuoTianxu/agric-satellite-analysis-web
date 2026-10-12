@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Loader2, Map as MapIcon } from "lucide-react";
 import { agriApi, type HarvestPixelsResult } from "@/lib/api";
 import {
+    HARVEST_NODATA_STYLE,
     HARVEST_STATE_STYLE,
     lonLatToWebMercator,
     rasterizeHarvestStatePixels,
@@ -25,7 +26,6 @@ interface HarvestPixelMapProps {
 }
 
 const ORDER: HarvestPixelStateKey[] = ["unharvested", "suspected", "harvested"];
-const NODATA_COLOR = "#cbd5e1";
 
 function fmtPct(v: number | null | undefined): string {
     return v == null || !Number.isFinite(v) ? "—" : `${v.toFixed(1)}%`;
@@ -114,6 +114,7 @@ export default function HarvestPixelMap({ landId, dates, fieldGeom, onMapOverlay
                 unharvested: `${t("stateUnharvested")} ${fmtPct(pct?.unharvested)}`,
                 suspected: `${t("stateSuspected")} ${fmtPct(pct?.suspected)}`,
                 harvested: `${t("stateHarvested")} ${fmtPct(pct?.harvested)}`,
+                nodata: t("stateNoHistory"),
             },
             fieldGeom ?? null,
         );
@@ -227,14 +228,21 @@ export default function HarvestPixelMap({ landId, dates, fieldGeom, onMapOverlay
                             <span className="font-medium tabular-nums">{fmtPct(data?.crop_pct?.[key])}</span>
                         </li>
                     ))}
-                    {(data?.crop_pct?.nodata ?? 0) > 0 ? (
+                    {(data?.counts?.nodata ?? 0) > 0 ? (
+                        // crop_pct.nodata 恒为 0（分母是作物像元），按像元计数判断是否显示。
                         <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                             <span
-                                className="inline-block h-3 w-3 shrink-0 rounded-sm border border-dashed border-border"
-                                style={{ background: NODATA_COLOR, opacity: 0.4 }}
+                                className="inline-block h-3 w-3 shrink-0 rounded-sm border border-border/60"
+                                style={{ background: HARVEST_NODATA_STYLE.color }}
                             />
-                            <span className="flex-1">{t("stateNodata")}</span>
-                            <span className="tabular-nums">{fmtPct(data?.crop_pct?.nodata)}</span>
+                            <span className="flex-1" title={t("stateNodata")}>
+                                {t("stateNoHistory")}
+                            </span>
+                            <span className="tabular-nums">
+                                {data?.pixel_count
+                                    ? fmtPct((100 * (data.counts.nodata ?? 0)) / data.pixel_count)
+                                    : "—"}
+                            </span>
                         </li>
                     ) : null}
                     {data ? (
