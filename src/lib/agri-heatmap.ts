@@ -1685,7 +1685,7 @@ export function rasterizeAgriLonLatPixels(
 }
 
 
-/** 收获逐像元状态：0 未收获、1 疑似收获、2 已收获；255 无数据（不着色）。 */
+/** 收获逐像元状态：0 未收获、1 疑似收获、2 已收获；255 无数据（浅灰，图例“无本季历史”）。 */
 export const HARVEST_PIXEL_NODATA = 255;
 export type HarvestPixelStateKey = "unharvested" | "suspected" | "harvested";
 export const HARVEST_STATE_KEYS: Record<number, HarvestPixelStateKey> = {
@@ -1701,6 +1701,11 @@ export const HARVEST_STATE_STYLE: Record<
     suspected: { color: "#fdba74", rgba: [253, 186, 116, 235] },
     harvested: { color: "#b45309", rgba: [180, 83, 9, 235] },
 };
+/** 255 无数据像元（非作物/无本季历史/云）：画浅灰，避免地块内留白看起来断断续续。 */
+export const HARVEST_NODATA_STYLE: { color: string; rgba: [number, number, number, number] } = {
+    color: "#d1d5db",
+    rgba: [209, 213, 219, 210],
+};
 
 export interface HarvestStatePixel {
     lon: number;
@@ -1710,19 +1715,34 @@ export interface HarvestStatePixel {
 
 /**
  * 收获逐像元状态 → 地图色膜（复用 lon/lat 连续色膜绘制）。
- * ``labels`` 为图例文字（可含百分比）；无数据像元不着色。
+ * ``labels`` 为图例文字（可含百分比）；无数据（255）像元画浅灰，``labels.nodata``
+ * 给出时图例追加该项。
  */
 export function rasterizeHarvestStatePixels(
     pixels: HarvestStatePixel[],
-    labels: Record<HarvestPixelStateKey, string> & { title: string },
+    labels: Record<HarvestPixelStateKey, string> & { title: string; nodata?: string },
     fieldGeom?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null,
     resM = 10,
 ): AgriHeatmapImage | null {
     const cells: Omit<LonLatPainted, "row" | "col">[] = [];
     const counts: Record<HarvestPixelStateKey, number> = { unharvested: 0, suspected: 0, harvested: 0 };
+    let nodata = 0;
     for (const p of pixels) {
+        if (!Number.isFinite(p.lon) || !Number.isFinite(p.lat)) continue;
+        if (p.state === HARVEST_PIXEL_NODATA) {
+            nodata += 1;
+            cells.push({
+                lon: p.lon,
+                lat: p.lat,
+                color: HARVEST_NODATA_STYLE.color,
+                rgba: HARVEST_NODATA_STYLE.rgba,
+                value: p.state,
+                class: "nodata",
+            });
+            continue;
+        }
         const key = HARVEST_STATE_KEYS[p.state];
-        if (!key || !Number.isFinite(p.lon) || !Number.isFinite(p.lat)) continue;
+        if (!key) continue;
         const style = HARVEST_STATE_STYLE[key];
         counts[key] += 1;
         cells.push({ lon: p.lon, lat: p.lat, color: style.color, rgba: style.rgba, value: p.state, class: key });
@@ -1746,7 +1766,12 @@ export function rasterizeHarvestStatePixels(
         legend: {
             kind: "classes",
             label: labels.title,
-            classes: order.map((key) => ({ key, label: labels[key], color: HARVEST_STATE_STYLE[key].color })),
+            classes: [
+                ...order.map((key) => ({ key, label: labels[key], color: HARVEST_STATE_STYLE[key].color })),
+                ...(nodata > 0 && labels.nodata
+                    ? [{ key: "nodata", label: labels.nodata, color: HARVEST_NODATA_STYLE.color }]
+                    : []),
+            ],
         },
     };
 }

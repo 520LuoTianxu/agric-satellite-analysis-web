@@ -2102,6 +2102,7 @@
     "stateSuspected": "疑似收获",
     "stateHarvested": "已收获",
     "stateNodata": "无数据（云/无效）",
+    "stateNoHistory": "无本季历史",
     "pixelCount": "作物像元 {count} 个",
     "pixelLoadFailed": "逐像元状态加载失败",
     "pixelLive": "尚未落库，为现场计算结果。",
