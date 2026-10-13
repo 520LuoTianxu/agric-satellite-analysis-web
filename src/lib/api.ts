@@ -2475,6 +2475,23 @@ function harvestReportParams(opts: HarvestReportQuery): URLSearchParams {
     return params;
 }
 
+export type HarvestExportJobStatus = "pending" | "running" | "done" | "failed";
+
+export interface HarvestExportJob {
+    job_id: string;
+    status: HarvestExportJobStatus;
+    progress: number;
+    stage: string;
+    error: string | null;
+    file_name: string;
+    size_bytes: number | null;
+    row_count: number | null;
+    created_at: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+    reused?: boolean;
+}
+
 export const harvestReportApi = {
     list: (opts: HarvestReportQuery = {}, signal?: AbortSignal) => {
         const params = harvestReportParams(opts);
@@ -2488,4 +2505,14 @@ export const harvestReportApi = {
             `/agri/harvest-report/export.xlsx?${harvestReportParams(opts).toString()}`,
             `harvest-report_${opts.from ?? ""}_${opts.to ?? ""}.xlsx`,
         ),
+    /** 异步导出：创建任务（同参数进行中的任务由后端复用）。 */
+    createExportJob: (opts: HarvestReportQuery = {}) =>
+        apiFetch<HarvestExportJob>(
+            `/agri/harvest-report/export-jobs?${harvestReportParams(opts).toString()}`,
+            { method: "POST" },
+        ),
+    getExportJob: (jobId: string, signal?: AbortSignal) =>
+        apiFetch<HarvestExportJob>(`/agri/harvest-report/export-jobs/${encodeURIComponent(jobId)}`, { signal }),
+    downloadExportJob: (job: HarvestExportJob) =>
+        apiDownload(`/agri/harvest-report/export-jobs/${encodeURIComponent(job.job_id)}/download`, job.file_name),
 };

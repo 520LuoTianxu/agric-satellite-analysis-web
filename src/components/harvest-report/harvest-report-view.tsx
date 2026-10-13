@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, Loader2 } from "lucide-react";
 import {
@@ -111,6 +111,15 @@ export function HarvestReportView() {
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState(false);
     const [exportError, setExportError] = useState<string | null>(null);
+    const [exportProgress, setExportProgress] = useState<number | null>(null);
+    const [exportStage, setExportStage] = useState("");
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
     const [crops, setCrops] = useState<CropOption[]>([]);
     // 分组下拉：累积见过的分组（选中某分组后接口只返回该分组）
     const [groups, setGroups] = useState<Map<string, string | null>>(new Map());
@@ -193,12 +202,28 @@ export function HarvestReportView() {
     const onExport = async () => {
         setExporting(true);
         setExportError(null);
+        setExportProgress(0);
         try {
-            await harvestReportApi.exportXlsx(query);
+            // 全量地块同步导出会超过网关 60s：先建任务，轮询进度，完成后下载。
+            let job = await harvestReportApi.createExportJob(query);
+            const deadline = Date.now() + 30 * 60 * 1000;
+            while (job.status === "pending" || job.status === "running") {
+                setExportProgress(job.progress);
+                setExportStage(job.stage);
+                if (!mountedRef.current) return;
+                if (Date.now() > deadline) throw new Error(t("exportTimeout"));
+                await new Promise((r) => setTimeout(r, 2000));
+                job = await harvestReportApi.getExportJob(job.job_id);
+            }
+            if (job.status === "failed") throw new Error(job.error || t("exportUnknownError"));
+            setExportProgress(100);
+            await harvestReportApi.downloadExportJob(job);
         } catch (e) {
             setExportError(e instanceof Error ? e.message : String(e));
         } finally {
             setExporting(false);
+            setExportProgress(null);
+            setExportStage("");
         }
     };
 
@@ -282,8 +307,23 @@ export function HarvestReportView() {
                         ) : (
                             <Download className="mr-2 h-4 w-4" />
                         )}
-                        {exporting ? t("exporting") : t("export")}
+                        {exporting
+                            ? exportProgress != null
+                                ? t("exportingProgress", { pct: Math.round(exportProgress) })
+                                : t("exporting")
+                            : t("export")}
                     </Button>
+                    {exporting && exportProgress != null && (
+                        <div className="flex w-48 flex-col items-end gap-1">
+                            <div className="h-1.5 w-full overflow-hidden rounded bg-muted">
+                                <div
+                                    className="h-full bg-primary transition-all"
+                                    style={{ width: `${Math.max(3, exportProgress)}%` }}
+                                />
+                            </div>
+                            {exportStage && <span className="text-xs text-muted-foreground">{exportStage}</span>}
+                        </div>
+                    )}
                     {exportError && (
                         <span className="text-xs text-destructive">{t("exportFailed", { error: exportError })}</span>
                     )}
