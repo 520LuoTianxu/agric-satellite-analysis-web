@@ -17,6 +17,7 @@ const NAV_ITEMS = [
     { href: "/overview" as const, labelKey: "overview" as const },
     { href: "/farms" as const, labelKey: "projectRemoteSensing" as const },
     { href: "/harvest-report" as const, labelKey: "harvestReport" as const },
+    { href: "/harvest-analysis" as const, labelKey: "harvestAnalysis" as const },
     { href: "/alerts" as const, labelKey: "alerts" as const },
     // 管理端任务入口需要让管理员能从主导航直接进入，而不是只能手动拼接地址。
     { href: "/admin/ops" as const, labelKey: "operations" as const },
