@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectStatistics } from "@/components/project/project-statistics";
 import { ProjectLandPanel, ProjectRiskBadge } from "@/components/project/project-land-panel";
 import { TOUR_PREPARE_EVENT, type TourPrepareDetail } from "@/lib/product-tour";
+import { HarvestAnalysisView } from "@/components/project-harvest/harvest-analysis-view";
 
 const ProjectLandsMap = dynamic(() => import("@/components/project/project-lands-map"), {
     ssr: false, loading: () => <Skeleton className="h-full w-full rounded-none" />,
@@ -33,6 +34,15 @@ function FarmDetailPageContent() {
     const tRules = useTranslations("alertRules");
     const searchParams = useSearchParams();
     const groupId = searchParams.get("groupId") || "";
+    const tHarvest = useTranslations("harvestAnalysis");
+    // 页签写入 URL（?tab=harvest），刷新或分享后保持在收获分析。
+    const [tab, setTab] = useState<"monitoring" | "harvest">(searchParams.get("tab") === "harvest" ? "harvest" : "monitoring");
+    const switchTab = useCallback((next: "monitoring" | "harvest") => {
+        setTab(next);
+        const url = new URL(window.location.href);
+        if (next === "harvest") url.searchParams.set("tab", "harvest"); else url.searchParams.delete("tab");
+        window.history.replaceState(null, "", url.toString());
+    }, []);
     const [group, setGroup] = useState<AgricGroup | null>(null);
     const [businessLands, setBusinessLands] = useState<AgricLand[]>([]);
     const [monitoring, setMonitoring] = useState<ProjectMonitoring | null>(null);
@@ -179,6 +189,13 @@ function FarmDetailPageContent() {
                     <Button variant="outline" size="sm" onClick={() => setRefresh((value) => value + 1)}><RefreshCw className="mr-2 h-4 w-4" />{t("refresh")}</Button>
                 </div>
             </header>
+            <div role="tablist" aria-label={tHarvest("tabsLabel")} className="flex gap-1 border-b px-4">
+                {(["monitoring", "harvest"] as const).map((key) => <button key={key} type="button" role="tab" aria-selected={tab === key}
+                    onClick={() => switchTab(key)}
+                    className={cn("-mb-px border-b-2 px-3 py-2 text-sm transition-colors", tab === key ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
+                    {key === "harvest" ? tHarvest("tab") : tHarvest("tabMonitoring")}</button>)}
+            </div>
+            {tab === "harvest" ? <div className="min-h-0 flex-1 overflow-y-auto"><HarvestAnalysisView groupId={groupId} compact /></div> : <>
             {!monitoring && <div role="alert" className="mx-4 mb-3 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-subtle p-3 text-xs">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-warning" /><span>{t("monitoringUnavailable")}</span>
             </div>}
@@ -258,6 +275,7 @@ function FarmDetailPageContent() {
                     <ProjectLandPanel land={selectedLand} groupId={groupId} freshnessDays={monitoring?.freshness_days ?? freshnessDays} onClose={() => setSelectedLandId(null)} />
                 </div>}
             </div>
+            </>}
         </div>
     );
 }

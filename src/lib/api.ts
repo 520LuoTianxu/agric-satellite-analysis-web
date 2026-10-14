@@ -1065,6 +1065,138 @@ export const projectsApi = {
         ),
 };
 
+// ── 项目级收获分析（proj_ts_m1_v1，后端 /projects/{groupId}/harvest-analysis） ──
+
+export type HarvestTierKey = "high" | "medium" | "low" | "unharvested" | "cloud" | "noncrop";
+
+export interface HarvestTierLegend { code: number; key: HarvestTierKey; name: string; color: string }
+
+export interface ProjectHarvestRun {
+    run_id: string;
+    group_id: string;
+    status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+    method_version: string;
+    is_current: boolean;
+    season_from: string | null;
+    season_to: string | null;
+    parcel_count: number | null;
+    merged_count: number | null;
+    dedup_area_mu: number | null;
+    error: string | null;
+    created_at: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+}
+
+export interface ProjectHarvestBlock { key: string; bbox: [number, number, number, number] | null; dates: string[]; parcel_count: number | null; note?: string | null }
+
+export interface ProjectHarvestOverview extends Partial<ProjectHarvestRun> {
+    available: boolean;
+    reason?: string;
+    valid_dates?: string[];
+    blocks?: ProjectHarvestBlock[];
+    thresholds?: Record<string, Record<string, number>>;
+    params?: Record<string, unknown>;
+    pick_dates?: Record<string, number>;
+    dedup?: { kept: number | null; merged: number | null; area_mu: number | null; rule: string };
+    active_run?: ProjectHarvestRun | null;
+    legend: HarvestTierLegend[];
+    can_trigger?: boolean;
+}
+
+export interface ProjectHarvestTotals {
+    parcel_count: number | null;
+    area_mu: number | null;
+    crop_mu: number | null;
+    high_mu: number | null;
+    medium_mu: number | null;
+    low_mu: number | null;
+    unharvested_mu: number | null;
+    cloud_mu: number | null;
+    noncrop_mu: number | null;
+    harvested_mu: number | null;
+    harvested_pct: number | null;
+    cloud_pct: number | null;
+}
+
+export interface ProjectHarvestSeriesPoint { date: string; harvested_pct: number | null; cloud_pct: number | null; crop_mu: number | null; blocks?: Record<string, number | null> }
+
+export interface ProjectHarvestSummary {
+    date: string;
+    totals: ProjectHarvestTotals | null;
+    by_block: (ProjectHarvestTotals & { key: string })[];
+    by_town_village: (ProjectHarvestTotals & { key: string })[];
+    by_status: (ProjectHarvestTotals & { key: string })[];
+    pick_dates?: Record<string, number>;
+    series: ProjectHarvestSeriesPoint[];
+}
+
+export interface ProjectHarvestParcel extends ProjectHarvestTotals {
+    land_id: string;
+    land_name: string | null;
+    land_status: string | null;
+    town_name: string | null;
+    village_name: string | null;
+    block_key: string | null;
+    obs_date: string;
+    is_pick: boolean;
+    fallback: boolean;
+    registered_area_mu: number | null;
+    covered_by: string[];
+    peak_ndvi_median: number | null;
+}
+
+export interface ProjectHarvestLayers {
+    date: string;
+    kind: "tier" | "rgb";
+    items: { block: string; available: boolean; url?: string | null; coordinates?: [number, number][]; bbox?: number[] | null }[];
+    legend: HarvestTierLegend[];
+}
+
+export interface ProjectHarvestExportJob {
+    job_id: string;
+    group_id: string;
+    status: "pending" | "running" | "done" | "failed";
+    error: string | null;
+    file_name: string;
+    size_bytes: number | null;
+}
+
+export interface ProjectHarvestParcelQuery { date?: string; q?: string; status?: string; sort?: string; order?: "asc" | "desc"; offset?: number; limit?: number }
+
+function harvestBase(groupId: string) {
+    return `/projects/${encodeURIComponent(groupId)}/harvest-analysis`;
+}
+
+function qs(params: Record<string, string | number | undefined | null>): string {
+    const s = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") s.set(k, String(v));
+    const out = s.toString();
+    return out ? `?${out}` : "";
+}
+
+export const projectHarvestApi = {
+    overview: (groupId: string, signal?: AbortSignal) => apiFetch<ProjectHarvestOverview>(harvestBase(groupId), { signal }),
+    summary: (groupId: string, date?: string, signal?: AbortSignal) =>
+        apiFetch<ProjectHarvestSummary>(`${harvestBase(groupId)}/summary${qs({ date })}`, { signal }),
+    parcels: (groupId: string, query: ProjectHarvestParcelQuery = {}, signal?: AbortSignal) =>
+        apiFetch<Paginated<ProjectHarvestParcel>>(
+            `${harvestBase(groupId)}/parcels${qs({ ...query })}`, { signal }),
+    geojson: (groupId: string, date?: string, signal?: AbortSignal) =>
+        apiFetch<GeoJSON.FeatureCollection>(`${harvestBase(groupId)}/parcels.geojson${qs({ date })}`, { signal }),
+    layers: (groupId: string, date: string, kind: "tier" | "rgb" = "tier", signal?: AbortSignal) =>
+        apiFetch<ProjectHarvestLayers>(`${harvestBase(groupId)}/layers${qs({ date, kind })}`, { signal }),
+    run: (groupId: string, runId: string) => apiFetch<ProjectHarvestRun>(`${harvestBase(groupId)}/runs/${encodeURIComponent(runId)}`),
+    trigger: (groupId: string, body: { force?: boolean } = {}) =>
+        apiFetch<ProjectHarvestRun & { reused: boolean }>(`${harvestBase(groupId)}/runs`, { method: "POST", body: JSON.stringify(body) }),
+    createExportJob: (groupId: string) =>
+        apiFetch<ProjectHarvestExportJob>(`${harvestBase(groupId)}/export-jobs`, { method: "POST" }),
+    getExportJob: (groupId: string, jobId: string) =>
+        apiFetch<ProjectHarvestExportJob>(`${harvestBase(groupId)}/export-jobs/${encodeURIComponent(jobId)}`),
+    downloadExportJob: (groupId: string, job: ProjectHarvestExportJob) =>
+        apiDownload(`${harvestBase(groupId)}/export-jobs/${encodeURIComponent(job.job_id)}/download`, job.file_name),
+};
+
 /** 预警使用联合登录的基地和账号 ID，后端无需解析或校验农业 token。 */
 async function alertFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
     const session = getAlertSession();
