@@ -3,3 +3,4 @@ export * from "./storage";
 export * from "./api";
 export * from "./session";
 export * from "./privileged-access";
+export * from "./org-access";

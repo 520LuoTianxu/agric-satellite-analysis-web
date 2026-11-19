@@ -81,6 +81,9 @@
     "switchingTenant": "Switching tenant...",
     "switchFailed": "Failed to switch tenant",
     "noTenant": "No tenant selected",
+    "accessDeniedTitle": "Access denied",
+    "accessDeniedDesc": "Your organization does not have permission to use this system. Please contact an administrator to request access.",
+    "useAnotherAccount": "Sign in with another account",
     "logoutConfirmTitle": "Sign out",
     "logoutConfirmDesc": "Sign out of the system?",
     "logoutConfirm": "Confirm"

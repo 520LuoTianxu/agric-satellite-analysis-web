@@ -81,6 +81,9 @@
     "switchingTenant": "正在切换租户，请稍候...",
     "switchFailed": "切换租户失败",
     "noTenant": "未选择租户",
+    "accessDeniedTitle": "暂无访问权限",
+    "accessDeniedDesc": "当前组织无法使用本系统，请联系管理员开权限后才可以访问。",
+    "useAnotherAccount": "使用其他账号登录",
     "logoutConfirmTitle": "退出登录",
     "logoutConfirmDesc": "确定注销并退出系统吗？",
     "logoutConfirm": "确定"

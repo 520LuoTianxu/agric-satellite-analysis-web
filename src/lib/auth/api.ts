@@ -1,4 +1,4 @@
-import { AuthApiError, type JointLoginData, type JointV2LoginParams, type MachineLoginInfo } from "./types";
+import { AuthApiError, type JointLoginData, type JointV2LoginParams, type MachineLoginInfo, type SsoLoginData } from "./types";
 import { getBmsToken, getItem, AUTH_KEYS } from "./storage";
 import { resolveGatewayUrl } from "@/lib/api-origin";
 
@@ -49,7 +49,14 @@ function unwrapEnvelope<T>(body: AuthEnvelope<T>): T {
     if (body.success === false) {
         throw new AuthApiError(message, code);
     }
-    if (code !== 200 && code !== "200") {
+    // auth-service SSO returns success=true with code "0"; jointV2 may use 200.
+    const succeeded =
+        body.success === true ||
+        code === 200 ||
+        code === "200" ||
+        code === 0 ||
+        code === "0";
+    if (!succeeded) {
         throw new AuthApiError(message, code);
     }
     return (body.data ?? body) as T;
@@ -127,28 +134,29 @@ export function getJointV2InfoByBmsToken(bmsToken: string): Promise<JointLoginDa
     );
 }
 
-export interface RefreshTokenResult {
-    token?: string;
-    refreshToken?: string;
-    branchVO?: Record<string, unknown> | null;
-}
-
-/** POST /bapi/auth-service/oauth/login/sso */
-export function refreshBmsToken(
+/**
+ * POST /bapi/auth-service/oauth/login/sso
+ *
+ * Reuses this app's existing auth client: systemId/channel query params and
+ * the Cfpamfrt header from the jointV2 refresh credential. Dynamic signed
+ * query values used by other H5 clients are not hard-coded here.
+ */
+export function loginSso(
     saveRefreshToken: string,
     params: { systemId: number; channel: string } = { systemId: 11, channel: "joint" },
     { silent = false }: { silent?: boolean } = {},
-): Promise<RefreshTokenResult> {
+): Promise<SsoLoginData> {
     const query = new URLSearchParams({
         systemId: String(params.systemId),
         channel: params.channel,
     });
-    return request<RefreshTokenResult>(
+    return request<SsoLoginData>(
         `/bapi/auth-service/oauth/login/sso?${query.toString()}`,
         {
             method: "POST",
             silent,
             headers: {
+                "Content-Type": "application/json",
                 Cfpamfrt: saveRefreshToken,
             },
         },

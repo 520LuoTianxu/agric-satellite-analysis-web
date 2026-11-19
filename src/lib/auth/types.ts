@@ -32,9 +32,37 @@ export interface JointLoginData {
     isStoreAdmin?: boolean;
     accountRoleList?: AccountRole[];
     certifiedExternalSystems?: CertifiedExternalSystem[];
-    branchVO?: Record<string, unknown> | null;
+    branchVO?: BranchVO | null;
     resourceList?: unknown[];
     agricTenantType?: number;
+    [key: string]: unknown;
+}
+
+export interface BranchVO {
+    orgId?: number | string;
+    hrOrgId?: number | string;
+    orgCode?: string;
+    bizOrgCode?: string;
+    areaOrgCode?: string;
+    orgName?: string;
+    hrOrgName?: string;
+    hrOrgTreePath?: string;
+    jobNumber?: string;
+    masterJobNumber?: string;
+    orgLevel?: string;
+    [key: string]: unknown;
+}
+
+export interface SsoLoginData {
+    userId?: number | string;
+    account?: string;
+    userName?: string;
+    token?: string;
+    refreshToken?: string;
+    branchVO?: BranchVO | null;
+    orgName?: string;
+    hrOrgName?: string;
+    orgBuVO?: { orgName?: string; hrOrgName?: string; [key: string]: unknown } | null;
     [key: string]: unknown;
 }
 
