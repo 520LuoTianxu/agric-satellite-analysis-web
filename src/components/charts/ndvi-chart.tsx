@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import * as echarts from "echarts/core";
 import { LineChart, BarChart, ScatterChart } from "echarts/charts";
@@ -30,6 +30,7 @@ import {
     thresholdMarkLine,
     valueAxis,
 } from "./chart-base";
+import { attachNearestDateClick, type AxisClickChart } from "./chart-date-click";
 import { filterRealisticNdviStats } from "@/lib/ndvi-realistic-filter";
 
 // Register only the modules we need (tree-shake friendly)
@@ -131,6 +132,10 @@ export default function NdviChart({
     // 选择日期只更新高亮，不重置用户已经选择的时间窗口；数据范围改变时重新适配。
     const viewKey = `${indexType}:${displayStats[0]?.date ?? ""}:${displayStats[displayStats.length - 1]?.date ?? ""}:r${onlyRealistic ? 1 : 0}`;
     const zoomRef = useRef<{ key: string; start: number; end: number } | null>(null);
+    const onDateSelectRef = useRef(onDateSelect);
+    const selectableDatesRef = useRef<string[]>([]);
+    const detachDateClickRef = useRef<(() => void) | null>(null);
+    onDateSelectRef.current = onDateSelect;
     const config = INDEX_CONFIG[indexType];
     const seriesName = config.label;
     const isSar = indexType === "VV" || indexType === "VH";
@@ -552,6 +557,36 @@ export default function NdviChart({
         };
     }, [displayStats, decloudAltStats, selectedDate, config, seriesName, weatherSorted, indexType, yMin, yMax, isSar, seasonMonths, peakMonths, stageBands, bareThreshold, eventMarks, viewKey, showObservations, showEvents, t]);
 
+    const selectableDates = useMemo(() => {
+        const dates: string[] = [];
+        const seen = new Set<string>();
+        const add = (date: string, value: number | null | undefined) => {
+            if (!date || value == null || !Number.isFinite(value) || seen.has(date)) return;
+            seen.add(date);
+            dates.push(date);
+        };
+        for (const s of displayStats) add(s.date, s.mean);
+        if (showObservations) {
+            for (const s of decloudAltStats ?? []) add(s.date, s.mean);
+        }
+        return dates;
+    }, [displayStats, decloudAltStats, showObservations]);
+    selectableDatesRef.current = selectableDates;
+
+    const onChartReady = useCallback((chart: AxisClickChart) => {
+        detachDateClickRef.current?.();
+        detachDateClickRef.current = attachNearestDateClick(
+            chart,
+            () => selectableDatesRef.current,
+            (date) => onDateSelectRef.current?.(date),
+        );
+    }, []);
+
+    useEffect(() => () => {
+        detachDateClickRef.current?.();
+        detachDateClickRef.current = null;
+    }, []);
+
     const onEvents = useMemo(
         () => ({
             datazoom: (event: { start?: number; end?: number; batch?: { start?: number; end?: number }[] }) => {
@@ -560,18 +595,8 @@ export default function NdviChart({
                     zoomRef.current = { key: viewKey, start: value.start, end: value.end };
                 }
             },
-            click: (params: any) => {
-                const ok =
-                    params.seriesName === seriesName ||
-                    params.seriesName === t("decloudAltSeries");
-                if (ok && params.value != null) {
-                    const raw = params.value;
-                    const date = Array.isArray(raw) ? raw[0] : (raw?.value ? raw.value[0] : null);
-                    if (date) onDateSelect?.(String(date));
-                }
-            },
         }),
-        [onDateSelect, seriesName, viewKey, t],
+        [viewKey],
     );
 
     if (stats.length === 0) {
@@ -597,6 +622,7 @@ export default function NdviChart({
                 option={option}
                 style={{ height, width: "100%" }}
                 onEvents={onEvents}
+                onChartReady={onChartReady}
                 notMerge
                 lazyUpdate
             />
