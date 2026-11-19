@@ -18,9 +18,10 @@ import {
     getMachineToken,
     listBaseinfo,
     loginJointV2,
-    refreshBmsToken,
+    loginSso,
 } from "./api";
-import type { AccountRole, AuthSession, JointLoginData, JointV2LoginParams } from "./types";
+import { AuthApiError, type AccountRole, type AuthSession, type JointLoginData, type JointV2LoginParams, type SsoLoginData } from "./types";
+import { enforceOrgAccess, isOrgAccessDenied, OrgAccessDeniedError } from "./org-access";
 
 const BMS_TOKEN_TTL_MS = 2 * 60 * 60 * 1000;
 
@@ -60,11 +61,80 @@ export function readSession(): AuthSession | null {
     };
 }
 
+function ssoCredentials(jointLoginData: JointLoginData | null): string[] {
+    const credentials = [
+        jointLoginData?.bmsRefreshToken,
+        getItem(AUTH_KEYS.bmsRefreshToken),
+        jointLoginData?.access_token,
+    ].filter((item): item is string => Boolean(item));
+    return [...new Set(credentials)];
+}
+
+export function mergeSsoIntoJointLogin(
+    jointLoginData: JointLoginData,
+    ssoData: SsoLoginData,
+): JointLoginData {
+    return {
+        ...jointLoginData,
+        ...(ssoData.refreshToken ? { bmsRefreshToken: ssoData.refreshToken } : {}),
+        ...(ssoData.branchVO !== undefined ? { branchVO: ssoData.branchVO } : {}),
+    };
+}
+
+/**
+ * Exchange the jointV2 credential for SSO profile data.
+ * Fail closed: a network or API error must not skip the org check.
+ */
+export async function requireSsoLogin(jointLoginData: JointLoginData | null): Promise<SsoLoginData> {
+    const credentials = ssoCredentials(jointLoginData);
+    if (credentials.length === 0) {
+        throw new AuthApiError("登录权限校验失败，请稍后重试", "SSO");
+    }
+    let lastError: unknown;
+    for (const credential of credentials) {
+        try {
+            const ssoData = await loginSso(credential, { systemId: 11, channel: "joint" });
+            const hasProfile = Boolean(
+                ssoData?.token ||
+                ssoData?.refreshToken ||
+                ssoData?.branchVO ||
+                ssoData?.account ||
+                ssoData?.userId ||
+                ssoData?.userName,
+            );
+            if (!hasProfile) {
+                throw new AuthApiError("登录权限校验失败，请稍后重试", "SSO");
+            }
+            return ssoData;
+        } catch (error) {
+            lastError = error;
+            console.warn("SSO login failed for a credential, trying next if any");
+        }
+    }
+    if (lastError instanceof AuthApiError) throw lastError;
+    throw new AuthApiError("登录权限校验失败，请稍后重试", "SSO");
+}
+
+/**
+ * After jointV2 succeeds, call SSO, block disallowed orgs, then persist the session.
+ */
+export async function completeJointLogin(jointLoginData: JointLoginData): Promise<AuthSession> {
+    enforceOrgAccess(jointLoginData);
+    const ssoData = await requireSsoLogin(jointLoginData);
+    enforceOrgAccess(ssoData, jointLoginData);
+    return applyLoginAfter(mergeSsoIntoJointLogin(jointLoginData, ssoData), {
+        bmsToken: ssoData.token,
+    });
+}
+
 /**
  * Mirrors joint-venture-front `LoginAfter`: write the same localStorage keys
  * so the two apps can skip login on the same origin.
  */
-export async function applyLoginAfter(jointLoginData: JointLoginData): Promise<AuthSession> {
+export async function applyLoginAfter(
+    jointLoginData: JointLoginData,
+    options: { bmsToken?: string } = {},
+): Promise<AuthSession> {
     const villageToken = jointLoginData.villageToken || "";
     const agricToken = jointLoginData.agricToken || "";
 
@@ -87,10 +157,14 @@ export async function applyLoginAfter(jointLoginData: JointLoginData): Promise<A
         setItem(AUTH_KEYS.bmsRefreshToken, jointLoginData.bmsRefreshToken);
     }
     clearBmsToken();
+    if (options.bmsToken) {
+        setBmsToken(options.bmsToken, BMS_TOKEN_TTL_MS);
+    }
 
     try {
         await initMachineSystem();
     } catch (error) {
+        if (error instanceof OrgAccessDeniedError) throw error;
         console.error(error);
     }
 
@@ -108,7 +182,7 @@ export async function loginWithPassword(username: string, password: string): Pro
         username: username.trim(),
         password,
     });
-    return applyLoginAfter(data);
+    return completeJointLogin(data);
 }
 
 export async function switchTenant(accountRoleId: number): Promise<AuthSession> {
@@ -134,22 +208,18 @@ export async function switchTenant(accountRoleId: number): Promise<AuthSession> 
 
     const data = await loginJointV2(payload as JointV2LoginParams);
     setActiveAccountRoleId(accountRoleId);
-    return applyLoginAfter(data);
+    return completeJointLogin(data);
 }
 
 export async function loginEnjoypay(): Promise<void> {
     let enjoypayToken = getBmsToken();
     if (!enjoypayToken) {
         const jointLoginData = readJointLoginData();
-        const credentials = [
-            jointLoginData?.bmsRefreshToken,
-            getItem(AUTH_KEYS.bmsRefreshToken),
-            jointLoginData?.access_token,
-        ].filter((item): item is string => Boolean(item));
-        const uniqueCredentials = [...new Set(credentials)];
+        const uniqueCredentials = ssoCredentials(jointLoginData);
         for (const credential of uniqueCredentials) {
             try {
-                const res = await refreshBmsToken(credential, { systemId: 11, channel: "joint" }, { silent: true });
+                const res = await loginSso(credential, { systemId: 11, channel: "joint" }, { silent: true });
+                enforceOrgAccess(res, jointLoginData);
                 enjoypayToken = res?.token || null;
                 if (!enjoypayToken) continue;
                 const newRefreshToken = res.refreshToken;
@@ -163,6 +233,7 @@ export async function loginEnjoypay(): Promise<void> {
                 }
                 break;
             } catch (error) {
+                if (error instanceof OrgAccessDeniedError) throw error;
                 console.warn("LoginEnjoypay: refresh bmsToken failed", error);
             }
         }
@@ -231,10 +302,27 @@ export async function initBaseInfo(): Promise<void> {
  * BMS token for jointV2 login data.
  */
 export async function bootstrapSession(): Promise<AuthSession | null> {
+    if (isOrgAccessDenied()) {
+        return null;
+    }
+
     if (readJointLoginData()) {
+        const existing = readJointLoginData();
+        enforceOrgAccess(existing);
+        const ssoData = await requireSsoLogin(existing);
+        enforceOrgAccess(ssoData, existing);
+        const merged = mergeSsoIntoJointLogin(existing as JointLoginData, ssoData);
+        setJson(AUTH_KEYS.jointLoginData, merged);
+        if (merged.bmsRefreshToken) {
+            setItem(AUTH_KEYS.bmsRefreshToken, merged.bmsRefreshToken);
+        }
+        if (ssoData.token) {
+            setBmsToken(ssoData.token, BMS_TOKEN_TTL_MS);
+        }
         try {
             await loginEnjoypay();
         } catch (error) {
+            if (error instanceof OrgAccessDeniedError) throw error;
             console.warn("LoginEnjoypay failed:", error);
         }
         try {
@@ -249,8 +337,9 @@ export async function bootstrapSession(): Promise<AuthSession | null> {
     if (!leftoverBmsToken) return null;
     try {
         const data = await getJointV2InfoByBmsToken(leftoverBmsToken);
-        return await applyLoginAfter(data);
+        return await completeJointLogin(data);
     } catch (error) {
+        if (error instanceof OrgAccessDeniedError) throw error;
         console.warn("getJointV2InfoByBmsToken failed:", error);
         return null;
     }

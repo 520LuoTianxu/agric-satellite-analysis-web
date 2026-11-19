@@ -81,6 +81,9 @@
     "switchingTenant": "Cambiando de inquilino...",
     "switchFailed": "Error al cambiar de inquilino",
     "noTenant": "Sin inquilino",
+    "accessDeniedTitle": "Sin permiso de acceso",
+    "accessDeniedDesc": "Tu organización no tiene permiso para usar este sistema. Contacta a un administrador para solicitar acceso.",
+    "useAnotherAccount": "Iniciar sesión con otra cuenta",
     "logoutConfirmTitle": "Cerrar sesión",
     "logoutConfirmDesc": "¿Cerrar sesión en el sistema?",
     "logoutConfirm": "Confirmar"
