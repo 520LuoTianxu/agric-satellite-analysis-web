@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import * as echarts from "echarts/core";
 import { BarChart, LineChart } from "echarts/charts";
@@ -9,6 +9,7 @@ import { CanvasRenderer } from "echarts/renderers";
 import type { ProjectHarvestSeriesPoint } from "@/lib/api";
 import { tokenColor } from "@/lib/design-tokens";
 import { axisLabel, baseTooltip, legendStyle, valueAxis, viz } from "@/components/charts/chart-base";
+import { attachNearestDateClick, type AxisClickChart } from "@/components/charts/chart-date-click";
 
 echarts.use([BarChart, LineChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer]);
 
@@ -65,6 +66,31 @@ export default function HarvestSeriesChart({ series, selectedDate, blockLabel, l
         };
     }, [series, selectedDate, blockLabel, labels]);
 
+    const dates = useMemo(() => series.map((s) => s.date).filter(Boolean), [series]);
+    const onSelectDateRef = useRef(onSelectDate);
+    const datesRef = useRef(dates);
+    const detachDateClickRef = useRef<(() => void) | null>(null);
+    onSelectDateRef.current = onSelectDate;
+    datesRef.current = dates;
+
+    const onChartReady = useCallback((chart: AxisClickChart) => {
+        detachDateClickRef.current?.();
+        if (!onSelectDateRef.current) {
+            detachDateClickRef.current = null;
+            return;
+        }
+        detachDateClickRef.current = attachNearestDateClick(
+            chart,
+            () => datesRef.current,
+            (date) => onSelectDateRef.current?.(date),
+        );
+    }, []);
+
+    useEffect(() => () => {
+        detachDateClickRef.current?.();
+        detachDateClickRef.current = null;
+    }, []);
+
     return <ReactEChartsCore echarts={echarts} option={option} notMerge style={{ height, width: "100%" }}
-        onEvents={onSelectDate ? { click: (p: { name?: string }) => { if (p.name) onSelectDate(p.name); } } : undefined} />;
+        onChartReady={onSelectDate ? onChartReady : undefined} />;
 }
