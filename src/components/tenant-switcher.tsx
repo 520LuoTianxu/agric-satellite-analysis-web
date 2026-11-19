@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Building2, Check, ChevronsUpDown, LogOut, Search, User } from "lucide-react";
+import { BarChart3, Building2, Check, ChevronsUpDown, ClipboardList, LogOut, Search, Settings, User, Wheat } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { useRouter } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,12 +17,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useAuth } from "@/components/auth-provider";
+import { canAccessPrivilegedMenus, PRIVILEGED_NAV_ITEMS } from "@/lib/auth/privileged-access";
 import { cn } from "@/lib/utils";
+
+const PRIVILEGED_MENU_ICONS = {
+    parcelInsights: Wheat,
+    harvestReport: ClipboardList,
+    harvestAnalysis: BarChart3,
+    operations: Settings,
+} as const;
 
 export function TenantSwitcher() {
     const t = useTranslations("auth");
     const ts = useTranslations("sidebar");
+    const tNav = useTranslations("nav");
     const { session, switching, switchTenant, logout } = useAuth();
+    const showPrivilegedMenus = canAccessPrivilegedMenus(session);
     const router = useRouter();
     const confirm = useConfirm();
     const [open, setOpen] = useState(false);
@@ -172,6 +182,22 @@ export function TenantSwitcher() {
                 <DropdownMenuContent side="bottom" align="end" className="w-48">
                     <DropdownMenuLabel className="truncate">{displayName}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
+                    {showPrivilegedMenus && (
+                        <>
+                            {PRIVILEGED_NAV_ITEMS.map((item) => {
+                                const Icon = PRIVILEGED_MENU_ICONS[item.labelKey];
+                                return (
+                                    <DropdownMenuItem key={item.href} asChild>
+                                        <Link href={item.href}>
+                                            <Icon className="mr-2 h-4 w-4" />
+                                            {tNav(item.labelKey)}
+                                        </Link>
+                                    </DropdownMenuItem>
+                                );
+                            })}
+                            <DropdownMenuSeparator />
+                        </>
+                    )}
                     <DropdownMenuItem onSelect={handleLogout}>
                         <LogOut className="mr-2 h-4 w-4" />
                         {t("logoutConfirmTitle")}
