@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/components/auth-provider";
-import { AuthApiError } from "@/lib/auth";
+import { AuthApiError, OrgAccessDeniedError } from "@/lib/auth";
 import illustrationManifest from "../../public/illustrations/login/oss-manifest.json";
 
 // OSS 按展示尺寸压缩为 WebP，辅图保留透明通道，减少登录页首次加载的图片流量。
@@ -45,7 +45,12 @@ function LoginLoading() {
 // 登录后只跳转到站内页面，避免外部重定向和再次进入登录页造成循环。
 function safeRedirect(value: string | null): string {
     if (!value) return "/";
-    if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/login")) {
+    if (
+        !value.startsWith("/") ||
+        value.startsWith("//") ||
+        value.startsWith("/login") ||
+        value.startsWith("/no-access")
+    ) {
         return "/";
     }
     return value;
@@ -56,17 +61,22 @@ function LoginForm() {
     const tc = useTranslations("common");
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { hydrated, session, login } = useAuth();
+    const { hydrated, accessStatus, session, login } = useAuth();
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
-        if (hydrated && session) {
+        if (!hydrated) return;
+        if (accessStatus === "denied") {
+            router.replace("/no-access");
+            return;
+        }
+        if (session) {
             router.replace(safeRedirect(searchParams.get("redirect")));
         }
-    }, [hydrated, session, router, searchParams]);
+    }, [hydrated, accessStatus, session, router, searchParams]);
 
     const handleSubmit = async (event: FormEvent) => {
         event.preventDefault();
@@ -83,6 +93,10 @@ function LoginForm() {
             await login(username, password);
             router.replace(safeRedirect(searchParams.get("redirect")));
         } catch (error) {
+            if (error instanceof OrgAccessDeniedError) {
+                router.replace("/no-access");
+                return;
+            }
             const message = error instanceof AuthApiError || error instanceof Error
                 ? error.message
                 : t("failed");

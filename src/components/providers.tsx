@@ -3,6 +3,7 @@
 import { ThemeProvider } from "next-themes";
 import React from "react";
 import { AuthProvider } from "@/components/auth-provider";
+import { OrgAccessGuard } from "@/components/org-access-guard";
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
@@ -13,7 +14,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
             storageKey="agric-theme"
             disableTransitionOnChange
         >
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider>
+                <OrgAccessGuard>{children}</OrgAccessGuard>
+            </AuthProvider>
         </ThemeProvider>
     );
 }
