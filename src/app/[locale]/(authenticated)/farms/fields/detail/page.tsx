@@ -52,6 +52,14 @@ import {
     isOversizedLand,
     resolveLandAreaMu,
 } from "@/lib/land-schedule-filter";
+import {
+    FIELD_DETAIL_DEFAULT_TAB,
+    applyFieldDetailTabParams,
+    resolveFieldDetailTab,
+    resolveParcelAnalysisSection,
+    shouldShowHarvestMapOverlay,
+    type ParcelAnalysisSection,
+} from "@/lib/field-detail-tabs";
 
 const DrawMap = dynamic(() => import("@/components/map/draw-map"), {
     ssr: false,
@@ -112,15 +120,6 @@ const AlertsTab = dynamic(() => import("@/components/field/alerts-tab"), {
     ),
 });
 
-const LandReportTab = dynamic(() => import("@/components/field/land-report-tab"), {
-    ssr: false,
-    loading: () => (
-        <div className="p-4 space-y-3">
-            <Skeleton className="h-8 w-40" />
-            <Skeleton className="h-24 w-full" />
-        </div>
-    ),
-});
 
 const ScoutingTab = dynamic(() => import("@/components/field/scouting-tab"), {
     ssr: false,
@@ -158,22 +157,11 @@ const SoilTab = dynamic(() => import("@/components/field/soil-tab"), {
     ),
 });
 
-// 生育期长势独立成页签并按需加载，避免和选地报告、土壤页重复展示大表单。
-const SeasonGrowthReportTab = dynamic(() => import("@/components/field/season-growth-report-tab"), {
+// 选地报告、生育期长势、收获合并为地块分析，首次进入该页签再加载。
+const ParcelAnalysisTab = dynamic(() => import("@/components/field/parcel-analysis-tab"), {
     ssr: false,
     loading: () => (
-        <div className="p-4 space-y-3">
-            <Skeleton className="h-8 w-40" />
-            <Skeleton className="h-24 w-full" />
-        </div>
-    ),
-});
-
-// 收获进度按需加载：只有切到「收获」页签才请求后端占比序列。
-const HarvestTab = dynamic(() => import("@/components/field/harvest-tab"), {
-    ssr: false,
-    loading: () => (
-        <div className="p-4 space-y-3">
+        <div className="p-3 space-y-3">
             <Skeleton className="h-8 w-40" />
             <Skeleton className="h-24 w-full" />
         </div>
@@ -294,16 +282,16 @@ function clampPanelWidthPx(px: number): number {
 function FieldDetailPageContent() {
     const t = useTranslations("fieldDetail");
     const agriPanelT = useTranslations("agriPanel");
-    const seasonGrowthT = useTranslations("seasonGrowthReport");
-    // 兼容旧版静态消息产物：新短标题缺失时，回退到已存在的报告标题，避免显示翻译键名。
-    const seasonGrowthTabLabel = t.has("tabSeasonGrowth")
-        ? t("tabSeasonGrowth")
-        : seasonGrowthT("title");
     const searchParams = useSearchParams();
     const router = useRouter();
     const farmId = searchParams.get("farmId") || "";
     const groupId = searchParams.get("groupId") || "";
     const landId = searchParams.get("fieldId") || "";
+    const initialTab = resolveFieldDetailTab(searchParams.get("tab"));
+    const initialParcelSection = resolveParcelAnalysisSection(
+        searchParams.get("tab"),
+        searchParams.get("section"),
+    );
     const backHref = groupId
         ? `/farms/detail?groupId=${encodeURIComponent(groupId)}`
         : farmId
@@ -327,9 +315,12 @@ function FieldDetailPageContent() {
     const [mapStyle, setMapStyle] = useState<MapStyleId>("satellite");
     // 供地图图层、视野计算和遥感色膜读取当前底图坐标系，避免状态更新时闭包拿到旧值。
     const mapStyleRef = useRef<MapStyleId>("satellite");
-    // 地块详情需要优先展示分析内容，进入页面时默认展开右侧分析侧栏。
+    // 地块详情需要优先展示分析内容，进入页面时默认展开右侧分析侧栏，并打开长势分析。
     const [sidebarOpen, setSidebarOpen] = useState(true);
-    const [activeTab, setActiveTab] = useState("land-report");
+    const [activeTab, setActiveTab] = useState(initialTab);
+    const [parcelSection, setParcelSection] = useState<ParcelAnalysisSection>(initialParcelSection);
+    const [harvestSectionOpen, setHarvestSectionOpen] = useState(initialParcelSection === "harvest");
+    const [parcelAnalysisVisited, setParcelAnalysisVisited] = useState(initialTab === "parcel-analysis");
     const [panelWidthPx, setPanelWidthPx] = useState(PANEL_WIDTH_DEFAULT_PX);
     const [panelWidthMaxPx, setPanelWidthMaxPx] = useState(PANEL_WIDTH_MAX_PX);
     const [isResizingPanel, setIsResizingPanel] = useState(false);
@@ -341,7 +332,9 @@ function FieldDetailPageContent() {
     const [agriHeatmap, setAgriHeatmap] = useState<AgriHeatmapImage | null>(null);
     // 收获页签的逐像元状态色膜单独存放：NDVI 面板在后台切换日期时会清空 agriHeatmap，不能互相覆盖。
     const [harvestHeatmap, setHarvestHeatmap] = useState<AgriHeatmapImage | null>(null);
-    const shownHeatmap = activeTab === "harvest" ? harvestHeatmap : agriHeatmap;
+    const shownHeatmap = shouldShowHarvestMapOverlay(activeTab, harvestSectionOpen)
+        ? harvestHeatmap
+        : agriHeatmap;
     const [agriHeatMode, setAgriHeatMode] = useState<AgriHeatIndex>("ndvi");
     const [activeIndexType, setActiveIndexType] = useState<IndexType>("NDVI");
     const indexLayerRef = useRef<RasterLayer | null>(null);
@@ -352,7 +345,14 @@ function FieldDetailPageContent() {
         const onPrepare = (event: Event) => {
             const detail = (event as CustomEvent<TourPrepareDetail>).detail;
             if (detail?.sidebar) setSidebarOpen(true);
-            if (detail?.tab) setActiveTab(detail.tab);
+            if (detail?.tab) {
+                const nextTab = resolveFieldDetailTab(detail.tab);
+                setActiveTab(nextTab);
+                if (nextTab === "parcel-analysis") {
+                    setParcelAnalysisVisited(true);
+                    setParcelSection(resolveParcelAnalysisSection(detail.tab, null));
+                }
+            }
         };
         window.addEventListener(TOUR_PREPARE_EVENT, onPrepare);
         return () => window.removeEventListener(TOUR_PREPARE_EVENT, onPrepare);
@@ -670,6 +670,33 @@ function FieldDetailPageContent() {
         };
     }, [land, landId, farmId, groupId]);
 
+    const syncFieldDetailTabUrl = useCallback((tab: string, section: ParcelAnalysisSection) => {
+        const url = new URL(window.location.href);
+        applyFieldDetailTabParams(url.searchParams, tab, section);
+        const next = `${url.pathname}${url.search}${url.hash}`;
+        const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        if (next !== current) window.history.replaceState(null, "", next);
+    }, []);
+
+    const handleActiveTabChange = useCallback((nextRaw: string) => {
+        const next = resolveFieldDetailTab(nextRaw);
+        setActiveTab(next);
+        if (next === "parcel-analysis") {
+            setParcelAnalysisVisited(true);
+            if (nextRaw === "land-report" || nextRaw === "season-growth" || nextRaw === "harvest") {
+                setParcelSection(nextRaw);
+                syncFieldDetailTabUrl(next, nextRaw);
+                return;
+            }
+        }
+        syncFieldDetailTabUrl(next, parcelSection);
+    }, [parcelSection, syncFieldDetailTabUrl]);
+
+    const handleParcelSectionFocus = useCallback((section: ParcelAnalysisSection) => {
+        setParcelSection(section);
+        syncFieldDetailTabUrl("parcel-analysis", section);
+    }, [syncFieldDetailTabUrl]);
+
     const switchToLand = useCallback((nextLandId: string) => {
         if (!nextLandId || nextLandId === landId) return;
         const nextLand = projectLands.find((item) => item.land_id === nextLandId);
@@ -678,6 +705,11 @@ function FieldDetailPageContent() {
         const params = new URLSearchParams({ fieldId: nextLandId });
         if (nextFarmId) params.set("farmId", nextFarmId);
         if (nextGroupId) params.set("groupId", nextGroupId);
+        const current = new URL(window.location.href);
+        const currentTab = current.searchParams.get("tab");
+        const currentSection = current.searchParams.get("section");
+        if (currentTab) params.set("tab", currentTab);
+        if (currentSection) params.set("section", currentSection);
 
         // 切换完成后收起搜索结果，避免新地块页面仍保留旧的下拉状态。
         setPendingProjectLandId(null);
@@ -1614,30 +1646,10 @@ function FieldDetailPageContent() {
                     {t("resizePanelHint")}
                 </span>
                 <div className={cn("flex h-full flex-col overflow-hidden rounded-xl", MAP_CHROME)}>
-                    <Tabs defaultValue="land-report" value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 overflow-hidden">
+                    <Tabs defaultValue={FIELD_DETAIL_DEFAULT_TAB} value={activeTab} onValueChange={handleActiveTabChange} className="flex flex-col flex-1 overflow-hidden">
                         {/* 页签保持紧凑单行，窄侧栏允许横向滚动，不挤占内容高度。 */}
                         <div className="flex min-w-0 shrink-0 items-center border-b bg-background/95">
                             <TabsList variant="underline" className="min-w-0 !w-auto flex-1 flex-nowrap gap-3 overflow-x-auto !border-b-0 px-3 py-1">
-                            <TabsTrigger
-                                value="land-report"
-                                variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
-                                data-tour="tab-report"
-                            >
-                                {t("tabLandReport")}
-                            </TabsTrigger>
-                            <TabsTrigger
-                                value="alerts"
-                                variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
-                            >
-                                <span className="relative">
-                                    {t("tabAlerts")}
-                                    {openAlertCount > 0 && (
-                                        <span className="absolute -top-1 -right-2 h-2 w-2 rounded-full bg-destructive" />
-                                    )}
-                                </span>
-                            </TabsTrigger>
                             <TabsTrigger
                                 value="ndvi"
                                 variant="underline"
@@ -1662,18 +1674,24 @@ function FieldDetailPageContent() {
                                 {t("tabSoil")}
                             </TabsTrigger>
                             <TabsTrigger
-                                value="season-growth"
+                                value="alerts"
                                 variant="underline"
                                 className="shrink-0 pb-2 pt-2 text-[11px]"
                             >
-                                {seasonGrowthTabLabel}
+                                <span className="relative">
+                                    {t("tabAlerts")}
+                                    {openAlertCount > 0 && (
+                                        <span className="absolute -top-1 -right-2 h-2 w-2 rounded-full bg-destructive" />
+                                    )}
+                                </span>
                             </TabsTrigger>
                             <TabsTrigger
-                                value="harvest"
+                                value="parcel-analysis"
                                 variant="underline"
                                 className="shrink-0 pb-2 pt-2 text-[11px]"
+                                data-tour="tab-report"
                             >
-                                {t("tabHarvest")}
+                                {t("tabParcelAnalysis")}
                             </TabsTrigger>
                             </TabsList>
                             {/* 编辑收纳到页签栏右上角，避免操作按钮挤占报告内容区域。 */}
@@ -1799,21 +1817,7 @@ function FieldDetailPageContent() {
                                 </div>
                             ) : (
                                 <>
-                                    {/* 详情默认直接展示选地报告，基础字段信息不再占用侧栏空间；管理操作继续保留。 */}
-                                    <TabsContent value="land-report" className="mt-0">
-                                        <div className="space-y-3 p-3">
-                                            <LandReportTab
-                                                key={landId}
-                                                landId={landId}
-                                                groupId={land.group_id}
-                                                cropType={land.crop_type}
-                                                onCropBound={(key) => {
-                                                    setLand((prev) => (prev ? { ...prev, crop_type: key } : prev));
-                                                }}
-                                            />
-                                        </div>
-                                    </TabsContent>
-
+                                    {/* 默认打开长势分析；选地报告、生育期长势和收获并入地块分析。 */}
                                     <TabsContent
                                         value="ndvi"
                                         forceMount
@@ -1851,22 +1855,33 @@ function FieldDetailPageContent() {
                                         <SoilTab landId={landId} landAreaMu={land.land_area_mu} areaHa={land.area_ha} groupId={land.group_id} mapInstance={mapInstance} activeTab={activeTab} />
                                     </TabsContent>
 
-                                    <TabsContent value="season-growth" className="mt-0">
-                                        <SeasonGrowthReportTab landId={landId} groupId={land.group_id} />
-                                    </TabsContent>
-
-                                    <TabsContent value="harvest" className="mt-0">
-                                        <HarvestTab
+                                    {(activeTab === "parcel-analysis" || parcelAnalysisVisited) && (
+                                    <TabsContent
+                                        value="parcel-analysis"
+                                        forceMount
+                                        className="mt-0 data-[state=inactive]:hidden data-[state=inactive]:!hidden"
+                                    >
+                                        <ParcelAnalysisTab
+                                            key={landId}
                                             landId={landId}
+                                            groupId={land.group_id}
+                                            cropType={land.crop_type}
                                             fieldGeom={
                                                 land.boundary_geojson as
                                                     | GeoJSON.Polygon
                                                     | GeoJSON.MultiPolygon
                                                     | undefined
                                             }
+                                            focusSection={parcelSection}
+                                            onCropBound={(key) => {
+                                                setLand((prev) => (prev ? { ...prev, crop_type: key } : prev));
+                                            }}
                                             onMapOverlayChange={setHarvestHeatmap}
+                                            onHarvestSectionOpenChange={setHarvestSectionOpen}
+                                            onSectionFocusChange={handleParcelSectionFocus}
                                         />
                                     </TabsContent>
+                                    )}
 
                                     <TabsContent value="share" className="mt-0">
                                         <ShareTab landId={landId} />

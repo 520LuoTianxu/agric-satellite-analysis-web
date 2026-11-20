@@ -26,6 +26,8 @@ interface HarvestTabProps {
     fieldGeom?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
     /** 把逐像元收获状态色膜交给地块地图（null 表示移除） */
     onMapOverlayChange?: (img: AgriHeatmapImage | null) => void;
+    embedded?: boolean;
+    onSummaryChange?: (summary: string | null) => void;
 }
 
 function fmtPct(v: number | null | undefined): string {
@@ -79,7 +81,7 @@ function ConfidenceBadge({ item }: { item: HarvestProgressItem }) {
 }
 
 /** 地块「收获」页签：按影像日期展示已收获面积占比与较上期新增（后端启发式估算）。 */
-export default function HarvestTab({ landId, fieldGeom, onMapOverlayChange }: HarvestTabProps) {
+export default function HarvestTab({ landId, fieldGeom, onMapOverlayChange, embedded = false, onSummaryChange }: HarvestTabProps) {
     const t = useTranslations("harvestTab");
     const thisYear = new Date().getFullYear();
     const years = useMemo(() => [thisYear, thisYear - 1, thisYear - 2], [thisYear]);
@@ -144,8 +146,19 @@ export default function HarvestTab({ landId, fieldGeom, onMapOverlayChange }: Ha
         [t],
     );
 
+    useEffect(() => {
+        if (!onSummaryChange) return;
+        if (loading) return;
+        if (!latest || !Number.isFinite(latest.harvested_pct)) {
+            onSummaryChange(null);
+            return;
+        }
+        onSummaryChange(`${latest.date} · ${fmtPct(latest.harvested_pct)}`);
+    }, [loading, latest, onSummaryChange]);
+
     return (
-        <div className="p-4 space-y-4">
+        <div className={embedded ? "px-3 pb-3 space-y-4" : "p-4 space-y-4"}>
+            {!embedded && (
             <div className="space-y-1">
                 <h3 className="text-sm font-semibold flex items-center gap-2">
                     <Wheat className="h-4 w-4" />
@@ -153,6 +166,7 @@ export default function HarvestTab({ landId, fieldGeom, onMapOverlayChange }: Ha
                 </h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">{t("description")}</p>
             </div>
+            )}
 
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex gap-1 rounded-lg border bg-muted/40 p-0.5">
