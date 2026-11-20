@@ -1,4 +1,5 @@
 import { resolveGatewayUrl } from "@/lib/api-origin";
+import { buildLandWeatherPath } from "@/lib/land-weather";
 import { getAlertSession } from "@/lib/alert-session";
 import { mutate as mutateCache } from "swr";
 
@@ -1291,11 +1292,11 @@ export const weatherApi = {
         landId: string,
         startDate: string,
         endDate: string,
-        includeForecast = true,
+        includeForecast = false,
         options: { signal?: AbortSignal } = {},
     ) =>
         apiFetch<WeatherResponse>(
-            `/lands/${landId}/weather?start_date=${startDate}&end_date=${endDate}&include_forecast=${includeForecast}`,
+            buildLandWeatherPath(landId, startDate, endDate, includeForecast),
             options,
         ),
     summary: (landId: string, days = 30) =>
