@@ -8,14 +8,17 @@ import s from "./mock-report.module.css";
 const shortDate=(date:string)=>date.slice(5).replace("-",".");
 function Trend({report,metric}:{report:MockReport;metric:MetricKey}) {
  const values=report.series.map(p=>p[metric]); const min=Math.min(...values)*0.85;const max=Math.max(...values)*1.08;
- const y=(v:number)=>154-(v-min)/(max-min)*115;const points=values.map((v,i)=>`${52+i*92},${y(v)}`).join(" ");
- return <svg viewBox="0 0 560 210" role="img" aria-label={`${METRIC_LABELS[metric]}模拟观测趋势`} className={s.chart}>
- <defs><linearGradient id={`area-${report.id}-${metric}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#369e75" stopOpacity=".22"/><stop offset="100%" stopColor="#369e75" stopOpacity="0"/></linearGradient></defs>
- {[0,1,2].map(i=><g key={i}><line x1="50" y1={40+i*55} x2="522" y2={40+i*55} stroke="#e3eae6" strokeDasharray="4 5"/><text x="3" y={44+i*55} fill="#76867d" fontSize="11">{formatMetric(metric,max-i*(max-min)/2)}</text></g>)}
- <rect x="285" y="22" width="240" height="143" fill="#e9f4ee" opacity=".45"/><text x="297" y="36" fontSize="10" fill="#5c856e">本期统计窗口</text>
- <polygon points={`52,165 ${points} 512,165`} fill={`url(#area-${report.id}-${metric})`}/><polyline points={points} fill="none" stroke="#24845e" strokeWidth="3" strokeLinejoin="round"/>
- {report.series.map((p,i)=><g key={p.date}><circle cx={52+i*92} cy={y(p[metric])} r="5" fill="#fff" stroke="#24845e" strokeWidth="2"><title>{p.date}：{formatMetric(metric,p[metric])}（模拟）</title></circle><text x={52+i*92} y="191" textAnchor="middle" fill="#6c7c72" fontSize="11">{shortDate(p.date)}</text></g>)}
- </svg>;
+ const y=(v:number)=>122-(v-min)/(max-min)*88;const points=values.map((v,i)=>`${40+i*66},${y(v)}`).join(" ");
+ return <figure className={s.trend}>
+ <svg viewBox="0 0 400 140" role="img" aria-label={`${METRIC_LABELS[metric]}模拟观测趋势`} className={s.chart}>
+ <defs><linearGradient id={`area-${report.id}-${metric}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#369e75" stopOpacity=".16"/><stop offset="100%" stopColor="#369e75" stopOpacity="0"/></linearGradient></defs>
+ {[0,1,2].map(i=><g key={i}><line x1="40" y1={34+i*44} x2="382" y2={34+i*44} stroke="currentColor" opacity=".16" strokeDasharray="3 5"/><text x="0" y={38+i*44} fill="currentColor" fontSize="12">{formatMetric(metric,max-i*(max-min)/2)}</text></g>)}
+ <rect x="205" y="16" width="177" height="116" fill="#e9f4ee" opacity=".4"/><text x="217" y="27" fontSize="11" fill="#50735d">本期</text>
+ <polygon points={`40,132 ${points} 370,132`} fill={`url(#area-${report.id}-${metric})`}/><polyline points={points} fill="none" stroke="#24845e" strokeWidth="2.5" strokeLinejoin="round"/>
+ {report.series.map((p,i)=><circle key={p.date} cx={40+i*66} cy={y(p[metric])} r="3.5" fill="#fff" stroke="#24845e" strokeWidth="2"><title>{p.date}：{formatMetric(metric,p[metric])}（模拟）</title></circle>)}
+ </svg>
+ <figcaption className={s.chartDates} aria-label="模拟观测日期">{report.series.map(p=><time key={p.date} dateTime={p.date}>{shortDate(p.date)}</time>)}</figcaption>
+ </figure>;
 }
 function PixelMap({report,metric}:{report:MockReport;metric:MetricKey}) {
  const clipId=useId().replace(/:/g, "");
@@ -37,7 +40,7 @@ export function MockReportContent({report}:{report:MockReport}) {
  return <article className={s.reader} lang="zh-CN">
   <header className={s.reportHeader}><h3>{report.label} · 原始数据</h3><p>{report.field} · {report.start} — {report.series.at(-1)!.date}（中国时间）</p></header>
   <dl className={s.metrics}>{values.map(([label,value,note])=><div key={label}><dt>{label}</dt><dd>{value}</dd><small>{note}</small></div>)}</dl>
-  <section className={s.section}><h4>遥感指标与空间示意</h4><div className={s.metricSwitch} aria-label="遥感指标选择">{(["fvc","ndvi","lai"] as const).map(key=><Button key={key} type="button" variant="ghost" size="sm" aria-pressed={metric===key} onClick={()=>setMetric(key)}>{key.toUpperCase()}</Button>)}</div><div className={s.chartGrid}><Trend report={report} metric={metric}/><PixelMap report={report} metric={metric}/></div><p className={s.note}>模拟观测 {report.validDays} 日 · 有效像元 {Math.round(report.validFraction*100)}% · 间隔 {report.gapDays} 天。</p></section>
+  <section className={s.section}><div className={s.sectionHeading}><h4>遥感指标与空间示意</h4><div className={s.metricSwitch} aria-label="遥感指标选择">{(["fvc","ndvi","lai"] as const).map(key=><Button key={key} type="button" variant="ghost" size="sm" aria-pressed={metric===key} onClick={()=>setMetric(key)}>{key.toUpperCase()}</Button>)}</div></div><div className={s.chartGrid}><Trend report={report} metric={metric}/><PixelMap report={report} metric={metric}/></div><p className={s.note}>模拟观测 {report.validDays} 日 · 有效像元 {Math.round(report.validFraction*100)}% · 间隔 {report.gapDays} 天。</p></section>
   <section className={s.section}><h4>天气、历史与周边参照</h4><dl className={s.evidence}>
    <div><dt>本期模拟降水</dt><dd>{report.rainTotal} mm</dd></div><div><dt>历史同期模拟降水</dt><dd>{report.historicRain} mm</dd></div><div><dt>上期模拟FVC</dt><dd>{Math.round(report.previousFvc*100)}%</dd></div><div><dt>历史同期模拟FVC</dt><dd>{Math.round(report.historicFvc*100)}%</dd></div><div><dt>周边模拟FVC</dt><dd>{Math.round(report.peerFvc*100)}%</dd></div><div><dt>模拟平均气温</dt><dd>{(report.weather.reduce((n,d)=>n+d.temp,0)/report.weather.length).toFixed(1)} °C</dd></div>
   </dl><p className={s.note}>虚构参照；逐日天气与详细解读见Mock PDF。</p></section>

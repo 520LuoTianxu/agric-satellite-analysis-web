@@ -42,10 +42,10 @@ export default function BiweeklyTab() {
     </Select>
    </div>
   </header>
-  <p className={s.disclaimer}>全为虚构示例，非当前地块；S1–S3为农艺阶段。</p>
-  <div className={s.timelineCaption}><span>阶段导航 · 非等比</span><span>{phaseStart.replaceAll("-",".")}–{phaseEnd.replaceAll("-",".")}</span></div>
+  <p className={s.disclaimer}>虚构数据与排期，非当前地块；未调用AI。</p>
+  <div className={s.timelineCaption}><span>农艺阶段导航 · 非等比</span><span>{phaseStart.replaceAll("-",".")}–{phaseEnd.replaceAll("-",".")}</span></div>
   <div className={s.phases} role="group" aria-label="农艺阶段导航，非时长比例">
-   {phases.map(item=><Button key={item.code} type="button" variant="ghost" size="sm" className={`${s.phase} ${s[item.code]}`} aria-pressed={phase.code===item.code} aria-label={`${item.label} ${item.name}`} onClick={()=>{if(item.code!==phase.code)setSelection(selectPhase(item,reports));}}>
+   {phases.map(item=><Button key={item.code} type="button" variant="ghost" size="sm" className={s.phase} aria-pressed={phase.code===item.code} aria-label={`${item.label} ${item.name}`} onClick={()=>{if(item.code!==phase.code)setSelection(selectPhase(item,reports));}}>
     <span>{item.label}</span><strong>{item.label==="S2"?"并进阶段":item.name}</strong>
    </Button>)}
   </div>
@@ -54,8 +54,8 @@ export default function BiweeklyTab() {
     <strong>{period.name}</strong><small><span>{range(period.start,period.end)}</span><span>{period.reports.length?`${period.reports.length}份`:"暂无"}</span></small>
    </Button>)}
   </div>
-  {filtered.length>0&&<div className={s.reportRow} role="group" aria-label="本生育期报告">
-   <span>报告</span>
+  {filtered.length>0&&<div className={s.reportToolbar}>
+   <div className={s.reportRow} role="group" aria-label="本生育期报告">
    <Select value={selected?.id} onValueChange={id=>{const report=filtered.find(r=>r.id===id);if(report)chooseReport(report);}}>
     <SelectTrigger className={s.selectTrigger} aria-label="选择本生育期报告"><SelectValue/></SelectTrigger>
     <SelectContent align="start" collisionPadding={12} className={s.selectPopup}>
@@ -66,10 +66,11 @@ export default function BiweeklyTab() {
     <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className={s.navButton} aria-label="本生育期上一份报告" disabled={!previous} onClick={()=>previous&&chooseReport(previous)}><ChevronLeft size={15} aria-hidden="true"/></Button></TooltipTrigger><TooltipContent>本生育期上一份</TooltipContent></Tooltip>
     <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className={s.navButton} aria-label="本生育期下一份报告" disabled={!next} onClick={()=>next&&chooseReport(next)}><ChevronRight size={15} aria-hidden="true"/></Button></TooltipTrigger><TooltipContent>本生育期下一份</TooltipContent></Tooltip>
    </TooltipProvider>
+   </div>
+   {selected&&<MockPdfDownload key={`pdf-${selected.id}`} report={selected}/>}
   </div>}
   <div className={s.content} aria-live="polite">{selected?<>
    {selected.coveredGrowthPeriods.length>1&&<p className={s.cross}>跨期：{growthPeriodNames(crop,selected.coveredGrowthPeriods)}；主归属{growth.name}，仅此一份。</p>}
-   <MockPdfDownload key={`pdf-${selected.id}`} report={selected}/>
    <MockReportContent key={selected.id} report={selected}/>
   </>:<p className={s.empty}>{growth.name}暂无报告。</p>}</div>
  </section>;

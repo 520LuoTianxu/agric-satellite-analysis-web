@@ -92,3 +92,53 @@ test("width harness is isolated to the public mock demo and uses shared Button c
  assert.match(page,/BiweeklyDemoPreview/);
  assert.doesNotMatch(detail,/BiweeklyDemoPreview|demo-preview/);
 });
+test("report navigation and the genuine PDF action form one cohesive wrapping toolbar",()=>{
+ const ui=readFileSync("src/components/biweekly/biweekly-tab.tsx","utf8");
+ const css=readFileSync("src/components/biweekly/biweekly-tab.module.css","utf8");
+ const toolbar=ui.match(/className=\{s\.reportToolbar\}([\s\S]*?)<div className=\{s\.content\}/)?.[1]??"";
+ assert.match(toolbar,/className=\{s\.reportRow\}/);
+ assert.match(toolbar,/MockPdfDownload/);
+ assert.match(css,/\.reportToolbar\{[^}]*flex-wrap:\s*wrap/);
+ assert.match(css,/var\(--surface-2\)/);
+ assert.doesNotMatch(css,/--wash|--tone|\.VEG\{|\.TRANS\{|\.REPRO\{/);
+});
+test("editorial body groups metric controls with title and renders all chart dates as native text",()=>{
+ const report=readFileSync("src/components/biweekly/mock-report.tsx","utf8");
+ const css=readFileSync("src/components/biweekly/mock-report.module.css","utf8");
+ assert.match(report,/className=\{s\.sectionHeading\}/);
+ assert.match(report,/<figcaption className=\{s\.chartDates\}/);
+ assert.match(report,/<time[^>]*dateTime=\{p\.date\}/);
+ assert.match(css,/var\(--foreground\)/);
+ assert.match(css,/var\(--muted-foreground\)/);
+ assert.doesNotMatch(css,/border-bottom:/);
+});
+test("token-derived active text meets AA contrast on light and dark report surfaces",()=>{
+ const css=readFileSync("src/components/biweekly/biweekly-tab.module.css","utf8");
+ const global=readFileSync("src/app/globals.css","utf8");
+ assert.match(css,/--bw-active:color-mix\(in srgb,hsl\(var\(--success\)\) 82%,hsl\(var\(--foreground\)\)\)/);
+ function token(scope:string,key:string){
+  const match=scope.match(new RegExp(`--${key}:\\s*([\\d.]+) ([\\d.]+)% ([\\d.]+)%`));
+  assert.ok(match,`missing ${key}`);
+  const h=Number(match[1]),s=Number(match[2])/100,l=Number(match[3])/100,a=s*Math.min(l,1-l);
+  const channel=(n:number)=>{const k=(n+h/30)%12;return l-a*Math.max(-1,Math.min(k-3,9-k,1));};
+  return [channel(0),channel(8),channel(4)];
+ }
+ function luminance(rgb:number[]){return rgb.map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4).reduce((sum,c,i)=>sum+c*[.2126,.7152,.0722][i],0);}
+ for(const scope of [global.split(".dark {")[0],global.split(".dark {")[1]]){
+  const success=token(scope,"success"),ink=token(scope,"foreground");
+  const active=success.map((c,i)=>c*.82+ink[i]*.18);
+  for(const surface of ["background","primary-subtle"]){
+   const a=luminance(active),b=luminance(token(scope,surface));
+   assert.ok((Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=4.5,`active text contrast on ${surface}`);
+  }
+ }
+});
+test("native date captions stay aligned because trend never exceeds its SVG height aspect cap",()=>{
+ const css=readFileSync("src/components/biweekly/mock-report.module.css","utf8");
+ assert.match(css,/\.trend\{[^}]*width:100%[^}]*max-width:468px/);
+ assert.match(css,/\.chart\{[^}]*max-height:164px/);
+ for(const panel of [288,400,640,900]){
+  const figure=Math.min(468,panel>=480?(panel-20)*1.3/2.3:panel);
+  assert.ok(figure*140/400<=164);
+ }
+});
