@@ -36,24 +36,24 @@ export const METRIC_LABELS: Record<MetricKey,string> = {ndvi:"NDVI 绿度",fvc:"
 export function formatMetric(metric: MetricKey,value: number): string { return metric === "fvc" ? `${Math.round(value*100)}%` : value.toFixed(2); }
 
 
-export interface GrowthPeriod { id: string; name: string; timing: string; reports: MockReport[] }
+export interface GrowthPeriod { id: string; name: string; timing: string; start: string; end: string; reports: MockReport[] }
 export interface AgronomicPhase { code: PhaseCode; label: "S1" | "S2" | "S3"; name: string; growthPeriods: GrowthPeriod[] }
 
 /** Dates and stages are synthetic UI examples, never a selected parcel's real phenology. */
 export function getPhaseTree(crop: CropKey): AgronomicPhase[] {
  const wheat=crop==="wheat";
  const definitions = wheat ? [
-  [["seedling","出苗 / 分蘖期","2026.10—11"],["winter","越冬期","2026.12—2027.02"],["green","返青期","03.01—03.14"],["rising","起身期","03.15—03.20"]],
-  [["jointing","拔节期","03.21—04.25"],["booting","孕穗期","04.26—05.09"]],
-  [["heading","抽穗 / 开花期","05.10—05.23"],["filling","灌浆 / 成熟期","05.24—06.13"]],
+  [["seedling","出苗 / 分蘖期","2026-10-01","2026-12-01"],["winter","越冬期","2026-12-01","2027-03-01"],["green","返青期","2027-03-01","2027-03-15"],["rising","起身期","2027-03-15","2027-03-21"]],
+  [["jointing","拔节期","2027-03-21","2027-04-26"],["booting","孕穗期","2027-04-26","2027-05-10"]],
+  [["heading","抽穗 / 开花期","2027-05-10","2027-05-24"],["filling","灌浆 / 成熟期","2027-05-24","2027-06-14"]],
  ] : [
-  [["seedling","苗期","06.14—06.27"],["jointing","拔节期","06.28—07.03"]],
-  [["ear","穗期（喇叭口）","07.04—08.08"]],
-  [["flowering","抽雄 / 吐丝期","08.09—08.22"],["filling","灌浆 / 成熟期","08.23—09.19"]],
+  [["seedling","苗期","2027-06-14","2027-06-28"],["jointing","拔节期","2027-06-28","2027-07-04"]],
+  [["ear","穗期（喇叭口）","2027-07-04","2027-08-09"]],
+  [["flowering","抽雄 / 吐丝期","2027-08-09","2027-08-23"],["filling","灌浆 / 成熟期","2027-08-23","2027-09-20"]],
  ];
  return (["VEG","TRANS","REPRO"] as const).map((code,index)=>({
   code,label:(["S1","S2","S3"] as const)[index],name:["营养生长","营养 / 生殖并进","生殖生长"][index],
-  growthPeriods: definitions[index].map(([id,name,timing])=>({id,name,timing,reports:MOCK_REPORTS.filter(r=>r.crop===crop&&r.primaryGrowthPeriod===id)})),
+  growthPeriods: definitions[index].map(([id,name,start,end])=>({id,name,start,end,timing:`${start} — ${end}（结束日不含）`,reports:MOCK_REPORTS.filter(r=>r.crop===crop&&r.primaryGrowthPeriod===id)})),
  }));
 }
 export function growthPeriodNames(crop: CropKey, ids: string[]): string {

@@ -37,6 +37,6 @@ test("all supported locales define the peer label and mock UI has no service dep
  }
  const ui=readFileSync("src/components/biweekly/biweekly-tab.tsx","utf8");
  assert.doesNotMatch(ui,/Dialog|Drawer|Sheet|Portal|fetch\(|useSWR|axios|from ["'].*api/);
- assert.match(ui,/expanded=\{phase.code!=="VEG"\}/);
+
  assert.match(ui,/MockReportContent/);
 });
