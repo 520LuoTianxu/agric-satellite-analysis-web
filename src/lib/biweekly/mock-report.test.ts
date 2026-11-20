@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MOCK_REPORTS, getMockReport } from "./mock-report.ts";
 
-test("six deterministic reports are synthetic with consistent chart and metrics", () => {
- assert.equal(MOCK_REPORTS.length, 6);
+test("eight deterministic reports are synthetic with consistent chart and metrics", () => {
+ assert.equal(MOCK_REPORTS.length, 8);
  for (const r of MOCK_REPORTS) {
   assert.equal(r.dataKind, "mock");
   assert.equal(r.series.length, 6);
@@ -27,4 +27,14 @@ test("selection resolves only fixture identities with deterministic fallback", (
  assert.equal(getMockReport("wheat", "2").id, "wheat-2");
  assert.equal(getMockReport("maize", "1").crop, "maize");
  assert.equal(getMockReport("real-land-id", "missing").id, "wheat-2");
+});
+
+test("sequential reports share their previous-period FVC value and continuous windows",()=>{
+ for(const crop of ["wheat","maize"]){
+  const reports=MOCK_REPORTS.filter(r=>r.crop===crop);
+  for(let i=1;i<reports.length;i++){
+   assert.equal(reports[i].start,reports[i-1].end);
+   assert.equal(reports[i].previousFvc,reports[i-1].fvc);
+  }
+ }
 });

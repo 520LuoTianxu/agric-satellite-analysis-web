@@ -157,6 +157,9 @@ const SoilTab = dynamic(() => import("@/components/field/soil-tab"), {
     ),
 });
 
+// 纯Mock双周报独立为一级页签，不接入真实地块属性或报告服务。
+const BiweeklyTab = dynamic(() => import("@/components/biweekly/biweekly-tab"));
+
 // 选地报告、生育期长势、收获合并为地块分析，首次进入该页签再加载。
 const ParcelAnalysisTab = dynamic(() => import("@/components/field/parcel-analysis-tab"), {
     ssr: false,
@@ -1693,6 +1696,9 @@ function FieldDetailPageContent() {
                             >
                                 {t("tabParcelAnalysis")}
                             </TabsTrigger>
+                            <TabsTrigger value="biweekly" variant="underline" className="shrink-0 pb-2 pt-2 text-[11px]">
+                                {t("tabBiweekly")}
+                            </TabsTrigger>
                             </TabsList>
                             {/* 编辑收纳到页签栏右上角，避免操作按钮挤占报告内容区域。 */}
                             <Button
@@ -1882,6 +1888,10 @@ function FieldDetailPageContent() {
                                         />
                                     </TabsContent>
                                     )}
+
+                                    <TabsContent value="biweekly" className="mt-0 min-w-0 p-3">
+                                        <BiweeklyTab />
+                                    </TabsContent>
 
                                     <TabsContent value="share" className="mt-0">
                                         <ShareTab landId={landId} />
