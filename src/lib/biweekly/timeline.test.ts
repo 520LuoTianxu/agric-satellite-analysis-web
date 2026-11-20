@@ -138,7 +138,38 @@ test("native date captions stay aligned because trend never exceeds its SVG heig
  assert.match(css,/\.trend\{[^}]*width:100%[^}]*max-width:468px/);
  assert.match(css,/\.chart\{[^}]*max-height:164px/);
  for(const panel of [288,400,640,900]){
-  const figure=Math.min(468,panel>=480?(panel-20)*1.3/2.3:panel);
+  const content=panel-2*(panel>=600?24:panel>=360?20:16);
+  const figure=Math.min(468,content>=480?(content-24)*1.3/2.3:content);
   assert.ok(figure*140/400<=164);
  }
+});
+test("report owns generous four-side inset exactly once in demo and real parcel tab",()=>{
+ const ui=readFileSync("src/components/biweekly/biweekly-tab.tsx","utf8");
+ const css=readFileSync("src/components/biweekly/biweekly-tab.module.css","utf8");
+ const page=readFileSync("src/app/[locale]/(authenticated)/farms/fields/detail/page.tsx","utf8");
+ assert.match(ui,/return <div className=\{s\.frame\}><section/);
+ assert.match(css,/\.frame\{[^}]*container-type:inline-size/);
+ assert.match(css,/\.root\{[^}]*box-sizing:border-box[^}]*padding:var\(--space-6\) var\(--space-4\)/);
+ assert.match(css,/@container\(min-width:360px\)\{\.root\{padding-inline:var\(--space-5\)/);
+ assert.match(css,/@container\(min-width:600px\)\{\.root\{padding-inline:var\(--space-6\)/);
+ assert.match(page,/<TabsContent value="biweekly" className="mt-0 min-w-0 p-0">/);
+ for(const [outer,inset,content] of [[288,16,256],[400,20,360],[640,24,592],[900,24,852]]){
+  assert.equal(outer-inset*2,content);
+  assert.ok((content-10)/3>=82,"three phase labels retain usable width after rail padding/gaps");
+ }
+});
+test("chart ticks cannot split dates and narrow sparse ticks do not remove observations",()=>{
+ const css=readFileSync("src/components/biweekly/mock-report.module.css","utf8");
+ const report=readFileSync("src/components/biweekly/mock-report.tsx","utf8");
+ assert.match(css,/\.chartDates time\{[^}]*width:32px[^}]*white-space:nowrap[^}]*overflow-wrap:normal/);
+ assert.match(css,/@container\(max-width:300px\)[\s\S]*visibility:hidden/);
+ assert.match(report,/report\.series\.map\(\(p,i\)=><circle/);
+ assert.match(report,/report\.series\.map\(p=><time/);
+ assert.doesNotMatch(report,/series\.filter|series\.slice/);
+});
+test("pixel map sizing cannot inflate the small Layers icon in its caption",()=>{
+ const css=readFileSync("src/components/biweekly/mock-report.module.css","utf8");
+ assert.doesNotMatch(css,/\.pixelPanel svg\{/);
+ assert.match(css,/\.pixelPanel>svg\{/);
+ assert.match(css,/\.mapTag>svg\{[^}]*width:12px[^}]*height:12px[^}]*flex-shrink:0/);
 });

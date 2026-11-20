@@ -1889,7 +1889,7 @@ function FieldDetailPageContent() {
                                     </TabsContent>
                                     )}
 
-                                    <TabsContent value="biweekly" className="mt-0 min-w-0 p-3">
+                                    <TabsContent value="biweekly" className="mt-0 min-w-0 p-0">
                                         <BiweeklyTab />
                                     </TabsContent>
 

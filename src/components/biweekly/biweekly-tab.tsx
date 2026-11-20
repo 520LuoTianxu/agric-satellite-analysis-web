@@ -29,7 +29,7 @@ export default function BiweeklyTab() {
  const phaseStart=phase.growthPeriods[0].start;
  const phaseEnd=addDays(phase.growthPeriods.at(-1)!.end,-1);
 
- return <section className={s.root} aria-label="种植双周报原型" lang="zh-CN">
+ return <div className={s.frame}><section className={s.root} aria-label="种植双周报原型" lang="zh-CN">
   <header className={s.header}>
    <h2>种植双周报 <span className={s.mock}>MOCK</span></h2>
    <div className={s.crop}>
@@ -73,5 +73,5 @@ export default function BiweeklyTab() {
    {selected.coveredGrowthPeriods.length>1&&<p className={s.cross}>跨期：{growthPeriodNames(crop,selected.coveredGrowthPeriods)}；主归属{growth.name}，仅此一份。</p>}
    <MockReportContent key={selected.id} report={selected}/>
   </>:<p className={s.empty}>{growth.name}暂无报告。</p>}</div>
- </section>;
+ </section></div>;
 }
