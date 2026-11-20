@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { Layers3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { METRIC_LABELS, formatMetric, type MetricKey, type MockReport } from "@/lib/biweekly/mock-report";
 import s from "./mock-report.module.css";
 const shortDate=(date:string)=>date.slice(5).replace("-",".");
@@ -34,12 +35,12 @@ export function MockReportContent({report}:{report:MockReport}) {
   ["NDRE",report.ndre.toFixed(2),"红边指数 · Mock"],
  ];
  return <article className={s.reader} lang="zh-CN">
-  <header className={s.reportHeader}><span>原始数据页 / MOCK</span><h3>{report.cropName} · {report.label}</h3><p>{report.field} · {report.season}<br/>{report.start} — {report.series.at(-1)!.date}（Asia/Shanghai）</p></header>
+  <header className={s.reportHeader}><h3>{report.label} · 原始数据</h3><p>{report.field} · {report.start} — {report.series.at(-1)!.date}（中国时间）</p></header>
   <dl className={s.metrics}>{values.map(([label,value,note])=><div key={label}><dt>{label}</dt><dd>{value}</dd><small>{note}</small></div>)}</dl>
-  <section className={s.section}><h4>遥感指标与空间示意</h4><div className={s.metricSwitch} aria-label="遥感指标选择">{(["fvc","ndvi","lai"] as const).map(key=><button key={key} type="button" aria-pressed={metric===key} onClick={()=>setMetric(key)}>{key.toUpperCase()}</button>)}</div><div className={s.chartGrid}><Trend report={report} metric={metric}/><PixelMap report={report} metric={metric}/></div><p className={s.note}>模拟有效观测 {report.validDays} 日 · 有效像元 {Math.round(report.validFraction*100)}% · 最大间隔 {report.gapDays} 天。图形并非真实卫星影像。</p></section>
+  <section className={s.section}><h4>遥感指标与空间示意</h4><div className={s.metricSwitch} aria-label="遥感指标选择">{(["fvc","ndvi","lai"] as const).map(key=><Button key={key} type="button" variant="ghost" size="sm" aria-pressed={metric===key} onClick={()=>setMetric(key)}>{key.toUpperCase()}</Button>)}</div><div className={s.chartGrid}><Trend report={report} metric={metric}/><PixelMap report={report} metric={metric}/></div><p className={s.note}>模拟观测 {report.validDays} 日 · 有效像元 {Math.round(report.validFraction*100)}% · 间隔 {report.gapDays} 天。</p></section>
   <section className={s.section}><h4>天气、历史与周边参照</h4><dl className={s.evidence}>
    <div><dt>本期模拟降水</dt><dd>{report.rainTotal} mm</dd></div><div><dt>历史同期模拟降水</dt><dd>{report.historicRain} mm</dd></div><div><dt>上期模拟FVC</dt><dd>{Math.round(report.previousFvc*100)}%</dd></div><div><dt>历史同期模拟FVC</dt><dd>{Math.round(report.historicFvc*100)}%</dd></div><div><dt>周边模拟FVC</dt><dd>{Math.round(report.peerFvc*100)}%</dd></div><div><dt>模拟平均气温</dt><dd>{(report.weather.reduce((n,d)=>n+d.temp,0)/report.weather.length).toFixed(1)} °C</dd></div>
-  </dl><p className={s.note}>均为虚构参照，未读取真实历史/气象API。详细逐日天气、证据解读与核查清单见Mock PDF。</p></section>
-  <section className={s.section}><h4>质量与使用边界</h4><ul className={s.limits}><li>数据来源：本地固定fixture；不读取当前地块或方案。阶段与时间不是遥感实测。</li><li>FVC / LAI 为 NOT_VALIDATED 概念值，无地面真值，不承诺可靠精度；PSRI未启用。</li><li>缺少灌溉、田间墒情与完整灾害证据；不能据此判断受旱、受涝、产量或损失。</li><li>网页仅展示简明模拟原始数据；PDF含额外预置规则文案，不是实际AI分析。前端保持Mock，等待明确对接指令。</li></ul></section>
+  </dl><p className={s.note}>虚构参照；逐日天气与详细解读见Mock PDF。</p></section>
+  <section className={s.section}><h4>质量与使用边界</h4><ul className={s.limits}><li>固定虚构数据，不读取当前地块；阶段排期非实测。</li><li>FVC / LAI 未验证，无地面真值；PSRI未启用。</li><li>缺少灌溉、墒情和灾害证据，不判断灾害、产量或损失。</li></ul></section>
  </article>;
 }
