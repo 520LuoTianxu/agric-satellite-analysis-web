@@ -112,7 +112,7 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
         setLoading(true);
         try {
             const { start, end } = selectedWindow;
-            const res = await weatherApi.get(landId, start, end, true);
+            const res = await weatherApi.get(landId, start, end, false);
             setData(res.data);
             setForecast(res.forecast);
             setSummary(res.summary);
@@ -149,7 +149,7 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
             const poll = async () => {
                 attempts += 1;
                 try {
-                    const res = await weatherApi.get(landId, start, end, true);
+                    const res = await weatherApi.get(landId, start, end, false);
                     setData(res.data);
                     setForecast(res.forecast);
                     setSummary(res.summary);
