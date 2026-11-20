@@ -6,7 +6,6 @@ import { ChevronDown, FileText, Sprout, Wheat } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MockReportSummary } from "@/components/biweekly/mock-report";
 import type { AgriHeatmapImage } from "@/lib/agri-heatmap";
 import type { ParcelAnalysisSection } from "@/lib/field-detail-tabs";
 
@@ -199,7 +198,6 @@ export default function ParcelAnalysisTab({
             <p className="text-[11px] leading-relaxed text-muted-foreground">
                 {t("parcelAnalysisIntro")}
             </p>
-            <MockReportSummary contextual />
             <AnalysisSection
                 id="land-report"
                 title={t("tabLandReport")}

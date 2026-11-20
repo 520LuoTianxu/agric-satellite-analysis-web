@@ -9,6 +9,7 @@ export const FIELD_DETAIL_VISIBLE_TABS = [
     "soil",
     "alerts",
     PARCEL_ANALYSIS_TAB,
+    "biweekly",
 ] as const;
 
 export const FIELD_DETAIL_HIDDEN_TABS = ["share", "scouting"] as const;
