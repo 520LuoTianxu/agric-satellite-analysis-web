@@ -43,6 +43,9 @@ interface LandReportTabProps {
     cropType?: string | null;
     onCropBound?: (cropKey: string) => void;
     onReportReady?: () => void;
+    /** 嵌在地块分析分区时隐藏页内大标题，避免和分区标题重复。 */
+    embedded?: boolean;
+    onSummaryChange?: (summary: string | null) => void;
 }
 
 type ScorecardState = "loading" | "empty" | "legacy" | "ready";
@@ -111,7 +114,7 @@ function isCropRequiredError(err: any): boolean {
     return false;
 }
 
-export default function LandReportTab({ landId, groupId, cropType, onCropBound, onReportReady }: LandReportTabProps) {
+export default function LandReportTab({ landId, groupId, cropType, onCropBound, onReportReady, embedded = false, onSummaryChange }: LandReportTabProps) {
     const t = useTranslations("landReportTab");
     const [latestState, setLatest] = useState<NdviJob | null>(null);
     const [loading, setLoading] = useState(true);
@@ -417,8 +420,23 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
         </div>
     );
 
+    useEffect(() => {
+        if (!onSummaryChange) return;
+        if (loading) return;
+        const parts: string[] = [];
+        const kindLabel = lightLabel(t, light);
+        if (kindLabel) parts.push(kindLabel);
+        if (typeof score === "number" && Number.isFinite(score)) {
+            parts.push(String(Math.round(score)));
+        } else if (grade) {
+            parts.push(String(grade));
+        }
+        onSummaryChange(parts.length ? parts.join(" · ") : null);
+    }, [loading, light, score, grade, onSummaryChange, t]);
+
     return (
-        <div className="p-4 space-y-4">
+        <div className={embedded ? "px-3 pb-3 space-y-4" : "p-4 space-y-4"}>
+            {!embedded && (
             <div className="space-y-1">
                 <h3 className="text-sm font-semibold flex items-center gap-2">
                     <FileText className="h-4 w-4" />
@@ -428,6 +446,7 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
                     {t("description")}
                 </p>
             </div>
+            )}
 
             {loading ? (
                 <div className="space-y-2">
