@@ -6,4 +6,4 @@ export const metadata: Metadata = {
  robots: { index: false, follow: false },
 };
 /** Synthetic-only public preview; global OrgAccessGuard remains in force. */
-export default function BiweeklyDemoPage() { return <main style={{maxWidth:640,margin:"24px auto",padding:16}}><BiweeklyTab /></main>; }
+export default function BiweeklyDemoPage() { return <main style={{maxWidth:1440,margin:"24px auto",padding:24}}><BiweeklyTab /></main>; }
