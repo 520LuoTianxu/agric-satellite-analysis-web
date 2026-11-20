@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { MOCK_REPORTS, getPhaseTree, growthPeriodNames, type CropKey, type MockReport } from "@/lib/biweekly/mock-report";
-import { addDays, adjacentReport, getGrowthReports, selectGrowthPeriod, selectPhase } from "@/lib/biweekly/timeline";
+import { addDays, adjacentReport, getGrowthReports } from "@/lib/biweekly/timeline";
+import { ReportTimeline } from "./report-timeline";
 import { MockReportContent } from "./mock-report";
 import { MockPdfDownload } from "./mock-pdf-download";
 import s from "./biweekly-tab.module.css";
@@ -17,8 +18,8 @@ const range=(start:string,end:string)=>`${md(start)}–${md(addDays(end,-1))}`;
 export default function BiweeklyTab() {
  const [crop,setCrop]=useState<CropKey>("wheat");
  const [selection,setSelection]=useState<{growthId:string;reportId:string|null}>({growthId:"jointing",reportId:"wheat-4"});
- const reports=MOCK_REPORTS.filter(r=>r.crop===crop);
- const phases=getPhaseTree(crop);
+ const reports=useMemo(()=>MOCK_REPORTS.filter(r=>r.crop===crop),[crop]);
+ const phases=useMemo(()=>getPhaseTree(crop),[crop]);
  const phase=phases.find(p=>p.growthPeriods.some(g=>g.id===selection.growthId))!;
  const growth=phase.growthPeriods.find(g=>g.id===selection.growthId)!;
  const filtered=getGrowthReports(selection.growthId,reports);
@@ -26,8 +27,6 @@ export default function BiweeklyTab() {
  const previous=adjacentReport(filtered,selected?.id??null,-1,growth.start);
  const next=adjacentReport(filtered,selected?.id??null,1,growth.start);
  const chooseReport=(report:MockReport)=>setSelection({growthId:report.primaryGrowthPeriod,reportId:report.id});
- const phaseStart=phase.growthPeriods[0].start;
- const phaseEnd=addDays(phase.growthPeriods.at(-1)!.end,-1);
 
  return <div className={s.frame}><section className={s.root} aria-label="种植双周报原型" lang="zh-CN">
   <header className={s.header}>
@@ -43,17 +42,7 @@ export default function BiweeklyTab() {
    </div>
   </header>
   <p className={s.disclaimer}>虚构数据与排期，非当前地块；未调用AI。</p>
-  <div className={s.timelineCaption}><span>农艺阶段导航 · 非等比</span><span>{phaseStart.replaceAll("-",".")}–{phaseEnd.replaceAll("-",".")}</span></div>
-  <div className={s.phases} role="group" aria-label="农艺阶段导航，非时长比例">
-   {phases.map(item=><Button key={item.code} type="button" variant="ghost" size="sm" className={s.phase} aria-pressed={phase.code===item.code} aria-label={`${item.label} ${item.name}`} onClick={()=>{if(item.code!==phase.code)setSelection(selectPhase(item,reports));}}>
-    <span>{item.label}</span><strong>{item.label==="S2"?"并进阶段":item.name}</strong>
-   </Button>)}
-  </div>
-  <div className={s.periods} role="group" aria-label={`${phase.label}生育期`}>
-   {phase.growthPeriods.map(period=><Button key={period.id} type="button" variant="ghost" size="sm" className={s.period} aria-pressed={period.id===selection.growthId} aria-label={`${period.name}，${period.start}至${addDays(period.end,-1)}，${period.reports.length}份报告`} onClick={()=>setSelection(selectGrowthPeriod(period.id,reports))}>
-    <strong>{period.name}</strong><small><span>{range(period.start,period.end)}</span><span>{period.reports.length?`${period.reports.length}份`:"暂无"}</span></small>
-   </Button>)}
-  </div>
+  <ReportTimeline phases={phases} reports={reports} selection={selection} onSelect={setSelection}/>
   {filtered.length>0&&<div className={s.reportToolbar}>
    <div className={s.reportRow} role="group" aria-label="本生育期报告">
    <Select value={selected?.id} onValueChange={id=>{const report=filtered.find(r=>r.id===id);if(report)chooseReport(report);}}>

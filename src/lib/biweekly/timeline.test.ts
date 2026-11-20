@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { MOCK_REPORTS, getPhaseTree } from "./mock-report.ts";
 
-// No full-season pixel geometry: navigation deliberately does not imply duration proportions.
+// Selection is independent of view-window browsing; cross-period reports have one primary owner.
 test("UTC date labels handle leap/year boundaries and reject invalid calendar input", async () => {
  const {addDays}=await import("./timeline.ts");
  assert.equal(addDays("2027-01-01",-1),"2026-12-31");
@@ -39,18 +39,17 @@ test("growth report options are chronological, scoped and never duplicated by co
   assert.equal(nav.selectGrowthPeriod("filling",reports).reportId,null);
  }
 });
-test("flat stage navigation has no full-season scroll track, auto-scroll, or report overlay", () => {
+test("inline report delegates to chronology without old chip navigation, auto-scroll or report overlays", () => {
  const ui=readFileSync("src/components/biweekly/biweekly-tab.tsx","utf8");
  const css=readFileSync("src/components/biweekly/biweekly-tab.module.css","utf8");
  assert.doesNotMatch(ui,/buildTimeline|dateRatio|scrollTo|ResizeObserver|scrollRef|<details|<summary|Dialog|Drawer|Portal|tablist/);
- assert.match(ui,/阶段导航.*非等比/);
- assert.match(ui,/aria-pressed/);
- assert.match(ui,/phase\.growthPeriods\.map/);
+ assert.match(ui,/<ReportTimeline phases=\{phases\} reports=\{reports\} selection=\{selection\} onSelect=\{setSelection\}/);
+ assert.doesNotMatch(ui,/className=\{s\.(phases|periods)\}/);
  assert.match(ui,/getGrowthReports\(selection\.growthId,reports\)/);
  assert.match(ui,/adjacentReport\(filtered/);
  assert.match(ui,/暂无.*报告/);
  assert.doesNotMatch(css,/position:\s*absolute|overflow-x:\s*(auto|scroll)|white-space:\s*nowrap|text-overflow:\s*ellipsis/);
- assert.match(css,/grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+ assert.doesNotMatch(css,/grid-template-columns:\s*repeat\(3,\s*minmax/);
  assert.match(css,/min-width:\s*0/);
  assert.match(css,/flex-wrap:\s*wrap/);
 });
@@ -68,7 +67,7 @@ for(const width of [288,400,640,900]){
  });
 }
 test("report controls reuse the existing UI system, not native selects or bespoke dropdowns",()=>{
- const featureFiles=["biweekly-tab.tsx","mock-report.tsx","mock-pdf-download.tsx"];
+ const featureFiles=["biweekly-tab.tsx","mock-report.tsx","mock-pdf-download.tsx","report-timeline.tsx"];
  for(const file of featureFiles){
   const ui=readFileSync(`src/components/biweekly/${file}`,"utf8");
   assert.doesNotMatch(ui,/<select\b|<option\b|<button\b/);
@@ -99,7 +98,7 @@ test("report navigation and the genuine PDF action form one cohesive wrapping to
  assert.match(toolbar,/className=\{s\.reportRow\}/);
  assert.match(toolbar,/MockPdfDownload/);
  assert.match(css,/\.reportToolbar\{[^}]*flex-wrap:\s*wrap/);
- assert.match(css,/var\(--surface-2\)/);
+ assert.match(css,/var\(--border\)/);
  assert.doesNotMatch(css,/--wash|--tone|\.VEG\{|\.TRANS\{|\.REPRO\{/);
 });
 test("editorial body groups metric controls with title and renders all chart dates as native text",()=>{
@@ -155,7 +154,7 @@ test("report owns generous four-side inset exactly once in demo and real parcel 
  assert.match(page,/<TabsContent value="biweekly" className="mt-0 min-w-0 p-0">/);
  for(const [outer,inset,content] of [[288,16,256],[400,20,360],[640,24,592],[900,24,852]]){
   assert.equal(outer-inset*2,content);
-  assert.ok((content-10)/3>=82,"three phase labels retain usable width after rail padding/gaps");
+  assert.ok(content>=256,"focus timeline retains its bounded readable content area after generous insets");
  }
 });
 test("chart ticks cannot split dates and narrow sparse ticks do not remove observations",()=>{
