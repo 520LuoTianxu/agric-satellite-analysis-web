@@ -18,7 +18,7 @@ const STEPS = [
     { key: "ndvi", selectors: ["[data-tour='tab-ndvi']"], prepare: { tab: "ndvi", sidebar: true } },
     { key: "date", selectors: ["[data-tour='select-date']", "[data-tour='timeseries']"], prepare: { tab: "ndvi", sidebar: true } },
     { key: "growth", selectors: ["[data-tour='heatmap-modes']", "[data-tour='growth-index']"], prepare: { tab: "ndvi", sidebar: true } },
-    { key: "report", selectors: ["[data-tour='tab-report']"], prepare: { tab: "land-report", sidebar: true } },
+    { key: "report", selectors: ["[data-tour='tab-report']"], prepare: { tab: "parcel-analysis", sidebar: true } },
 ] as const;
 
 type StepDef = (typeof STEPS)[number];

@@ -30,6 +30,8 @@ import PhenologyPicker from "./phenology-picker";
 interface SeasonGrowthReportTabProps {
     landId: string;
     groupId?: string | number | null;
+    embedded?: boolean;
+    onSummaryChange?: (summary: string | null) => void;
 }
 
 const MAX_MATERIAL_FILE_BYTES = 20 * 1024 * 1024;
@@ -57,6 +59,8 @@ function localISODate(day: Date): string {
 export default function SeasonGrowthReportTab({
     landId,
     groupId,
+    embedded = false,
+    onSummaryChange,
 }: SeasonGrowthReportTabProps) {
     const t = useTranslations("seasonGrowthReport");
     const latestReportDate = localISODate(new Date());
@@ -217,8 +221,23 @@ export default function SeasonGrowthReportTab({
     const hasPdf = latest?.status === "succeeded" && Boolean(progress.object_key);
     const inFlight = generating || latest?.status === "pending" || latest?.status === "running";
 
+    useEffect(() => {
+        if (!onSummaryChange) return;
+        if (loading) return;
+        if (!latest?.status) {
+            onSummaryChange(null);
+            return;
+        }
+        try {
+            onSummaryChange(t(`status_${latest.status}` as any, { default: latest.status }));
+        } catch {
+            onSummaryChange(latest.status);
+        }
+    }, [loading, latest, onSummaryChange, t]);
+
     return (
-        <div className="p-4 space-y-4">
+        <div className={embedded ? "px-3 pb-3 space-y-4" : "p-4 space-y-4"}>
+            {!embedded && (
             <div className="space-y-1">
                 <h3 className="text-sm font-semibold flex items-center gap-2">
                     <Sprout className="h-4 w-4" />
@@ -228,6 +247,7 @@ export default function SeasonGrowthReportTab({
                     {t("description")}
                 </p>
             </div>
+            )}
 
             {loading ? (
                 <Skeleton className="h-24 w-full" />
