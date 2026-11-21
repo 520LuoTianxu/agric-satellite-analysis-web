@@ -47,6 +47,17 @@ export function triggerBackfill(landId: string, seasonId: string, periodId: stri
   return call(biweeklyPath(`/lands/${landId}/biweekly/periods/${periodId}/backfill?season=${encodeURIComponent(seasonId)}`), "POST", {});
 }
 
+export function triggerBackfillSeason(landId: string, seasonId: string) {
+  if (!process.env.NEXT_PUBLIC_BIWEEKLY_API_BASE) {
+    return biweeklyApi.backfillSeason(landId, seasonId);
+  }
+  return call(
+    biweeklyPath(`/lands/${landId}/biweekly/backfill-season?season=${encodeURIComponent(seasonId)}`),
+    "POST",
+    {season: seasonId},
+  );
+}
+
 export function triggerGenerate(landId: string, seasonId: string, periodId: string, referencePlantingInstanceId?: string) {
   if (!process.env.NEXT_PUBLIC_BIWEEKLY_API_BASE) {
     return biweeklyApi.generate(landId, seasonId, periodId, referencePlantingInstanceId);

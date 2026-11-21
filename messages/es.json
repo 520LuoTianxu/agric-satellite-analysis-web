@@ -1873,6 +1873,8 @@
     "taskTypeUnknown": "Tarea desconocida",
     "taskTypeOverviewDaily": "Resumen nacional diario",
     "taskTypeSatelliteBatch": "Procesamiento de lotes satelitales",
+    "taskTypeBiweeklyPeriodBackfill": "Reposición de datos de un periodo quincenal",
+    "taskTypeBiweeklySeasonBackfill": "Reposición de datos de toda la temporada quincenal",
     "taskTypeSatelliteHistoryBackfill": "Relleno histórico satelital",
     "taskTypeS1Sigma0Backfill": "Recálculo de calibración Sigma0 de Sentinel-1",
     "taskTypeAssessmentBatch": "Evaluación agrícola por lotes",
