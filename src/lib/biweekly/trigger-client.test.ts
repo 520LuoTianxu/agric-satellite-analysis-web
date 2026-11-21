@@ -28,3 +28,16 @@ test("field detail wires the current land into the biweekly tab", () => {
   assert.match(tab, /triggerBackfill/);
   assert.match(tab, /LOCAL_SEASONS/);
 });
+
+test("biweekly tab explains a missing Smart plan and does not invent 孕穗 or put 起身 in S1", () => {
+  const tab = readFileSync("src/components/biweekly/biweekly-tab.tsx", "utf8");
+  const mock = readFileSync("src/lib/biweekly/mock-report.ts", "utf8");
+  assert.match(tab, /本田未关联 Smart 种植方案/);
+  assert.match(tab, /不会改用其他地块的方案/);
+  assert.match(tab, /listSeasons/);
+  assert.doesNotMatch(mock, /孕穗/);
+  const s1 = mock.slice(mock.indexOf("wheat ? ["), mock.indexOf('["rising","起身期"'));
+  assert.match(s1, /返青期/);
+  assert.doesNotMatch(s1, /起身期/);
+  assert.match(mock, /\["rising","起身期"/);
+});

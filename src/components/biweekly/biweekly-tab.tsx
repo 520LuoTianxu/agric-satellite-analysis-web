@@ -14,7 +14,16 @@ const md=(date:string)=>date.slice(5).replace("-",".");
 const range=(start:string,endInclusive:string)=>`${md(start)}–${md(endInclusive)}`;
 
 type JobView = {job_id?:string;status?:string;result?:any;error?:string;kind?:string;dispatched_to_production?:boolean};
-type SeasonView = {season_id:string;label?:string;crop?:string;crop_name?:string;land_id?:string;land_name?:string;note?:string;periods:LocalPeriod[]};
+type SeasonView = {season_id:string;label?:string;crop?:string;crop_name?:string;land_id?:string;land_name?:string;note?:string;plan_status?:string;periods:LocalPeriod[]};
+
+function planErrorMessage(code:string){
+ if(code==="NO_SEASONS" || code.includes("未关联") || code.includes("无法读取 Smart")){
+  return code.includes("本田") || code.includes("无法读取")
+   ? code
+   : "本田未关联 Smart 种植方案，未列出种植季。不会改用其他地块的方案。";
+ }
+ return `暂时无法列出周期（${code}）。`;
+}
 
 function fixtureEnabled(allowLocalFixture?: boolean){
  return Boolean(allowLocalFixture || usesLocalFixture());
@@ -24,8 +33,8 @@ function toSeasonView(landId:string, raw:any, periods:LocalPeriod[]):SeasonView{
  return {
   season_id:String(raw.season_id),
   label:String(raw.label||raw.season_id),
-  crop:raw.crop?String(raw.crop):"winter_wheat",
-  crop_name:String(raw.crop_name||"冬小麦"),
+  crop:raw.crop?String(raw.crop):"wheat",
+  crop_name:String(raw.crop_name||"小麦"),
   land_id:String(raw.land_id||landId),
   land_name:raw.land_name?String(raw.land_name):undefined,
   note:raw.note?String(raw.note):"默认不出报，需显式触发补数或生成。",
@@ -78,7 +87,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
   let cancelled=false;
   const load=async()=>{
    try{
-    const seasonPayload=await listSeasons(resolvedLand) as {seasons?:Array<any>};
+    const seasonPayload=await listSeasons(resolvedLand) as {seasons?:Array<any>;plan_status?:string;note?:string;plan_available?:boolean};
     const list=seasonPayload.seasons||[];
     const views:SeasonView[]=[];
     for(const item of list){
@@ -97,7 +106,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
       setLoadError(null);
      }else{
       setSeasons([]);
-      setLoadError("NO_SEASONS");
+      setLoadError(seasonPayload.note || seasonPayload.plan_status || "NO_SEASONS");
      }
     }
    }catch(error){
@@ -172,6 +181,6 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
   <div className={s.content} aria-live="polite">{period?<>
    <p className={s.cross}>{period.label} {period.start}—{period.end_inclusive}（结束日含，内部区间至 {period.end_exclusive} 不含）。{period.has_eligible_optics?`本期有 ${period.optical_descriptive_days} 个可用光学日。`:"本期暂无可用光学，生成前应先做有界补数；确认无景后得到证据受限简报。"}{period.s1_products?"":" 本期无雷达。"} 有本田方案时按本田方案标注生育期；只有点「生成（参照 15933）」才会显式使用参照计划。</p>
    {job? <pre className={s.jobStatus}>{JSON.stringify({status:job.status,job_id:job.job_id,error:job.error,dispatched_to_production:job.dispatched_to_production,phase:job.result?.phase,planned_batch:job.result?.planned_batch,brief:job.result?.brief},null,2)}</pre> : <p className={s.empty}>{period.has_eligible_optics?"尚未生成报告。":"本期暂无可用光学报告。"}按钮走与其他地块接口同一套网关和登录态，不会自动出报。</p>}
-  </>: <p className={s.empty}>{loadError?`暂时无法列出周期（${loadError}）。`:"暂无报告。"}</p>}</div>
+  </>: <p className={s.empty}>{loadError?planErrorMessage(loadError):"暂无报告。"}</p>}</div>
  </section></div>;
 }
