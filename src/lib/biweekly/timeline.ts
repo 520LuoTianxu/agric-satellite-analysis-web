@@ -73,6 +73,23 @@ export function buildWindowTimeline(phases:AgronomicPhase[],reports:MockReport[]
   phases:phaseRanges.filter(visible).map(p=>({...p,...geometry(p.start,p.end)})),periods,
   records:reports.filter(r=>r.start>=window.start&&r.start<window.end).sort((a,b)=>a.start.localeCompare(b.start)).map(report=>({report,left:dateRatio(report.start,window.start,window.end)})),
   ticks:tickDays.map((d,i)=>({date:addDays(window.start,d),left:d/days,align:i===0?"start":i===tickDays.length-1?"end":"middle"})),
+  boundaryTicks:periods.slice(1).map(p=>({date:p.start,left:p.left})),
   minorTicks:Array.from({length:Math.floor(days/7)+1},(_,i)=>i*7/days),
  };
+}
+
+/** Cursor belongs to the interval starting at a seam, never to both neighbours. */
+export function cursorWithinInterval(anchor:number,interval:{left:number;width:number}):number|null {
+ const {left,width}=interval;
+ if(!Number.isFinite(anchor)||!Number.isFinite(left)||!Number.isFinite(width)||width<=0)return null;
+ const epsilon=1e-10;
+ if(anchor<left-epsilon||anchor>=left+width-epsilon)return null;
+ return Math.max(0,Math.min(1,(anchor-left)/width));
+}
+/** End is exclusive; 31 Dec windows do not incorrectly display a second year. */
+export function timelineDateLabels(start:string,end:string):{from:string;to:string} {
+ if(isoDay(end)<=isoDay(start))throw new RangeError("Timeline end must follow start");
+ const last=addDays(end,-1),crossYear=start.slice(0,4)!==last.slice(0,4);
+ const format=(date:string)=>crossYear?date.replaceAll("-","."):date.slice(5).replace("-",".");
+ return {from:format(start),to:format(last)};
 }
