@@ -21,8 +21,8 @@ function makeReport(crop: CropKey, index: number): MockReport {
  const ndvi = round((wheat ? 0.46 : 0.51)+index*0.09);
  const fvc = round((wheat ? 0.54 : 0.58)+index*0.09);
  const lai = round((wheat ? 1.8 : 2.1)+index*0.55);
- const codes: PhaseCode[] = index === 0 ? ["VEG"] : index === 1 ? ["VEG", "TRANS"] : ["TRANS"];
- const phases = codes.map((code,i)=>({code,name: code === "VEG" ? "营养生长" : "营养 / 生殖并进", detail: code === "VEG" ? (wheat ? (index===0?"返青":"起身") : (index===0?"苗期":"拔节")) : (wheat ? "拔节" : "穗期"), start: day(start,i===0?0:6),end:day(start,codes.length===1||i===1?14:6),days:codes.length===1?14:i===0?6:8}));
+ const codes: PhaseCode[] = index === 0 ? ["VEG"] : index === 1 ? (wheat ? ["TRANS", "TRANS"] : ["VEG", "TRANS"]) : ["TRANS"];
+ const phases = codes.map((code,i)=>({code,name: code === "VEG" ? "营养生长" : "营养 / 生殖并进", detail: wheat ? (index===0?"返青":index===1?(i===0?"起身":"拔节"):"拔节") : (code === "VEG" ? (index===0?"苗期":"拔节") : "穗期"), start: day(start,i===0?0:6),end:day(start,codes.length===1||i===1?14:6),days:codes.length===1?14:i===0?6:8}));
  const weather = Array.from({length:14},(_,i)=>({date:day(start,i),rain:([0,0,2,0,0,0,5,0,0,1,0,0,0,0][i]) + (index===0 && i===4 ? 4 : 0),temp:round((wheat ? 10 : 24)+index*2+Math.sin(i)*2)}));
  const primaryGrowthPeriod = index===0 ? (wheat?"green":"seedling") : index===1 ? (wheat?"rising":"jointing") : (wheat?"jointing":"ear");
  const coveredGrowthPeriods = index===1 ? [primaryGrowthPeriod,wheat?"jointing":"ear"] : [primaryGrowthPeriod];
@@ -43,9 +43,9 @@ export interface AgronomicPhase { code: PhaseCode; label: "S1" | "S2" | "S3"; na
 export function getPhaseTree(crop: CropKey): AgronomicPhase[] {
  const wheat=crop==="wheat";
  const definitions = wheat ? [
-  [["seedling","出苗 / 分蘖期","2026-10-01","2026-12-01"],["winter","越冬期","2026-12-01","2027-03-01"],["green","返青期","2027-03-01","2027-03-15"],["rising","起身期","2027-03-15","2027-03-21"]],
-  [["jointing","拔节期","2027-03-21","2027-04-26"],["booting","孕穗期","2027-04-26","2027-05-10"]],
-  [["heading","抽穗 / 开花期","2027-05-10","2027-05-24"],["filling","灌浆 / 成熟期","2027-05-24","2027-06-14"]],
+  [["seedling","出苗至三叶期","2026-10-01","2026-12-01"],["tillering","冬前分蘖期","2026-12-01","2026-12-15"],["winter","越冬期","2026-12-15","2027-03-01"],["green","返青期","2027-03-01","2027-03-15"]],
+  [["rising","起身期","2027-03-15","2027-03-21"],["jointing","拔节期","2027-03-21","2027-04-26"]],
+  [["heading","抽穗至开花期","2027-04-26","2027-05-24"],["filling","灌浆 / 成熟期","2027-05-24","2027-06-14"]],
  ] : [
   [["seedling","苗期","2027-06-14","2027-06-28"],["jointing","拔节期","2027-06-28","2027-07-04"]],
   [["ear","穗期（喇叭口）","2027-07-04","2027-08-09"]],

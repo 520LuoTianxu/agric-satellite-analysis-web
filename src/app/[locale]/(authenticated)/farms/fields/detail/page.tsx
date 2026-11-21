@@ -157,7 +157,7 @@ const SoilTab = dynamic(() => import("@/components/field/soil-tab"), {
     ),
 });
 
-// 纯Mock双周报独立为一级页签，不接入真实地块属性或报告服务。
+// 种植双周报：走现有登录态与 /satellite-api，与其他地块接口同一套网关。
 const BiweeklyTab = dynamic(() => import("@/components/biweekly/biweekly-tab"));
 
 // 选地报告、生育期长势、收获合并为地块分析，首次进入该页签再加载。
@@ -1889,8 +1889,8 @@ function FieldDetailPageContent() {
                                     </TabsContent>
                                     )}
 
-                                    <TabsContent value="biweekly" className="mt-0 min-w-0 p-3">
-                                        <BiweeklyTab />
+                                    <TabsContent value="biweekly" className="mt-0 min-w-0 p-0">
+                                        <BiweeklyTab landId={landId} cropType={land.crop_type} />
                                     </TabsContent>
 
                                     <TabsContent value="share" className="mt-0">

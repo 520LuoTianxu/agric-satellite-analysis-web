@@ -1,71 +1,71 @@
 {
-  "dataKind": "mock",
-  "templateVersion": "biweekly-detailed-mock-v1",
-  "modelVersion": "none-mock-template",
-  "artifacts": [
-    {
-      "reportId": "wheat-1",
-      "status": "ready",
-      "url": "/biweekly-mock/wheat-1.pdf",
-      "pages": 3,
-      "snapshotSha256": "bcc13d39d51dfe974955af973111b8a313cab982aa64ca5705952af8de551381",
-      "sha256": "d709186c335bf2a5801503d10501a8a651f4de8bcbdb90f48564d4de8cbc7243"
-    },
-    {
-      "reportId": "wheat-2",
-      "status": "ready",
-      "url": "/biweekly-mock/wheat-2.pdf",
-      "pages": 3,
-      "snapshotSha256": "a9b2a7d788197d2f6e1f44bb308a3586bedf11d9c7deebcfdf03b5a357bc5116",
-      "sha256": "a58e26eed57a5b8651f045b14f96744c013611199c2fe7a49caff4c1d5360177"
-    },
-    {
-      "reportId": "wheat-3",
-      "status": "ready",
-      "url": "/biweekly-mock/wheat-3.pdf",
-      "pages": 3,
-      "snapshotSha256": "0f65f2226117e44fb081c0f9e44c29237b81e9310d2f2a1343e0f89e64a0634a",
-      "sha256": "10c868a2dcdc94b6ea3ade0ba2baa7995c2954f2c5ac38806b3b086a75d2a25c"
-    },
-    {
-      "reportId": "wheat-4",
-      "status": "ready",
-      "url": "/biweekly-mock/wheat-4.pdf",
-      "pages": 3,
-      "snapshotSha256": "e18850ca0b7ec20e9a9fcd0f0748750fbd7e18164713917d91be0ee772b9b741",
-      "sha256": "3658ec42f8b9d88dc2cc2d241d941766f1478cdc426539a9fdf683bc681472d0"
-    },
-    {
-      "reportId": "maize-1",
-      "status": "ready",
-      "url": "/biweekly-mock/maize-1.pdf",
-      "pages": 3,
-      "snapshotSha256": "980abf41e9ebf73dc62cd3a84afe5f86a85f919e42bd5bbb53c69cf0f0ffb227",
-      "sha256": "fd0ab6ed16f3dadd65a743077948d9e51c37956491c1a2b7ab877c16660c5959"
-    },
-    {
-      "reportId": "maize-2",
-      "status": "ready",
-      "url": "/biweekly-mock/maize-2.pdf",
-      "pages": 3,
-      "snapshotSha256": "0f918567ec8745ce4f70c90b3fb5a484d943e57a19fb6fa58fe34dbee89d0552",
-      "sha256": "d796c53b63e9f57fea0803983da4aa2843a11c6988e3d7f2227d32b6d9dbe96d"
-    },
-    {
-      "reportId": "maize-3",
-      "status": "ready",
-      "url": "/biweekly-mock/maize-3.pdf",
-      "pages": 3,
-      "snapshotSha256": "34cc831f81b6c244047e0e45d6351f3a7e76b604692dd51646dc48ff0295bc5a",
-      "sha256": "80fe91c7736e52e98b68c266209dc58fd6d55ef2a81be64157782a6dd505291c"
-    },
-    {
-      "reportId": "maize-4",
-      "status": "ready",
-      "url": "/biweekly-mock/maize-4.pdf",
-      "pages": 3,
-      "snapshotSha256": "6b5d46296829651b03df1d4e66134ad5800affaa54172fb645c7f40c58b8bffd",
-      "sha256": "8f4c7f7c59063faa44d00fc9a35a7d0d5af75a61b0ca8fe42f9c1754e7cac150"
-    }
-  ]
+ "dataKind": "mock",
+ "templateVersion": "biweekly-detailed-mock-v1",
+ "modelVersion": "none-mock-template",
+ "artifacts": [
+  {
+   "reportId": "wheat-1",
+   "status": "ready",
+   "url": "/biweekly-mock/wheat-1.pdf",
+   "pages": 3,
+   "snapshotSha256": "bcc13d39d51dfe974955af973111b8a313cab982aa64ca5705952af8de551381",
+   "sha256": "d709186c335bf2a5801503d10501a8a651f4de8bcbdb90f48564d4de8cbc7243"
+  },
+  {
+   "reportId": "wheat-2",
+   "status": "ready",
+   "url": "/biweekly-mock/wheat-2.pdf",
+   "pages": 3,
+   "snapshotSha256": "3514677a011682903bbd53de1c97e36809f8bc3a66bf205b360a60b7536cd462",
+   "sha256": "a58e26eed57a5b8651f045b14f96744c013611199c2fe7a49caff4c1d5360177"
+  },
+  {
+   "reportId": "wheat-3",
+   "status": "ready",
+   "url": "/biweekly-mock/wheat-3.pdf",
+   "pages": 3,
+   "snapshotSha256": "0f65f2226117e44fb081c0f9e44c29237b81e9310d2f2a1343e0f89e64a0634a",
+   "sha256": "10c868a2dcdc94b6ea3ade0ba2baa7995c2954f2c5ac38806b3b086a75d2a25c"
+  },
+  {
+   "reportId": "wheat-4",
+   "status": "ready",
+   "url": "/biweekly-mock/wheat-4.pdf",
+   "pages": 3,
+   "snapshotSha256": "e18850ca0b7ec20e9a9fcd0f0748750fbd7e18164713917d91be0ee772b9b741",
+   "sha256": "3658ec42f8b9d88dc2cc2d241d941766f1478cdc426539a9fdf683bc681472d0"
+  },
+  {
+   "reportId": "maize-1",
+   "status": "ready",
+   "url": "/biweekly-mock/maize-1.pdf",
+   "pages": 3,
+   "snapshotSha256": "980abf41e9ebf73dc62cd3a84afe5f86a85f919e42bd5bbb53c69cf0f0ffb227",
+   "sha256": "fd0ab6ed16f3dadd65a743077948d9e51c37956491c1a2b7ab877c16660c5959"
+  },
+  {
+   "reportId": "maize-2",
+   "status": "ready",
+   "url": "/biweekly-mock/maize-2.pdf",
+   "pages": 3,
+   "snapshotSha256": "0f918567ec8745ce4f70c90b3fb5a484d943e57a19fb6fa58fe34dbee89d0552",
+   "sha256": "d796c53b63e9f57fea0803983da4aa2843a11c6988e3d7f2227d32b6d9dbe96d"
+  },
+  {
+   "reportId": "maize-3",
+   "status": "ready",
+   "url": "/biweekly-mock/maize-3.pdf",
+   "pages": 3,
+   "snapshotSha256": "34cc831f81b6c244047e0e45d6351f3a7e76b604692dd51646dc48ff0295bc5a",
+   "sha256": "80fe91c7736e52e98b68c266209dc58fd6d55ef2a81be64157782a6dd505291c"
+  },
+  {
+   "reportId": "maize-4",
+   "status": "ready",
+   "url": "/biweekly-mock/maize-4.pdf",
+   "pages": 3,
+   "snapshotSha256": "6b5d46296829651b03df1d4e66134ad5800affaa54172fb645c7f40c58b8bffd",
+   "sha256": "8f4c7f7c59063faa44d00fc9a35a7d0d5af75a61b0ca8fe42f9c1754e7cac150"
+  }
+ ]
 }
