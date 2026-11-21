@@ -7,6 +7,8 @@ const TASK_TYPE_KEYS: Record<string, string> = {
     "parcel_insights": "taskTypeParcelInsights",
     "overview_daily": "taskTypeOverviewDaily",
     "satellite_batch": "taskTypeSatelliteBatch",
+    "biweekly_period_backfill": "taskTypeBiweeklyPeriodBackfill",
+    "biweekly_season_backfill": "taskTypeBiweeklySeasonBackfill",
     "satellite_history_backfill": "taskTypeSatelliteHistoryBackfill",
     "s1_sigma0_calibration_backfill": "taskTypeS1Sigma0Backfill",
     "assessment_batch": "taskTypeAssessmentBatch",

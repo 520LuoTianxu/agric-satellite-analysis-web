@@ -2695,6 +2695,11 @@ export const biweeklyApi = {
             `/lands/${encodeURIComponent(landId)}/biweekly/periods/${encodeURIComponent(periodId)}/backfill?season=${encodeURIComponent(seasonId)}`,
             { method: "POST", body: JSON.stringify({}) },
         ),
+    backfillSeason: (landId: string, seasonId: string) =>
+        apiFetch<Record<string, unknown>>(
+            `/lands/${encodeURIComponent(landId)}/biweekly/backfill-season?season=${encodeURIComponent(seasonId)}`,
+            { method: "POST", body: JSON.stringify({ season: seasonId }) },
+        ),
     generate: (landId: string, seasonId: string, periodId: string, referencePlantingInstanceId?: string) =>
         apiFetch<Record<string, unknown>>(
             `/lands/${encodeURIComponent(landId)}/biweekly/periods/${encodeURIComponent(periodId)}/generate?season=${encodeURIComponent(seasonId)}`,

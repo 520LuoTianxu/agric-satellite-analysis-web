@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LOCAL_LAND_ID, LOCAL_SEASONS, adjacentPeriod, getLocalSeason, isMaizeCrop, type LocalPeriod } from "@/lib/biweekly/local-catalog";
-import { jobDownloadUrl, listPeriods, listSeasons, triggerBackfill, triggerGenerate, usesLocalFixture } from "@/lib/biweekly/local-trigger";
+import { jobDownloadUrl, listPeriods, listSeasons, triggerBackfill, triggerBackfillSeason, triggerGenerate, usesLocalFixture } from "@/lib/biweekly/local-trigger";
 import { planStagesFromPayload, type PlanStage } from "@/lib/biweekly/plan-timeline";
 import { addDays } from "@/lib/biweekly/timeline";
 import { PlanPhenologyTimeline } from "./plan-timeline";
@@ -129,13 +129,16 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  },[resolvedLand,maize,canUseFixture]);
 
  const choosePeriod=(item:{period_id:string})=>{setPeriodId(item.period_id);setJob(null);};
- const run=async(action:"backfill"|"generate"|"generate-ref")=>{
-  if(!resolvedLand||!season||!period) return;
+ const run=async(action:"backfill-period"|"backfill-season"|"generate")=>{
+  if(!resolvedLand||!season) return;
+  if(action!=="backfill-season"&&!period) return;
   setBusy(true);
   try{
-   const result=action==="backfill"
-    ? await triggerBackfill(resolvedLand,season.season_id,period.period_id)
-    : await triggerGenerate(resolvedLand,season.season_id,period.period_id,action==="generate-ref"?"15933":undefined);
+   const result=action==="backfill-period"
+    ? await triggerBackfill(resolvedLand,season.season_id,period!.period_id)
+    : action==="backfill-season"
+     ? await triggerBackfillSeason(resolvedLand,season.season_id)
+     : await triggerGenerate(resolvedLand,season.season_id,period!.period_id);
    setJob(result as JobView);
   }catch(error){
    setJob({status:"failed",error:error instanceof Error?error.message:"API_UNAVAILABLE"});
@@ -152,13 +155,16 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  return <div className={s.frame}><section className={s.root} aria-label="种植双周报" lang="zh-CN">
   <header className={s.header}>
    <h2>种植双周报 {canUseFixture&&!landId?<span className={s.mock}>本地夹具</span>:null}</h2>
-   {season?<div className={s.crop}>
-    <Select value={season.season_id} onValueChange={value=>{setSeasonId(value);setPeriodId("12");setJob(null);}}>
-     <SelectTrigger className={s.selectTrigger} aria-label="选择种植季"><SelectValue/></SelectTrigger>
-     <SelectContent align="end" collisionPadding={12} className={s.selectPopup}>
-      {seasons.map(item=><SelectItem className={s.selectItem} key={item.season_id} value={item.season_id}>{item.crop_name||item.label} · {item.label}</SelectItem>)}
-     </SelectContent>
-    </Select>
+   {season?<div className={s.seasonControls}>
+    <div className={s.crop}>
+     <Select value={season.season_id} onValueChange={value=>{setSeasonId(value);setPeriodId("12");setJob(null);}}>
+      <SelectTrigger className={s.selectTrigger} aria-label="选择种植季"><SelectValue/></SelectTrigger>
+      <SelectContent align="end" collisionPadding={12} className={s.selectPopup}>
+       {seasons.map(item=><SelectItem className={s.selectItem} key={item.season_id} value={item.season_id}>{item.crop_name||item.label} · {item.label}</SelectItem>)}
+      </SelectContent>
+     </Select>
+    </div>
+    <Button type="button" variant="outline" size="sm" className={s.seasonFill} disabled={busy||!season.periods.length} onClick={()=>run("backfill-season")}>一键补齐全部双周报</Button>
    </div>:null}
   </header>
   <p className={s.disclaimer}>地块 {resolvedLand||"—"} {season?.land_name||""} · {season?.note||"走现有登录态与 /satellite-api 网关。"} 默认不出报，需显式触发补数或生成。未调用AI。</p>
@@ -174,17 +180,16 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
     <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className={s.navButton} aria-label="上一周期" disabled={!previous} onClick={()=>previous&&choosePeriod(previous)}><ChevronLeft size={15} aria-hidden="true"/></Button></TooltipTrigger><TooltipContent>上一周期</TooltipContent></Tooltip>
     <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className={s.navButton} aria-label="下一周期" disabled={!next} onClick={()=>next&&choosePeriod(next)}><ChevronRight size={15} aria-hidden="true"/></Button></TooltipTrigger><TooltipContent>下一周期</TooltipContent></Tooltip>
    </TooltipProvider>
+    <Button type="button" variant="outline" size="sm" className={s.periodFill} disabled={busy||!period} onClick={()=>run("backfill-period")}>补齐本期数据</Button>
    </div>
-   <div className={s.triggerRow} role="group" aria-label="触发 API 机双周报接口">
-    <Button type="button" variant="outline" size="sm" disabled={busy||!period} onClick={()=>run("backfill")}>有界补数</Button>
+   <div className={s.triggerRow} role="group" aria-label="生成双周报">
     <Button type="button" variant="outline" size="sm" disabled={busy||!period} onClick={()=>run("generate")}>生成</Button>
-    <Button type="button" variant="outline" size="sm" disabled={busy||!period} onClick={()=>run("generate-ref")}>生成（参照 15933）</Button>
     {job?.job_id&&(job.status==="ready"||job.status==="evidence_limited")&&<Button type="button" variant="ghost" size="sm" asChild><a href={jobDownloadUrl(resolvedLand,job.job_id)} target="_blank" rel="noreferrer">下载产物</a></Button>}
    </div>
   </div>}
   {season?<PlanPhenologyTimeline stages={season.stages} period={period?{period_id:period.period_id,label:period.label,start:period.start,end_inclusive:period.end_inclusive,end_exclusive:period.end_exclusive,has_eligible_optics:period.has_eligible_optics}:null} periods={season.periods} onSelectPeriod={choosePeriod}/>:null}
   <div className={s.content} aria-live="polite">{period?<>
-   <p className={s.cross}>{period.label} {period.start}—{period.end_inclusive}（结束日含，内部区间至 {period.end_exclusive} 不含）。{period.has_eligible_optics?`本期有 ${period.optical_descriptive_days} 个可用光学日。`:"本期暂无可用光学，生成前应先做有界补数；确认无景后得到证据受限简报。"}{period.s1_products?"":" 本期无雷达。"} 有本田方案时按本田方案标注生育期；只有点「生成（参照 15933）」才会显式使用参照计划。</p>
+   <p className={s.cross}>{period.label} {period.start}—{period.end_inclusive}（结束日含，内部区间至 {period.end_exclusive} 不含）。{period.has_eligible_optics?`本期有 ${period.optical_descriptive_days} 个可用光学日。`:"本期暂无可用光学。可先补齐本期数据，再显式生成；确认无景后得到证据受限简报。"}{period.s1_products?"":" 本期无雷达。"} 有本田方案时按本田方案标注生育期。不会默认使用其他地块的参照计划；如使用参照，须由调用方显式传入并标注为参照。</p>
    {job? <pre className={s.jobStatus}>{JSON.stringify({status:job.status,job_id:job.job_id,error:job.error,dispatched_to_production:job.dispatched_to_production,phase:job.result?.phase,planned_batch:job.result?.planned_batch,brief:job.result?.brief},null,2)}</pre> : <p className={s.empty}>{period.has_eligible_optics?"尚未生成报告。":"本期暂无可用光学报告。"}按钮走与其他地块接口同一套网关和登录态，不会自动出报。</p>}
   </>: <p className={s.empty}>{loadError?planErrorMessage(loadError):"暂无报告。"}</p>}</div>
  </section></div>;
