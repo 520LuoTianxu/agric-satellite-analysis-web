@@ -8,3 +8,6 @@
 
 @container(min-width:360px){.root{padding-inline:var(--space-5)}}
 @container(min-width:600px){.root{padding-inline:var(--space-6)}}
+
+.triggerRow{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+.jobStatus{margin:0;padding:12px;font-size:11px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:hsl(var(--muted));border-radius:var(--radius-md);color:hsl(var(--foreground))}
