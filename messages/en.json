@@ -1873,6 +1873,8 @@
     "taskTypeUnknown": "Unknown task",
     "taskTypeOverviewDaily": "Daily national overview",
     "taskTypeSatelliteBatch": "Satellite batch processing",
+    "taskTypeBiweeklyPeriodBackfill": "Biweekly period data backfill",
+    "taskTypeBiweeklySeasonBackfill": "Biweekly season data backfill",
     "taskTypeSatelliteHistoryBackfill": "Satellite history backfill",
     "taskTypeS1Sigma0Backfill": "Sentinel-1 Sigma0 calibration backfill",
     "taskTypeAssessmentBatch": "Batch agricultural assessment",

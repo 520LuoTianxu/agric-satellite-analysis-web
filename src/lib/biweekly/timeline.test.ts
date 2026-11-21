@@ -99,7 +99,15 @@ test("report navigation and the genuine PDF action form one cohesive wrapping to
  const toolbar=ui.match(/className=\{s\.reportToolbar\}([\s\S]*?)<div className=\{s\.content\}/)?.[1]??"";
  assert.match(toolbar,/className=\{s\.reportRow\}/);
  assert.match(toolbar,/triggerRow/);
- assert.match(toolbar,/有界补数/);
+ assert.match(toolbar,/补齐本期数据/);
+ assert.doesNotMatch(toolbar,/有界补数/);
+ assert.doesNotMatch(toolbar,/生成（参照 15933）/);
+ assert.doesNotMatch(toolbar,/一键补齐全部双周报/);
+ const seasonBar=ui.match(/className=\{s\.seasonControls\}([\s\S]*?)<\/header>/)?.[1]??"";
+ assert.match(ui,/className=\{s\.seasonControls\}/);
+ assert.match(ui,/一键补齐全部双周报/);
+ assert.match(seasonBar,/一键补齐全部双周报/);
+ assert.doesNotMatch(seasonBar,/补齐本期数据/);
  assert.match(css,/\.reportToolbar\{[^}]*flex-wrap:\s*wrap/);
  assert.match(css,/var\(--border\)/);
  assert.doesNotMatch(css,/--wash|--tone|\.VEG\{|\.TRANS\{|\.REPRO\{/);
