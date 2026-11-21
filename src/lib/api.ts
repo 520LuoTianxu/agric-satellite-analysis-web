@@ -2,6 +2,7 @@ import { resolveGatewayUrl } from "@/lib/api-origin";
 import { buildLandWeatherPath } from "@/lib/land-weather";
 import { getAlertSession } from "@/lib/alert-session";
 import { mutate as mutateCache } from "swr";
+import { AUTH_KEYS, getItem } from "@/lib/auth/storage";
 
 /**
  * agric-satellite-analysis API client.
@@ -62,6 +63,20 @@ export class ApiError extends Error {
     }
 }
 
+
+/** Same login-state Bearer used by agric-api / other authenticated pages. */
+export function getSatelliteAuthHeaders(): Record<string, string> {
+    const token =
+        getItem(AUTH_KEYS.agricAdminToken) ||
+        getItem(AUTH_KEYS.farmAdminToken) ||
+        getItem(AUTH_KEYS.adminToken) ||
+        getItem(AUTH_KEYS.accessToken) ||
+        getItem(AUTH_KEYS.sldToken) ||
+        "";
+    if (!token) return {};
+    return { Authorization: `Bearer ${token.replace(/^Bearer\s+/i, "")}` };
+}
+
 /** Core fetch wrapper - adds Authorization + X-Org-Id headers. */
 async function apiFetch<T>(
     path: string,
@@ -69,6 +84,7 @@ async function apiFetch<T>(
 ): Promise<T> {
     const { orgId: _orgId, skipOrg: _skipOrg, ...fetchOpts } = opts;
     const headers: Record<string, string> = {
+        ...getSatelliteAuthHeaders(),
         ...(fetchOpts.headers as Record<string, string>),
     };
 
@@ -94,7 +110,7 @@ async function apiFetch<T>(
 
 /** Authenticated binary/CSV download → triggers browser save. */
 async function apiDownload(path: string, fallbackName: string): Promise<void> {
-    const res = await fetch(`${getApiBase()}${path}`);
+    const res = await fetch(`${getApiBase()}${path}`, { headers: getSatelliteAuthHeaders() });
     if (!res.ok) {
         let detail = res.statusText;
         try {
@@ -2648,4 +2664,58 @@ export const harvestReportApi = {
         apiFetch<HarvestExportJob>(`/agri/harvest-report/export-jobs/${encodeURIComponent(jobId)}`, { signal }),
     downloadExportJob: (job: HarvestExportJob) =>
         apiDownload(`/agri/harvest-report/export-jobs/${encodeURIComponent(job.job_id)}/download`, job.file_name),
+};
+
+export interface BiweeklySeasonList {
+    land_id: string;
+    seasons: Array<Record<string, unknown> & { season_id: string; label?: string; crop?: string }>;
+    auto_publish?: boolean;
+    [key: string]: unknown;
+}
+
+export interface BiweeklyPeriodList {
+    land_id: string;
+    season_id: string;
+    periods: Array<Record<string, unknown> & { period_id: string; start: string; end_inclusive: string; end_exclusive: string }>;
+    auto_publish?: boolean;
+    [key: string]: unknown;
+}
+
+/** 种植双周报：与其他地块接口同一套 /satellite-api 网关和登录态。 */
+export const biweeklyApi = {
+    seasons: (landId: string, signal?: AbortSignal) =>
+        apiFetch<BiweeklySeasonList>(`/lands/${encodeURIComponent(landId)}/biweekly/seasons`, { signal }),
+    periods: (landId: string, seasonId: string, signal?: AbortSignal) =>
+        apiFetch<BiweeklyPeriodList>(
+            `/lands/${encodeURIComponent(landId)}/biweekly/periods?season=${encodeURIComponent(seasonId)}`,
+            { signal },
+        ),
+    backfill: (landId: string, seasonId: string, periodId: string) =>
+        apiFetch<Record<string, unknown>>(
+            `/lands/${encodeURIComponent(landId)}/biweekly/periods/${encodeURIComponent(periodId)}/backfill?season=${encodeURIComponent(seasonId)}`,
+            { method: "POST", body: JSON.stringify({}) },
+        ),
+    generate: (landId: string, seasonId: string, periodId: string, referencePlantingInstanceId?: string) =>
+        apiFetch<Record<string, unknown>>(
+            `/lands/${encodeURIComponent(landId)}/biweekly/periods/${encodeURIComponent(periodId)}/generate?season=${encodeURIComponent(seasonId)}`,
+            {
+                method: "POST",
+                body: JSON.stringify(
+                    referencePlantingInstanceId
+                        ? { reference_planting_instance_id: referencePlantingInstanceId }
+                        : {},
+                ),
+            },
+        ),
+    job: (landId: string, jobId: string) =>
+        apiFetch<Record<string, unknown>>(
+            `/lands/${encodeURIComponent(landId)}/biweekly/jobs/${encodeURIComponent(jobId)}`,
+        ),
+    download: (landId: string, jobId: string) =>
+        apiDownload(
+            `/lands/${encodeURIComponent(landId)}/biweekly/jobs/${encodeURIComponent(jobId)}/download`,
+            `biweekly-${landId}-${jobId}.bin`,
+        ),
+    downloadUrl: (landId: string, jobId: string) =>
+        `${getApiBase()}/lands/${encodeURIComponent(landId)}/biweekly/jobs/${encodeURIComponent(jobId)}/download`,
 };

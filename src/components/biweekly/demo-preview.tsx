@@ -38,6 +38,6 @@ export function BiweeklyDemoPreview() {
    <span>预览宽度</span>{WIDTHS.map(value=><Button key={value} type="button" variant={width===value?"secondary":"ghost"} size="sm" aria-pressed={width===value} onClick={()=>setWidth(value)}>{value}px</Button>)}
   </div>
   <p role="status" className={s.status}>{measurements?`目标 ${width}px · 实际 ${measurements.client}px · 内容 ${measurements.content}px · ${measurements.content<=measurements.client+1&&!measurements.pageOverflow?"未检测到横向溢出":"检测到横向溢出，请检查"}`:"等待浏览器测量"}</p>
-  <div className={s.frame} ref={frame} style={{width}}><BiweeklyTab/></div>
+  <div className={s.frame} ref={frame} style={{width}}><BiweeklyTab allowLocalFixture /></div>
  </main>;
 }

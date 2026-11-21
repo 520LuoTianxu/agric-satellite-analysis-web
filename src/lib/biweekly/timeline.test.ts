@@ -16,9 +16,9 @@ test("each phase selects its latest owned report or first visible empty period",
  assert.equal(typeof nav.selectPhase,"function");
  for(const crop of ["wheat","maize"] as const){
   const phases=getPhaseTree(crop), reports=MOCK_REPORTS.filter(r=>r.crop===crop);
-  const expected=crop==="wheat"?["rising","jointing","heading"]:["jointing","ear","flowering"];
+  const expected=crop==="wheat"?["green","jointing","heading"]:["jointing","ear","flowering"];
   assert.deepEqual(phases.map(p=>nav.selectPhase(p,reports).growthId),expected);
-  assert.deepEqual(phases.map(p=>nav.selectPhase(p,reports).reportId),[`${crop}-2`,`${crop}-4`,null]);
+  assert.deepEqual(phases.map(p=>nav.selectPhase(p,reports).reportId),[crop==="wheat"?`${crop}-1`:`${crop}-2`,`${crop}-4`,null]);
  }
 });
 test("growth report options are chronological, scoped and never duplicated by coverage", async () => {
@@ -39,15 +39,17 @@ test("growth report options are chronological, scoped and never duplicated by co
   assert.equal(nav.selectGrowthPeriod("filling",reports).reportId,null);
  }
 });
-test("inline report delegates to chronology without old chip navigation, auto-scroll or report overlays", () => {
+test("inline report uses season and period selectors without overlays or auto-publish", () => {
  const ui=readFileSync("src/components/biweekly/biweekly-tab.tsx","utf8");
  const css=readFileSync("src/components/biweekly/biweekly-tab.module.css","utf8");
  assert.doesNotMatch(ui,/buildTimeline|dateRatio|scrollTo|ResizeObserver|scrollRef|<details|<summary|Dialog|Drawer|Portal|tablist/);
- assert.match(ui,/<ReportTimeline phases=\{phases\} reports=\{reports\} selection=\{selection\} onSelect=\{setSelection\}/);
- assert.doesNotMatch(ui,/className=\{s\.(phases|periods)\}/);
- assert.match(ui,/getGrowthReports\(selection\.growthId,reports\)/);
- assert.match(ui,/adjacentReport\(filtered/);
- assert.match(ui,/暂无.*报告/);
+ assert.match(ui,/选择种植季/);
+ assert.match(ui,/选择周期/);
+ assert.match(ui,/LOCAL_SEASONS/);
+ assert.match(ui,/triggerBackfill|triggerGenerate/);
+ assert.match(ui,/暂无报告/);
+ assert.doesNotMatch(ui,/玉米/);
+ assert.doesNotMatch(ui,/MockReportContent/);
  assert.doesNotMatch(css,/position:\s*absolute|overflow-x:\s*(auto|scroll)|white-space:\s*nowrap|text-overflow:\s*ellipsis/);
  assert.doesNotMatch(css,/grid-template-columns:\s*repeat\(3,\s*minmax/);
  assert.match(css,/min-width:\s*0/);
@@ -96,7 +98,8 @@ test("report navigation and the genuine PDF action form one cohesive wrapping to
  const css=readFileSync("src/components/biweekly/biweekly-tab.module.css","utf8");
  const toolbar=ui.match(/className=\{s\.reportToolbar\}([\s\S]*?)<div className=\{s\.content\}/)?.[1]??"";
  assert.match(toolbar,/className=\{s\.reportRow\}/);
- assert.match(toolbar,/MockPdfDownload/);
+ assert.match(toolbar,/triggerRow/);
+ assert.match(toolbar,/有界补数/);
  assert.match(css,/\.reportToolbar\{[^}]*flex-wrap:\s*wrap/);
  assert.match(css,/var\(--border\)/);
  assert.doesNotMatch(css,/--wash|--tone|\.VEG\{|\.TRANS\{|\.REPRO\{/);
