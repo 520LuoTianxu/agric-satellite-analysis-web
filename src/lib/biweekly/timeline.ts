@@ -1,39 +1,95 @@
 import type { AgronomicPhase, MockReport } from "./mock-report";
-const DAY=86400000;
+
 function isoDay(value: string): number {
  const ms=Date.parse(`${value}T00:00:00Z`);
  if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(ms)||new Date(ms).toISOString().slice(0,10)!==value) throw new RangeError(`Invalid ISO day: ${value}`);
  return ms;
 }
-export function daySpan(start: string,end: string): number {return (isoDay(end)-isoDay(start))/DAY;}
-export function addDays(date: string,count: number): string {return new Date(isoDay(date)+count*DAY).toISOString().slice(0,10);}
-export function dateRatio(date: string,start: string,end: string): number {
- const days=daySpan(start,end);
- if(days<=0) throw new RangeError("Timeline end must follow start");
- return Math.min(1,Math.max(0,daySpan(start,date)/days));
+export function addDays(date: string,count: number): string {
+ return new Date(isoDay(date)+count*86400000).toISOString().slice(0,10);
 }
-export function buildTimeline(phases: AgronomicPhase[],reports: MockReport[]) {
- const growth=phases.flatMap(p=>p.growthPeriods);
- if(!growth.length) throw new RangeError("Timeline needs growth periods");
- const start=growth[0].start,end=growth.at(-1)!.end;
- const geometry=(a:string,b:string)=>{const left=dateRatio(a,start,end);return {left,width:dateRatio(b,start,end)-left};};
- const months: {date:string;label:string;left:number}[]=[];
- if(!start.endsWith("-01"))months.push({date:start,label:`${start.slice(0,4)}.${start.slice(5,7)}`,left:0});
- let month=start.slice(0,7)+"-01";
- while(month<end){if(month>=start)months.push({date:month,label:`${month.slice(0,4)}.${month.slice(5,7)}`,left:dateRatio(month,start,end)});const d=new Date(isoDay(month));d.setUTCMonth(d.getUTCMonth()+1);month=d.toISOString().slice(0,10);}
- return {start,end,days:daySpan(start,end),minWidth:Math.max(720,daySpan(start,end)*6),months,
-  phases:phases.map(p=>({...p,start:p.growthPeriods[0].start,end:p.growthPeriods.at(-1)!.end,...geometry(p.growthPeriods[0].start,p.growthPeriods.at(-1)!.end)})),
-  periods:growth.map(g=>({...g,...geometry(g.start,g.end)})),
-  records:[...reports].sort((a,b)=>a.start.localeCompare(b.start)).map(report=>({report,date:report.start,left:dateRatio(report.start,start,end)})),
- };
+/** Primary attribution only: crossover coverage never creates duplicate options. */
+export function getGrowthReports(growthId:string,reports:MockReport[]):MockReport[] {
+ return reports.filter(r=>r.primaryGrowthPeriod===growthId).sort((a,b)=>a.start.localeCompare(b.start));
 }
 export function selectGrowthPeriod(growthId:string,reports:MockReport[]) {
- const matches=reports.filter(r=>r.primaryGrowthPeriod===growthId).sort((a,b)=>a.start.localeCompare(b.start));
- return {growthId,reportId:matches.at(-1)?.id??null};
+ return {growthId,reportId:getGrowthReports(growthId,reports).at(-1)?.id??null};
 }
+/** Pick a phase's latest primary report; empty phases select their first growth period. */
+export function selectPhase(phase:AgronomicPhase,reports:MockReport[]) {
+ const periods=new Set(phase.growthPeriods.map(g=>g.id));
+ const latest=reports.filter(r=>periods.has(r.primaryGrowthPeriod)).sort((a,b)=>a.start.localeCompare(b.start)).at(-1);
+ const growthId=latest?.primaryGrowthPeriod??phase.growthPeriods[0]?.id;
+ if(!growthId)throw new RangeError("Phase needs a growth period");
+ return selectGrowthPeriod(growthId,reports);
+}
+/** Caller supplies only the currently visible growth period's records. Never wraps. */
 export function adjacentReport(reports:MockReport[],currentId:string|null,direction:-1|1,anchorDate:string):MockReport|undefined {
  const sorted=[...reports].sort((a,b)=>a.start.localeCompare(b.start));
  const index=sorted.findIndex(r=>r.id===currentId);
- if(index>=0) return sorted[index+direction];
+ if(index>=0)return sorted[index+direction];
  return direction===-1?sorted.filter(r=>r.start<anchorDate).at(-1):sorted.find(r=>r.start>anchorDate);
+}
+
+const DAY=86400000;
+const WINDOW_DAYS=56;
+export function dateRatio(date:string,start:string,end:string):number {
+ const span=isoDay(end)-isoDay(start);
+ if(span<=0)throw new RangeError("Timeline end must follow start");
+ return Math.max(0,Math.min(1,(isoDay(date)-isoDay(start))/span));
+}
+export function seasonBounds(phases:AgronomicPhase[]) {
+ const periods=phases.flatMap(p=>p.growthPeriods);
+ if(!periods.length)throw new RangeError("Timeline needs growth periods");
+ return {start:periods[0].start,end:periods.at(-1)!.end};
+}
+function boundedWindow(phases:AgronomicPhase[],desiredStart:string) {
+ const bounds=seasonBounds(phases);
+ const days=Math.min(WINDOW_DAYS,(isoDay(bounds.end)-isoDay(bounds.start))/DAY);
+ if(days<=0)throw new RangeError("Season end must follow start");
+ const latest=addDays(bounds.end,-days);
+ isoDay(desiredStart);
+ const start=desiredStart<bounds.start?bounds.start:desiredStart>latest?latest:desiredStart;
+ return {start,end:addDays(start,days)};
+}
+export function focusWindow(phases:AgronomicPhase[],anchorDate:string) {
+ return boundedWindow(phases,addDays(anchorDate,-14));
+}
+export function shiftWindow(phases:AgronomicPhase[],start:string,direction:-1|1) {
+ return boundedWindow(phases,addDays(start,direction*28));
+}
+/** All rows use half-open UTC intervals on exactly the same focus window scale. */
+export function buildWindowTimeline(phases:AgronomicPhase[],reports:MockReport[],desiredStart:string) {
+ const bounds=seasonBounds(phases),window=boundedWindow(phases,desiredStart);
+ const phaseRanges=phases.map(p=>({...p,start:p.growthPeriods[0].start,end:p.growthPeriods.at(-1)!.end}));
+ const geometry=(start:string,end:string)=>({left:dateRatio(start,window.start,window.end),width:dateRatio(end,window.start,window.end)-dateRatio(start,window.start,window.end)});
+ const visible=(p:{start:string;end:string})=>p.start<window.end&&p.end>window.start;
+ const overview=phaseRanges.map(p=>({...p,left:dateRatio(p.start,bounds.start,bounds.end),width:dateRatio(p.end,bounds.start,bounds.end)-dateRatio(p.start,bounds.start,bounds.end)}));
+ const periods=phases.flatMap(p=>p.growthPeriods.map(g=>({...g,phaseCode:p.code}))).filter(visible).map(g=>({...g,...geometry(g.start,g.end)}));
+ const days=(isoDay(window.end)-isoDay(window.start))/DAY;
+ const tickDays=[0,Math.floor(days/2),days-1];
+ return {...window,seasonStart:bounds.start,seasonEnd:bounds.end,days,overview,
+  windowLeft:dateRatio(window.start,bounds.start,bounds.end),windowWidth:dateRatio(window.end,bounds.start,bounds.end)-dateRatio(window.start,bounds.start,bounds.end),
+  phases:phaseRanges.filter(visible).map(p=>({...p,...geometry(p.start,p.end)})),periods,
+  records:reports.filter(r=>r.start>=window.start&&r.start<window.end).sort((a,b)=>a.start.localeCompare(b.start)).map(report=>({report,left:dateRatio(report.start,window.start,window.end)})),
+  ticks:tickDays.map((d,i)=>({date:addDays(window.start,d),left:d/days,align:i===0?"start":i===tickDays.length-1?"end":"middle"})),
+  boundaryTicks:periods.slice(1).map(p=>({date:p.start,left:p.left})),
+  minorTicks:Array.from({length:Math.floor(days/7)+1},(_,i)=>i*7/days),
+ };
+}
+
+/** Cursor belongs to the interval starting at a seam, never to both neighbours. */
+export function cursorWithinInterval(anchor:number,interval:{left:number;width:number}):number|null {
+ const {left,width}=interval;
+ if(!Number.isFinite(anchor)||!Number.isFinite(left)||!Number.isFinite(width)||width<=0)return null;
+ const epsilon=1e-10;
+ if(anchor<left-epsilon||anchor>=left+width-epsilon)return null;
+ return Math.max(0,Math.min(1,(anchor-left)/width));
+}
+/** End is exclusive; 31 Dec windows do not incorrectly display a second year. */
+export function timelineDateLabels(start:string,end:string):{from:string;to:string} {
+ if(isoDay(end)<=isoDay(start))throw new RangeError("Timeline end must follow start");
+ const last=addDays(end,-1),crossYear=start.slice(0,4)!==last.slice(0,4);
+ const format=(date:string)=>crossYear?date.replaceAll("-","."):date.slice(5).replace("-",".");
+ return {from:format(start),to:format(last)};
 }

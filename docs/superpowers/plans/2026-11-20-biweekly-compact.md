@@ -1,0 +1,15 @@
+# Compact Biweekly Phase Navigation Implementation Plan
+
+**Goal:** replace the oversized seasonal track with compact width-fitting phase/growth/report navigation, preserving mock inline reports/PDFs.
+**Architecture:** pure scoped selection helpers in timeline.ts; one flat React reader; CSS grid/flex wrapping, no full-season geometry. Demo-only fixed width harness + live DOM overflow status for parent QA.
+**Tech Stack:** existing React18 / Next14 / TypeScript / CSS modules / Node24 tests; no dependency changes.
+**Constraints:** t34 approved correction; local execution only; T6 untouched; no real API/AI/data/fixtures/PDF changes; no merge/deploy.
+
+- [x] Update `src/lib/biweekly/timeline.test.ts`: RED tests for selectPhase/getGrowthReports, local nonwrapping navigation, empty phases, removal of scroll/absolute geometry, width CSS constraints. Run `node --test src/lib/biweekly/*.test.ts` and confirm expected failures.
+- [x] Replace obsolete full-season geometry in `src/lib/biweekly/timeline.ts` with tested phase selection/scoped report helpers; retain strict UTC addDays and adjacentReport. Implement equal 3-column phase controls, current-phase growth group and current-growth report row in `src/components/biweekly/biweekly-tab.tsx`; no accordion/tree/modal or duplicate cross-period reports.
+- [x] Rewrite `biweekly-tab.module.css`: minmax(0,1fr) phases, wrapping growth grid, 36px subdued strip, 8–12px rhythm, keyboard/focus states. Compact `mock-report.tsx/.module.css` and `mock-pdf-download.tsx/.module.css`, keep values/PDF anchors unchanged.
+- [x] Add `src/components/biweekly/demo-preview.tsx/.module.css`, wire only `src/app/[locale]/biweekly-demo/page.tsx`: widths288/400/640/900, responsive clipping-free shell, ResizeObserver live client/scroll width checks. Test demo modes/CSS structurally; parent handles actual browser QA.
+- [x] Update `docs/biweekly-mock-preview.md`; run all Node tests, `npm run type-check`, `npm run lint`, `npm run build:test`, `git diff --check`; inspect scope and preserve existing untracked node_modules symlink. Refresh preview3214 using exact verified listener PID only, commit intended files; remote publication requires verified owner authorization, never merge/deploy.
+- [x] t35: existing `ui/select`, `ui/button`, `ui/tooltip` for all feature/demo controls; scoped popup size/wrapping and keyboard behavior inherited from Radix. RED test prohibits raw select/buttons in feature, verifies existing component imports/collision constraints; no shared UI component global edits.
+
+Verification: all30 Node tests pass; type-check/lint/build:test pass. Existing module-mode notices and prebuild province710000 HTTP404 remain nonblocking. PreviewHTTP3214 serves the new demo chunks and PDF; old exactPID586138 replaced after all paths disconnected, new listenerPID870668 (wrapper870660), logs `/workspace/biweekly-compact-preview-server.log`. No browser screenshot/DOM layout QA claimed; parent to inspect four width controls and Radix menus. Remote publication not performed without parent verifying direct owner authorization.
