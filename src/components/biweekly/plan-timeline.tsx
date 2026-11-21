@@ -2,8 +2,8 @@
 
 import type { ReactNode } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { addDays } from "@/lib/biweekly/timeline";
 import {
-  addDays,
   buildPlanTimeline,
   type PlanPeriodMarker,
   type PlanStage,

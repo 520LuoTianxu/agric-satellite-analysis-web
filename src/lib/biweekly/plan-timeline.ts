@@ -1,4 +1,24 @@
-import { addDays, dateRatio } from "./timeline.ts";
+function isoDay(value: string): number {
+  const ms = Date.parse(`${value}T00:00:00Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+    !Number.isFinite(ms) ||
+    new Date(ms).toISOString().slice(0, 10) !== value
+  ) {
+    throw new RangeError(`Invalid ISO day: ${value}`);
+  }
+  return ms;
+}
+
+function addDays(date: string, count: number): string {
+  return new Date(isoDay(date) + count * 86400000).toISOString().slice(0, 10);
+}
+
+function dateRatio(date: string, start: string, end: string): number {
+  const span = isoDay(end) - isoDay(start);
+  if (span <= 0) throw new RangeError("Timeline end must follow start");
+  return Math.max(0, Math.min(1, (isoDay(date) - isoDay(start)) / span));
+}
 
 export const PHASE_LABELS = {
   S1: "营养生长",
