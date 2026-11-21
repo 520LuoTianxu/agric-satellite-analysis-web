@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { addDays } from "./timeline.ts";
-import { buildPlanTimeline, planStagesFromPayload, PHASE_LABELS } from "./plan-timeline.ts";
+import { buildPlanTimeline, planStagesFromPayload, selectPeriodInWindow, PHASE_LABELS } from "./plan-timeline.ts";
 
 const seasonPayload = {
   season_id: "2026/27",
@@ -111,4 +111,103 @@ test("live tab renders the Smart plan timeline, not the mock report axis", () =>
   assert.match(policy, /生殖生长/);
   assert.match(component, /未纳入监测/);
   assert.match(component, /本季种植方案暂无生育期日期/);
+});
+
+const smartNamesPayload = {
+  stages: [
+    { name: "整地播种期", source_stage_name: "整地播种期", start: "2026-09-14", end_inclusive: "2026-10-10", end_exclusive: "2026-10-11", mapping_status: "NOT_APPLICABLE", phase_label: null, tags: [] },
+    { name: "冬前分蘖期", source_stage_name: "冬前分蘖期", start: "2026-10-11", end_inclusive: "2026-11-20", end_exclusive: "2026-11-21", mapping_status: "MAPPED", phase_label: "S1", phase_code: "VEG", tags: [] },
+    { name: "越冬期", source_stage_name: "越冬期", start: "2026-11-21", end_inclusive: "2027-02-15", end_exclusive: "2027-02-16", mapping_status: "MAPPED", phase_label: "S1", phase_code: "VEG", tags: ["DORMANCY"] },
+    { name: "返青期", source_stage_name: "返青期", start: "2027-02-16", end_inclusive: "2027-03-10", end_exclusive: "2027-03-11", mapping_status: "MAPPED", phase_label: "S1", phase_code: "VEG", tags: [] },
+    { name: "拔节孕穗期", source_stage_name: "拔节孕穗期", start: "2027-03-11", end_inclusive: "2027-04-10", end_exclusive: "2027-04-11", mapping_status: "MAPPED", phase_label: "S2", phase_code: "TRANS", tags: [] },
+  ],
+};
+
+function period(id: string, start: string, endInclusive: string, extras: Record<string, unknown> = {}) {
+  return {
+    period_id: id,
+    label: `第${id}期`,
+    start,
+    end_inclusive: endInclusive,
+    end_exclusive: addDays(endInclusive, 1),
+    ...extras,
+  };
+}
+
+const seasonPeriods = [
+  period("1", "2026-09-14", "2026-09-27"),
+  period("2", "2026-09-28", "2026-10-11"),
+  period("5", "2026-11-09", "2026-11-22"),
+  period("6", "2026-11-23", "2026-12-06"),
+  period("12", "2027-02-15", "2027-02-28"),
+  period("16", "2027-04-12", "2027-04-25", { has_eligible_optics: true }),
+  period("17", "2027-04-26", "2027-05-09"),
+];
+
+test("keeps Smart task names and lists every stage name in the timeline view", () => {
+  const stages = planStagesFromPayload(smartNamesPayload);
+  assert.deepEqual(stages.map((row) => row.name), ["整地播种期", "冬前分蘖期", "越冬期", "返青期", "拔节孕穗期"]);
+  assert.equal(stages[0].source_stage_name, "整地播种期");
+  assert.equal(stages[1].source_stage_name, "冬前分蘖期");
+  const view = buildPlanTimeline(stages, seasonPeriods[2], seasonPeriods);
+  assert.deepEqual(view.stages.map((row) => row.name), ["整地播种期", "冬前分蘖期", "越冬期", "返青期", "拔节孕穗期"]);
+  assert.ok(view.stages.every((row) => row.name.trim().length > 0));
+  assert.ok(!view.stages.some((row) => row.name === "播种期"));
+  assert.ok(!view.stages.some((row) => row.name === "分蘖期"));
+});
+
+test("places a clickable period dot at each biweek midpoint", () => {
+  const stages = planStagesFromPayload(smartNamesPayload);
+  const view = buildPlanTimeline(stages, seasonPeriods[2], seasonPeriods);
+  assert.equal(view.periods.length, seasonPeriods.length);
+  assert.deepEqual(view.periods.map((row) => row.period_id), seasonPeriods.map((row) => row.period_id));
+  const fifth = view.periods.find((row) => row.period_id === "5");
+  assert.ok(fifth);
+  assert.equal(fifth!.mid, "2026-11-16");
+  const span = Date.parse("2027-05-10T00:00:00Z") - Date.parse("2026-09-14T00:00:00Z");
+  const expectedLeft = (Date.parse("2026-11-16T00:00:00Z") - Date.parse("2026-09-14T00:00:00Z")) / span;
+  assert.ok(Math.abs(fifth!.left - expectedLeft) < 1e-9);
+  assert.ok(fifth!.left > 0 && fifth!.left < 1);
+  const first = view.periods[0];
+  assert.equal(first.mid, "2026-09-21");
+  assert.ok(first.left >= 0);
+  const last = view.periods.at(-1)!;
+  assert.ok(last.left <= 1);
+  assert.equal(view.periods.filter((row) => !row.has_eligible_optics).length, 6);
+  assert.equal(view.periods.find((row) => row.period_id === "16")?.has_eligible_optics, true);
+});
+
+test("selects the overlapping biweek, keeping the current period when it already sits in the window", () => {
+  assert.equal(selectPeriodInWindow(seasonPeriods, "2026-10-11", "2026-11-21", "5")?.period_id, "5");
+  assert.equal(selectPeriodInWindow(seasonPeriods, "2026-10-16", "2027-03-11", "5")?.period_id, "5");
+  assert.equal(selectPeriodInWindow(seasonPeriods, "2026-09-14", "2026-10-11", "5")?.period_id, "1");
+  const sowing = selectPeriodInWindow(seasonPeriods, "2026-09-14", "2026-10-11", "12");
+  assert.equal(sowing?.period_id, "1");
+  assert.equal(selectPeriodInWindow(seasonPeriods, "2027-04-11", "2027-05-20", "5")?.period_id, "16");
+  assert.equal(selectPeriodInWindow(seasonPeriods, "2027-06-01", "2027-06-15", "5"), null);
+  const tie = [
+    period("a", "2026-11-01", "2026-11-14"),
+    period("b", "2026-11-08", "2026-11-21"),
+  ];
+  // Both overlap Nov 8–14 by 7 days; the earlier start wins.
+  assert.equal(selectPeriodInWindow(tie, "2026-11-08", "2026-11-15", null)?.period_id, "a");
+});
+
+test("live tab wires period selection into the plan timeline and keeps every stage name visible", () => {
+  const tab = readFileSync("src/components/biweekly/biweekly-tab.tsx", "utf8");
+  const component = readFileSync("src/components/biweekly/plan-timeline.tsx", "utf8");
+  const css = readFileSync("src/components/biweekly/plan-timeline.module.css", "utf8");
+  assert.match(tab, /onSelectPeriod=\{choosePeriod\}/);
+  assert.match(tab, /periods=\{season\.periods\}/);
+  assert.match(component, /onSelectPeriod/);
+  assert.match(component, /<button/);
+  assert.match(component, /aria-pressed/);
+  assert.match(component, /view\.periods/);
+  assert.match(component, /stage\.name/);
+  assert.doesNotMatch(css, /@container\(max-width:36px\)\{\.stageName\{display:none\}\}/);
+  assert.doesNotMatch(css, /\.stageName\{[^}]*display:none/);
+  assert.doesNotMatch(css, /text-overflow:\s*ellipsis/);
+  assert.doesNotMatch(tab, /ReportTimeline/);
+  assert.doesNotMatch(component, /Mock排期/);
+  assert.doesNotMatch(component, /Mock报告/);
 });
