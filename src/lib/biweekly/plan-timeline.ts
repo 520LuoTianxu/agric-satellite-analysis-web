@@ -1,0 +1,156 @@
+import { addDays, dateRatio } from "./timeline.ts";
+
+export const PHASE_LABELS = {
+  S1: "营养生长",
+  S2: "营养/生殖并进",
+  S3: "生殖生长",
+} as const;
+
+export type PhaseLabel = keyof typeof PHASE_LABELS;
+
+export type PlanStage = {
+  id: string;
+  name: string;
+  source_stage_name: string;
+  stage_code: string | null;
+  start: string;
+  end_inclusive: string;
+  end_exclusive: string;
+  mapping_status: string | null;
+  phase_label: PhaseLabel | null;
+  phase_code: string | null;
+  phase_name: string | null;
+  monitored: boolean;
+  tags: string[];
+};
+
+export type PlanPeriodMarker = {
+  period_id: string;
+  label: string;
+  start: string;
+  end_inclusive: string;
+  end_exclusive: string;
+};
+
+export type Placed<T> = T & { left: number; width: number };
+
+export type PlanTimelineView = {
+  empty: boolean;
+  start: string;
+  end: string;
+  phases: Placed<{ label: PhaseLabel; name: string; start: string; end: string }>[];
+  stages: Placed<PlanStage>[];
+  period: Placed<PlanPeriodMarker> | null;
+  ticks: { date: string; left: number; align: "start" | "middle" | "end" }[];
+};
+
+function isIsoDay(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function asPhase(value: unknown): PhaseLabel | null {
+  return value === "S1" || value === "S2" || value === "S3" ? value : null;
+}
+
+function earliest(dates: string[]): string {
+  return dates.reduce((left, right) => (left < right ? left : right));
+}
+
+function latest(dates: string[]): string {
+  return dates.reduce((left, right) => (left > right ? left : right));
+}
+
+/** Map a seasons/periods payload (stages or native_plan.intervals) into plan windows. */
+export function planStagesFromPayload(raw: unknown): PlanStage[] {
+  const record = raw && typeof raw === "object" ? (raw as Record<string, any>) : {};
+  const rows = Array.isArray(record.stages)
+    ? record.stages
+    : Array.isArray(record.native_plan?.intervals)
+      ? record.native_plan.intervals
+      : [];
+  const stages: PlanStage[] = [];
+  rows.forEach((row: Record<string, any>, index: number) => {
+    const name = String(row?.name || row?.source_stage_name || row?.stage_code || "").trim();
+    const start = row?.start;
+    const endInclusive = row?.end_inclusive;
+    const endExclusive = isIsoDay(row?.end_exclusive)
+      ? row.end_exclusive
+      : isIsoDay(endInclusive)
+        ? addDays(endInclusive, 1)
+        : null;
+    if (!name || !isIsoDay(start) || !isIsoDay(endInclusive) || !isIsoDay(endExclusive)) return;
+    if (endExclusive <= start) return;
+    const phaseLabel = asPhase(row?.phase_label);
+    const status = row?.mapping_status == null || row.mapping_status === "" ? null : String(row.mapping_status);
+    stages.push({
+      id: String(row?.id ?? row?.plant_task_id ?? `${name}-${start}-${index}`),
+      name,
+      source_stage_name: String(row?.source_stage_name || name),
+      stage_code: row?.stage_code ? String(row.stage_code) : null,
+      start,
+      end_inclusive: endInclusive,
+      end_exclusive: endExclusive,
+      mapping_status: status,
+      phase_label: phaseLabel,
+      phase_code: row?.phase_code ? String(row.phase_code) : null,
+      phase_name: phaseLabel ? PHASE_LABELS[phaseLabel] : row?.phase_name ? String(row.phase_name) : null,
+      monitored: status !== "NOT_APPLICABLE" && Boolean(phaseLabel),
+      tags: Array.isArray(row?.tags) ? row.tags.map((tag: unknown) => String(tag)) : [],
+    });
+  });
+  return stages.sort((a, b) => a.start.localeCompare(b.start) || a.end_exclusive.localeCompare(b.end_exclusive));
+}
+
+export function buildPlanTimeline(
+  stages: PlanStage[],
+  period?: PlanPeriodMarker | null,
+): PlanTimelineView {
+  const empty: PlanTimelineView = { empty: true, start: "", end: "", phases: [], stages: [], period: null, ticks: [] };
+  const dates: string[] = [];
+  for (const stage of stages) {
+    dates.push(stage.start, stage.end_exclusive);
+  }
+  if (!stages.length || dates.length < 2) return empty;
+  if (period && isIsoDay(period.start) && isIsoDay(period.end_exclusive) && period.end_exclusive > period.start) {
+    dates.push(period.start, period.end_exclusive);
+  }
+  const start = earliest(dates);
+  const end = latest(dates);
+  if (end <= start) return empty;
+
+  const place = <T extends { start: string; end?: string; end_exclusive?: string }>(item: T): Placed<T> => {
+    const finish = item.end_exclusive || item.end!;
+    const left = dateRatio(item.start < start ? start : item.start, start, end);
+    const right = dateRatio(finish > end ? end : finish, start, end);
+    return { ...item, left, width: Math.max(right - left, 0) };
+  };
+
+  const phases: PlanTimelineView["phases"] = [];
+  for (const label of ["S1", "S2", "S3"] as PhaseLabel[]) {
+    const group = stages.filter((stage) => stage.phase_label === label && stage.monitored);
+    if (!group.length) continue;
+    const phaseStart = earliest(group.map((stage) => stage.start));
+    const phaseEnd = latest(group.map((stage) => stage.end_exclusive));
+    phases.push(place({ label, name: PHASE_LABELS[label], start: phaseStart, end: phaseEnd }));
+  }
+
+  const mid = addDays(start, Math.floor((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000 / 2));
+  const ticks = [
+    { date: start, left: 0, align: "start" as const },
+    { date: mid, left: dateRatio(mid, start, end), align: "middle" as const },
+    { date: addDays(end, -1), left: 1, align: "end" as const },
+  ];
+
+  return {
+    empty: false,
+    start,
+    end,
+    phases,
+    stages: stages.map((stage) => place(stage)),
+    period:
+      period && isIsoDay(period.start) && isIsoDay(period.end_exclusive) && period.end_exclusive > period.start
+        ? place(period)
+        : null,
+    ticks,
+  };
+}
