@@ -5,18 +5,19 @@
 .tip{max-width:min(280px,calc(100vw - 24px));font-size:11px;line-height:1.6;overflow-wrap:anywhere}
 .track,.stageTrack{position:relative;isolation:isolate;min-width:0;max-width:100%;border-radius:3px}
 .track{height:26px}
-.stageTrack{height:34px;margin-top:6px}
+.stageTrack{height:22px;margin-top:6px}
 .VEG{--band:#8ac79d;--ink:#21432b;--tint:#f0f7f1}
 .TRANS{--band:#8bcbd0;--ink:#21494e;--tint:#eff8f8}
 .REPRO{--band:#edcf8e;--ink:#55421d;--tint:#fcf7e9}
-.phaseBand,.stageBand{position:absolute;top:0;height:100%;min-width:0;display:flex;align-items:center;justify-content:center;padding:0 3px;line-height:1.3;overflow:hidden;container-type:inline-size}
-.phaseBand{background:var(--band);color:var(--ink);font-size:10px;gap:4px}
+.phaseBand,.stageBand{position:absolute;top:0;height:100%;min-width:0;display:flex;align-items:center;justify-content:center;padding:0 3px;line-height:1.3;border:0;margin:0;cursor:pointer;font:inherit;appearance:none;box-sizing:border-box}
+.phaseBand{background:var(--band);color:var(--ink);font-size:10px;gap:4px;overflow:hidden}
 .phaseCode,.phaseName{position:relative;z-index:1;background:var(--band)}
 .phaseName{display:none;font-weight:500}
-.stageBand{background:var(--tint);color:var(--ink);font-size:10px}
+.stageBand{background:var(--tint);color:var(--ink)}
 .stageBand::after{content:"";position:absolute;right:0;top:0;bottom:0;width:1px;background:hsl(var(--border)/.45);pointer-events:none}
 .unmonitored{--tint:hsl(var(--muted));--ink:hsl(var(--muted-foreground));background:repeating-linear-gradient(-45deg,hsl(var(--muted)),hsl(var(--muted)) 5px,hsl(var(--muted)/.7) 5px,hsl(var(--muted)/.7) 9px)}
-.stageName{position:relative;z-index:1;max-width:100%;padding:0 2px;white-space:normal;text-align:center}
+.stageLabels{position:relative;min-width:0;max-width:100%;margin-top:4px}
+.stageName{position:absolute;transform:translateX(-50%);max-width:none;padding:0 1px;font-size:10px;line-height:1.35;text-align:center;white-space:normal;overflow:visible;color:hsl(var(--foreground));word-break:break-all}
 .legend{display:flex;flex-wrap:wrap;gap:2px 10px;margin:4px 0 0;font-size:10px;line-height:1.5;color:hsl(var(--muted-foreground))}
 .unmonitoredLegend{color:hsl(var(--muted-foreground))}
 .periodMark{position:absolute;top:-2px;bottom:-2px;border:1px solid color-mix(in srgb,hsl(var(--success)) 70%,#376e4a);border-bottom-width:2px;box-sizing:border-box;z-index:2;pointer-events:none}
@@ -24,7 +25,16 @@
 .ruler time{position:absolute;top:4px;z-index:1;width:36px;font-size:10px;line-height:1.4;white-space:nowrap;font-variant-numeric:tabular-nums;color:hsl(var(--muted-foreground));transform:translateX(-50%);text-align:center}
 .ruler time[data-align=start]{transform:none;text-align:left}
 .ruler time[data-align=end]{transform:translateX(-100%);text-align:right}
+.dotRow{position:relative;height:28px;margin-top:2px}
+.dot{position:absolute;top:0;width:24px;height:28px;transform:translateX(-50%);padding:0;border:0;margin:0;border-radius:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1}
+.dot[aria-pressed=true]{z-index:3}
+.dot i{display:block;width:8px;height:8px;box-sizing:border-box;border-radius:50%;background:#9bbfa6;border:1px solid hsl(var(--background))}
+.dot[data-optics=true] i{background:#72a984}
+.dot[aria-pressed=true] i{background:var(--bw-active,#377b51);outline:2px solid var(--bw-active,#377b51);outline-offset:2px}
+.dot:hover{background:transparent}
+.dot:hover i{background:var(--bw-active,#377b51)}
+.dot:focus-visible{outline:2px solid hsl(var(--foreground));outline-offset:-2px}
+.phaseBand:focus-visible,.stageBand:focus-visible{outline:2px solid hsl(var(--foreground));outline-offset:-2px;z-index:3}
 .periodCaption{margin:6px 0 0;font-size:10px;line-height:1.5;color:hsl(var(--muted-foreground));font-variant-numeric:tabular-nums}
-@container(max-width:36px){.stageName{display:none}}
 @container(max-width:20px){.phaseCode{display:none}}
 @container plan-timeline (min-width:560px){.phaseName{display:inline}.legend{display:none}}
