@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { addDays } from "@/lib/biweekly/timeline";
 import {
   buildPlanTimeline,
+  selectPeriodInWindow,
   type PlanPeriodMarker,
   type PlanStage,
 } from "@/lib/biweekly/plan-timeline";
@@ -28,15 +29,23 @@ function Tip({ label, children }: { label: string; children: ReactNode }) {
 export function PlanPhenologyTimeline({
   stages,
   period,
+  periods = [],
+  onSelectPeriod,
 }: {
   stages: PlanStage[];
   period?: PlanPeriodMarker | null;
+  periods?: PlanPeriodMarker[];
+  onSelectPeriod?: (period: PlanPeriodMarker) => void;
 }) {
-  const view = buildPlanTimeline(stages, period);
+  const view = buildPlanTimeline(stages, period, periods);
   if (view.empty) {
     return <p className={t.empty} role="status">本季种植方案暂无生育期日期。</p>;
   }
   const endInclusive = addDays(view.end, -1);
+  const pickWindow = (start: string, endExclusive: string) => {
+    const next = selectPeriodInWindow(periods, start, endExclusive, period?.period_id);
+    if (next) onSelectPeriod?.(next);
+  };
   return (
     <TooltipProvider delayDuration={250}>
       <section className={t.timeline} aria-label="本田方案生育期时间轴">
@@ -44,10 +53,15 @@ export function PlanPhenologyTimeline({
         <div className={t.track} aria-label="S1 至 S3">
           {view.phases.map((phase) => (
             <Tip key={phase.label} label={`${phase.label} ${phase.name} · ${phase.start}–${addDays(phase.end, -1)}`}>
-              <div className={`${t.phaseBand} ${t[PHASE_CLASS[phase.label]]}`} style={position(phase)}>
+              <button
+                type="button"
+                className={`${t.phaseBand} ${t[PHASE_CLASS[phase.label]]}`}
+                style={position(phase)}
+                onClick={() => pickWindow(phase.start, phase.end)}
+              >
                 <span className={t.phaseCode}>{phase.label}</span>
                 <span className={t.phaseName}>{phase.name}</span>
-              </div>
+              </button>
             </Tip>
           ))}
           {view.period ? <span className={t.periodMark} style={position(view.period)} aria-hidden="true" /> : null}
@@ -63,17 +77,34 @@ export function PlanPhenologyTimeline({
             const phaseText = stage.monitored && stage.phase_label ? ` · ${stage.phase_label} ${stage.phase_name}` : " · 未纳入监测";
             return (
               <Tip key={stage.id} label={`${stage.name} · ${stage.start}–${stage.end_inclusive}${phaseText}`}>
-                <div
+                <button
+                  type="button"
                   className={`${t.stageBand} ${stage.monitored && stage.phase_label ? t[PHASE_CLASS[stage.phase_label]] : t.unmonitored}`}
                   style={position(stage)}
                   data-monitored={stage.monitored ? "true" : "false"}
-                >
-                  <span className={t.stageName}>{stage.name}</span>
-                </div>
+                  aria-label={`${stage.name}，${stage.start}至${stage.end_inclusive}`}
+                  onClick={() => pickWindow(stage.start, stage.end_exclusive)}
+                />
               </Tip>
             );
           })}
           {view.period ? <span className={t.periodMark} style={position(view.period)} aria-hidden="true" /> : null}
+        </div>
+        <div
+          className={t.stageLabels}
+          style={{ minHeight: `calc(${Math.max(view.labelLanes, 1)} * 1.35em)` }}
+          aria-hidden="false"
+        >
+          {view.stages.map((stage) => (
+            <span
+              key={`label-${stage.id}`}
+              className={t.stageName}
+              data-lane={stage.labelLane}
+              style={{ left: pct(stage.left + stage.width / 2), top: `calc(${stage.labelLane} * 1.35em)` }}
+            >
+              {stage.name}
+            </span>
+          ))}
         </div>
         <div className={t.ruler} aria-hidden="true">
           {view.ticks.map((tick) => (
@@ -82,6 +113,25 @@ export function PlanPhenologyTimeline({
             </time>
           ))}
         </div>
+        {view.periods.length > 0 ? (
+          <div className={t.dotRow} role="group" aria-label="双周报周期">
+            {view.periods.map((dot) => (
+              <Tip key={dot.period_id} label={`${dot.label} ${range(dot.start, dot.end_inclusive)}`}>
+                <button
+                  type="button"
+                  className={t.dot}
+                  style={{ left: pct(dot.left) }}
+                  aria-pressed={period?.period_id === dot.period_id}
+                  aria-label={`${dot.label}，${dot.start}至${dot.end_inclusive}`}
+                  data-optics={dot.has_eligible_optics ? "true" : "false"}
+                  onClick={() => onSelectPeriod?.(dot)}
+                >
+                  <i aria-hidden="true" />
+                </button>
+              </Tip>
+            ))}
+          </div>
+        ) : null}
         {view.period ? (
           <p className={t.periodCaption}>
             当前{view.period.label} {range(view.period.start, view.period.end_inclusive)}

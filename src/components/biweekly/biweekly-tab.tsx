@@ -128,7 +128,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
   return ()=>{cancelled=true;};
  },[resolvedLand,maize,canUseFixture]);
 
- const choosePeriod=(item:LocalPeriod)=>{setPeriodId(item.period_id);setJob(null);};
+ const choosePeriod=(item:{period_id:string})=>{setPeriodId(item.period_id);setJob(null);};
  const run=async(action:"backfill"|"generate"|"generate-ref")=>{
   if(!resolvedLand||!season||!period) return;
   setBusy(true);
@@ -182,7 +182,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
     {job?.job_id&&(job.status==="ready"||job.status==="evidence_limited")&&<Button type="button" variant="ghost" size="sm" asChild><a href={jobDownloadUrl(resolvedLand,job.job_id)} target="_blank" rel="noreferrer">下载产物</a></Button>}
    </div>
   </div>}
-  {season?<PlanPhenologyTimeline stages={season.stages} period={period?{period_id:period.period_id,label:period.label,start:period.start,end_inclusive:period.end_inclusive,end_exclusive:period.end_exclusive}:null}/>:null}
+  {season?<PlanPhenologyTimeline stages={season.stages} period={period?{period_id:period.period_id,label:period.label,start:period.start,end_inclusive:period.end_inclusive,end_exclusive:period.end_exclusive,has_eligible_optics:period.has_eligible_optics}:null} periods={season.periods} onSelectPeriod={choosePeriod}/>:null}
   <div className={s.content} aria-live="polite">{period?<>
    <p className={s.cross}>{period.label} {period.start}—{period.end_inclusive}（结束日含，内部区间至 {period.end_exclusive} 不含）。{period.has_eligible_optics?`本期有 ${period.optical_descriptive_days} 个可用光学日。`:"本期暂无可用光学，生成前应先做有界补数；确认无景后得到证据受限简报。"}{period.s1_products?"":" 本期无雷达。"} 有本田方案时按本田方案标注生育期；只有点「生成（参照 15933）」才会显式使用参照计划。</p>
    {job? <pre className={s.jobStatus}>{JSON.stringify({status:job.status,job_id:job.job_id,error:job.error,dispatched_to_production:job.dispatched_to_production,phase:job.result?.phase,planned_batch:job.result?.planned_batch,brief:job.result?.brief},null,2)}</pre> : <p className={s.empty}>{period.has_eligible_optics?"尚未生成报告。":"本期暂无可用光学报告。"}按钮走与其他地块接口同一套网关和登录态，不会自动出报。</p>}

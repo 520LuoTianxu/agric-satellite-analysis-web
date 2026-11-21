@@ -50,18 +50,29 @@ export type PlanPeriodMarker = {
   start: string;
   end_inclusive: string;
   end_exclusive: string;
+  has_eligible_optics?: boolean;
+  report_status?: string | null;
 };
 
 export type Placed<T> = T & { left: number; width: number };
+
+export type PlanPeriodDot = PlanPeriodMarker & {
+  mid: string;
+  left: number;
+  width: number;
+  bandLeft: number;
+};
 
 export type PlanTimelineView = {
   empty: boolean;
   start: string;
   end: string;
   phases: Placed<{ label: PhaseLabel; name: string; start: string; end: string }>[];
-  stages: Placed<PlanStage>[];
+  stages: Array<Placed<PlanStage> & { labelLane: number }>;
   period: Placed<PlanPeriodMarker> | null;
+  periods: PlanPeriodDot[];
   ticks: { date: string; left: number; align: "start" | "middle" | "end" }[];
+  labelLanes: number;
 };
 
 function isIsoDay(value: unknown): value is string {
@@ -121,19 +132,94 @@ export function planStagesFromPayload(raw: unknown): PlanStage[] {
   return stages.sort((a, b) => a.start.localeCompare(b.start) || a.end_exclusive.localeCompare(b.end_exclusive));
 }
 
+function overlapDays(startA: string, endA: string, startB: string, endB: string): number {
+  const start = startA > startB ? startA : startB;
+  const end = endA < endB ? endA : endB;
+  if (end <= start) return 0;
+  return (isoDay(end) - isoDay(start)) / 86400000;
+}
+
+function midpoint(start: string, endExclusive: string): string {
+  const days = (isoDay(endExclusive) - isoDay(start)) / 86400000;
+  return addDays(start, Math.floor(days / 2));
+}
+
+/** Pick the biweek inside a phase/stage window; keep the current period when it already overlaps. */
+export function selectPeriodInWindow(
+  periods: PlanPeriodMarker[],
+  windowStart: string,
+  windowEndExclusive: string,
+  currentPeriodId?: string | null,
+): PlanPeriodMarker | null {
+  const intersecting = periods.filter(
+    (row) =>
+      isIsoDay(row.start) &&
+      isIsoDay(row.end_exclusive) &&
+      row.start < windowEndExclusive &&
+      row.end_exclusive > windowStart,
+  );
+  if (!intersecting.length) return null;
+  if (currentPeriodId && intersecting.some((row) => row.period_id === currentPeriodId)) {
+    return intersecting.find((row) => row.period_id === currentPeriodId) ?? null;
+  }
+  const ranked = [...intersecting].sort((a, b) => {
+    const overlap =
+      overlapDays(b.start, b.end_exclusive, windowStart, windowEndExclusive) -
+      overlapDays(a.start, a.end_exclusive, windowStart, windowEndExclusive);
+    if (overlap !== 0) return overlap;
+    return a.start.localeCompare(b.start) || a.period_id.localeCompare(b.period_id);
+  });
+  return ranked[0] ?? null;
+}
+
+function assignLabelLanes(stages: Placed<PlanStage>[], charUnit = 0.04): number[] {
+  const lanes: number[] = [];
+  const rights: number[] = [];
+  for (const stage of stages) {
+    const mid = stage.left + stage.width / 2;
+    const half = Math.max(stage.width, Math.max(stage.name.length, 2) * charUnit) / 2;
+    const left = mid - half;
+    const right = mid + half;
+    let lane = rights.findIndex((edge) => left >= edge - 1e-6);
+    if (lane < 0) {
+      lane = rights.length;
+      rights.push(right);
+    } else {
+      rights[lane] = right;
+    }
+    lanes.push(lane);
+  }
+  return lanes;
+}
+
 export function buildPlanTimeline(
   stages: PlanStage[],
   period?: PlanPeriodMarker | null,
+  periods?: PlanPeriodMarker[] | null,
 ): PlanTimelineView {
-  const empty: PlanTimelineView = { empty: true, start: "", end: "", phases: [], stages: [], period: null, ticks: [] };
+  const empty: PlanTimelineView = {
+    empty: true,
+    start: "",
+    end: "",
+    phases: [],
+    stages: [],
+    period: null,
+    periods: [],
+    ticks: [],
+    labelLanes: 0,
+  };
   const dates: string[] = [];
   for (const stage of stages) {
     dates.push(stage.start, stage.end_exclusive);
   }
+  const collect = (row: PlanPeriodMarker | null | undefined) => {
+    if (row && isIsoDay(row.start) && isIsoDay(row.end_exclusive) && row.end_exclusive > row.start) {
+      dates.push(row.start, row.end_exclusive);
+    }
+  };
+  collect(period ?? null);
+  for (const row of periods || []) collect(row);
   if (!stages.length || dates.length < 2) return empty;
-  if (period && isIsoDay(period.start) && isIsoDay(period.end_exclusive) && period.end_exclusive > period.start) {
-    dates.push(period.start, period.end_exclusive);
-  }
   const start = earliest(dates);
   const end = latest(dates);
   if (end <= start) return empty;
@@ -154,23 +240,42 @@ export function buildPlanTimeline(
     phases.push(place({ label, name: PHASE_LABELS[label], start: phaseStart, end: phaseEnd }));
   }
 
-  const mid = addDays(start, Math.floor((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000 / 2));
+  const placedStages = stages.map((stage) => place(stage));
+  const lanes = assignLabelLanes(placedStages);
+  const mid = addDays(start, Math.floor((isoDay(end) - isoDay(start)) / 86400000 / 2));
   const ticks = [
     { date: start, left: 0, align: "start" as const },
     { date: mid, left: dateRatio(mid, start, end), align: "middle" as const },
     { date: addDays(end, -1), left: 1, align: "end" as const },
   ];
 
+  const periodDots: PlanPeriodDot[] = [];
+  for (const row of periods || []) {
+    if (!isIsoDay(row.start) || !isIsoDay(row.end_exclusive) || row.end_exclusive <= row.start) continue;
+    const placed = place(row);
+    const midDate = midpoint(row.start, row.end_exclusive);
+    const clipped = midDate < start ? start : midDate > end ? end : midDate;
+    periodDots.push({
+      ...row,
+      mid: midDate,
+      left: dateRatio(clipped, start, end),
+      width: placed.width,
+      bandLeft: placed.left,
+    });
+  }
+
   return {
     empty: false,
     start,
     end,
     phases,
-    stages: stages.map((stage) => place(stage)),
+    stages: placedStages.map((stage, index) => ({ ...stage, labelLane: lanes[index] ?? 0 })),
     period:
       period && isIsoDay(period.start) && isIsoDay(period.end_exclusive) && period.end_exclusive > period.start
         ? place(period)
         : null,
+    periods: periodDots,
     ticks,
+    labelLanes: lanes.length ? Math.max(...lanes) + 1 : 0,
   };
 }
