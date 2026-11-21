@@ -7,14 +7,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LOCAL_LAND_ID, LOCAL_SEASONS, adjacentPeriod, getLocalSeason, isMaizeCrop, type LocalPeriod } from "@/lib/biweekly/local-catalog";
 import { jobDownloadUrl, listPeriods, listSeasons, triggerBackfill, triggerGenerate, usesLocalFixture } from "@/lib/biweekly/local-trigger";
+import { planStagesFromPayload, type PlanStage } from "@/lib/biweekly/plan-timeline";
 import { addDays } from "@/lib/biweekly/timeline";
+import { PlanPhenologyTimeline } from "./plan-timeline";
 import s from "./biweekly-tab.module.css";
 
 const md=(date:string)=>date.slice(5).replace("-",".");
 const range=(start:string,endInclusive:string)=>`${md(start)}–${md(endInclusive)}`;
 
 type JobView = {job_id?:string;status?:string;result?:any;error?:string;kind?:string;dispatched_to_production?:boolean};
-type SeasonView = {season_id:string;label?:string;crop?:string;crop_name?:string;land_id?:string;land_name?:string;note?:string;plan_status?:string;periods:LocalPeriod[]};
+type SeasonView = {season_id:string;label?:string;crop?:string;crop_name?:string;land_id?:string;land_name?:string;note?:string;plan_status?:string;periods:LocalPeriod[];stages:PlanStage[]};
 
 function planErrorMessage(code:string){
  if(code==="NO_SEASONS" || code.includes("未关联") || code.includes("无法读取 Smart")){
@@ -29,7 +31,8 @@ function fixtureEnabled(allowLocalFixture?: boolean){
  return Boolean(allowLocalFixture || usesLocalFixture());
 }
 
-function toSeasonView(landId:string, raw:any, periods:LocalPeriod[]):SeasonView{
+function toSeasonView(landId:string, raw:any, periods:LocalPeriod[], extra?:unknown):SeasonView{
+ const stages=planStagesFromPayload(raw);
  return {
   season_id:String(raw.season_id),
   label:String(raw.label||raw.season_id),
@@ -39,6 +42,7 @@ function toSeasonView(landId:string, raw:any, periods:LocalPeriod[]):SeasonView{
   land_name:raw.land_name?String(raw.land_name):undefined,
   note:raw.note?String(raw.note):"默认不出报，需显式触发补数或生成。",
   periods,
+  stages:stages.length?stages:planStagesFromPayload(extra),
  };
 }
 
@@ -63,7 +67,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  const canUseFixture=fixtureEnabled(allowLocalFixture);
  const maize=isMaizeCrop(cropType);
  const resolvedLand=landId|| (canUseFixture?LOCAL_LAND_ID:"");
- const [seasons,setSeasons]=useState<SeasonView[]>(canUseFixture && !landId?LOCAL_SEASONS.map(item=>({...item,periods:item.periods})):[]);
+ const [seasons,setSeasons]=useState<SeasonView[]>(canUseFixture && !landId?LOCAL_SEASONS.map(item=>({...item,periods:item.periods,stages:planStagesFromPayload(item)})):[]);
  const [seasonId,setSeasonId]=useState(seasons[0]?.season_id??"2025/26");
  const [periodId,setPeriodId]=useState("12");
  const [job,setJob]=useState<JobView|null>(null);
@@ -74,7 +78,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
   if(found) return found;
   if(canUseFixture && resolvedLand===LOCAL_LAND_ID){
    const local=getLocalSeason(seasonId);
-   return {...local,periods:local.periods};
+   return {...local,periods:local.periods,stages:planStagesFromPayload(local)};
   }
   return seasons[0];
  },[seasons,seasonId,canUseFixture,resolvedLand]);
@@ -91,8 +95,8 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
     const list=seasonPayload.seasons||[];
     const views:SeasonView[]=[];
     for(const item of list){
-     const periodPayload=await listPeriods(resolvedLand,String(item.season_id)) as {periods?:Array<any>};
-     views.push(toSeasonView(resolvedLand,item,(periodPayload.periods||[]).map(toPeriod)));
+     const periodPayload=await listPeriods(resolvedLand,String(item.season_id)) as {periods?:Array<any>;stages?:Array<any>;native_plan?:any};
+     views.push(toSeasonView(resolvedLand,item,(periodPayload.periods||[]).map(toPeriod),periodPayload));
     }
     if(!cancelled){
      if(views.length){
@@ -102,7 +106,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
       if(preferred) setPeriodId(preferred.period_id);
       setLoadError(null);
      }else if(canUseFixture && resolvedLand===LOCAL_LAND_ID){
-      setSeasons(LOCAL_SEASONS.map(item=>({...item,periods:item.periods})));
+      setSeasons(LOCAL_SEASONS.map(item=>({...item,periods:item.periods,stages:planStagesFromPayload(item)})));
       setLoadError(null);
      }else{
       setSeasons([]);
@@ -112,7 +116,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
    }catch(error){
     if(cancelled) return;
     if(canUseFixture && resolvedLand===LOCAL_LAND_ID){
-     setSeasons(LOCAL_SEASONS.map(item=>({...item,periods:item.periods})));
+     setSeasons(LOCAL_SEASONS.map(item=>({...item,periods:item.periods,stages:planStagesFromPayload(item)})));
      setLoadError(null);
     }else{
      setSeasons([]);
@@ -178,6 +182,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
     {job?.job_id&&(job.status==="ready"||job.status==="evidence_limited")&&<Button type="button" variant="ghost" size="sm" asChild><a href={jobDownloadUrl(resolvedLand,job.job_id)} target="_blank" rel="noreferrer">下载产物</a></Button>}
    </div>
   </div>}
+  {season?<PlanPhenologyTimeline stages={season.stages} period={period?{period_id:period.period_id,label:period.label,start:period.start,end_inclusive:period.end_inclusive,end_exclusive:period.end_exclusive}:null}/>:null}
   <div className={s.content} aria-live="polite">{period?<>
    <p className={s.cross}>{period.label} {period.start}—{period.end_inclusive}（结束日含，内部区间至 {period.end_exclusive} 不含）。{period.has_eligible_optics?`本期有 ${period.optical_descriptive_days} 个可用光学日。`:"本期暂无可用光学，生成前应先做有界补数；确认无景后得到证据受限简报。"}{period.s1_products?"":" 本期无雷达。"} 有本田方案时按本田方案标注生育期；只有点「生成（参照 15933）」才会显式使用参照计划。</p>
    {job? <pre className={s.jobStatus}>{JSON.stringify({status:job.status,job_id:job.job_id,error:job.error,dispatched_to_production:job.dispatched_to_production,phase:job.result?.phase,planned_batch:job.result?.planned_batch,brief:job.result?.brief},null,2)}</pre> : <p className={s.empty}>{period.has_eligible_optics?"尚未生成报告。":"本期暂无可用光学报告。"}按钮走与其他地块接口同一套网关和登录态，不会自动出报。</p>}
