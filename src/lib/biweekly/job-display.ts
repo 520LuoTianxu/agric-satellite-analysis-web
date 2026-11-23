@@ -135,7 +135,7 @@ export function hasPersistedArtifact(job?: JobView | null): boolean {
 }
 
 /**
- * ready: download via jobDownloadUrl(job_id); do not require pack_pdf, snapshot, or artifactUrl.
+ * ready: offer an authenticated download for job_id; do not require pack_pdf, snapshot, or artifactUrl.
  * evidence_limited: only if GET job (or an equivalent payload) proves a persisted artifact.
  */
 export function canDownloadBiweeklyJob(job?: JobView | null): boolean {

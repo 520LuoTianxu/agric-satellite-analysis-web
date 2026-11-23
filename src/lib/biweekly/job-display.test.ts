@@ -280,7 +280,8 @@ test("biweekly tab hydrates latest_job, polls GET job, and does not gate downloa
   assert.match(tab, /selectPeriodJob/);
   assert.match(tab, /canDownloadBiweeklyJob/);
   assert.match(tab, /getJob\(/);
-  assert.match(tab, /jobDownloadUrl/);
+  assert.match(tab, /downloadJob/);
+  assert.doesNotMatch(tab, /href=\{jobDownloadUrl/);
   assert.match(tab, /AbortController/);
   assert.match(tab, /clearTimeout/);
   assert.doesNotMatch(tab, /pack_pdf/);
