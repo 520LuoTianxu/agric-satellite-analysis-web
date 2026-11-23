@@ -23,6 +23,8 @@ test("frontend biweekly client uses the shared satellite API base and land paths
   assert.doesNotMatch(client, /127\.0\.0\.1:8765/);
   assert.doesNotMatch(client, /X-Biweekly-Dev-Token/);
   assert.match(client, /NEXT_PUBLIC_BIWEEKLY_LOCAL_FIXTURE/);
+  assert.match(client, /export function getJob/);
+  assert.match(api, /biweekly\/jobs/);
 });
 
 test("field detail wires the current land into the biweekly tab", () => {

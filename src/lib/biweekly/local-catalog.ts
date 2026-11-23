@@ -1,5 +1,6 @@
 /** Static 6417 2025/26 catalog for local demo. Not a live production query. */
 import catalog from "./local-catalog.json";
+import type { BiweeklyLatestJob } from "./job-display";
 
 export interface LocalPeriod {
  period_id: string;
@@ -13,6 +14,7 @@ export interface LocalPeriod {
  s1_products: number;
  has_eligible_optics: boolean;
  label: string;
+ latest_job?: BiweeklyLatestJob | null;
 }
 export interface LocalSeason {
  land_id: string;
