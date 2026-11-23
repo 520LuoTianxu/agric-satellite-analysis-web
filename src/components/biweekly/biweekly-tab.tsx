@@ -1,12 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LOCAL_LAND_ID, LOCAL_SEASONS, adjacentPeriod, getLocalSeason, isMaizeCrop, type LocalPeriod } from "@/lib/biweekly/local-catalog";
-import { jobDownloadUrl, listPeriods, listSeasons, triggerBackfill, triggerBackfillSeason, triggerGenerate, usesLocalFixture } from "@/lib/biweekly/local-trigger";
+import { getJob, jobDownloadUrl, listPeriods, listSeasons, triggerBackfill, triggerBackfillSeason, triggerGenerate, usesLocalFixture } from "@/lib/biweekly/local-trigger";
+import {
+ canDownloadBiweeklyJob,
+ clientFailedJob,
+ decidePollTick,
+ isGenerateInFlight,
+ isInFlightJobStatus,
+ jobFromApi,
+ jobFromLatest,
+ jobStatusPreview,
+ normalizeLatestJob,
+ selectPeriodJob,
+ POLL_INTERVAL_MS,
+ type JobView,
+ type PollScope,
+} from "@/lib/biweekly/job-display";
 import { planStagesFromPayload, type PlanStage } from "@/lib/biweekly/plan-timeline";
 import { addDays } from "@/lib/biweekly/timeline";
 import { PlanPhenologyTimeline } from "./plan-timeline";
@@ -15,7 +30,6 @@ import s from "./biweekly-tab.module.css";
 const md=(date:string)=>date.slice(5).replace("-",".");
 const range=(start:string,endInclusive:string)=>`${md(start)}–${md(endInclusive)}`;
 
-type JobView = {job_id?:string;status?:string;result?:any;error?:string;kind?:string;dispatched_to_production?:boolean};
 type SeasonView = {season_id:string;label?:string;crop?:string;crop_name?:string;land_id?:string;land_name?:string;note?:string;plan_status?:string;periods:LocalPeriod[];stages:PlanStage[]};
 
 function planErrorMessage(code:string){
@@ -60,7 +74,12 @@ function toPeriod(raw:any, index:number):LocalPeriod{
   has_eligible_optics:Boolean(raw.has_eligible_optics),
   optical_descriptive_days:Number(raw.optical_descriptive_days||0),
   s1_products:Number(raw.s1_products||0),
+  latest_job:normalizeLatestJob(raw.latest_job),
  };
+}
+
+function preferredPeriod(periods:LocalPeriod[]):LocalPeriod|undefined{
+ return periods.find(row=>row.period_id==="12")??periods[0];
 }
 
 export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?:string;cropType?:string|null;allowLocalFixture?:boolean}={}) {
@@ -71,8 +90,13 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  const [seasonId,setSeasonId]=useState(seasons[0]?.season_id??"2025/26");
  const [periodId,setPeriodId]=useState("12");
  const [job,setJob]=useState<JobView|null>(null);
+ const [trackedJobId,setTrackedJobId]=useState<string|null>(null);
  const [busy,setBusy]=useState(false);
  const [loadError,setLoadError]=useState<string|null>(null);
+ const pollTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
+ const pollAbortRef=useRef<AbortController|null>(null);
+ const pollGenerationRef=useRef(0);
+ const pollScopeRef=useRef<PollScope|null>(null);
  const season=useMemo(()=>{
   const found=seasons.find(item=>item.season_id===seasonId);
   if(found) return found;
@@ -85,10 +109,85 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  const period=season?.periods.find(item=>item.period_id===periodId)??season?.periods[0];
  const previous=season&&period?adjacentPeriod({periods:season.periods} as any,period.period_id,-1):undefined;
  const next=season&&period?adjacentPeriod({periods:season.periods} as any,period.period_id,1):undefined;
+ const displayedJob=selectPeriodJob({periodLatest:period?.latest_job,localJob:job,trackedJobId});
+
+ const stopPolling=()=>{
+  pollGenerationRef.current+=1;
+  pollScopeRef.current=null;
+  if(pollTimerRef.current){
+   clearTimeout(pollTimerRef.current);
+   pollTimerRef.current=null;
+  }
+  if(pollAbortRef.current){
+   pollAbortRef.current.abort();
+   pollAbortRef.current=null;
+  }
+ };
+
+ const startPolling=(land:string, nextPeriodId:string, jobId:string)=>{
+  stopPolling();
+  const scope:PollScope={landId:land,periodId:nextPeriodId,jobId,generation:pollGenerationRef.current};
+  pollScopeRef.current=scope;
+  const abort=new AbortController();
+  pollAbortRef.current=abort;
+  let attempts=0;
+  let consecutiveErrors=0;
+  const schedule=()=>{
+   pollTimerRef.current=setTimeout(()=>{void tick();},POLL_INTERVAL_MS);
+  };
+  const apply= (decision:ReturnType<typeof decidePollTick>)=>{
+   if(decision.action==="ignore") return;
+   if(decision.action==="retry"){
+    schedule();
+    return;
+   }
+   if(decision.action==="apply-and-continue"){
+    setJob(decision.job);
+    schedule();
+    return;
+   }
+   if(decision.action==="apply-and-stop"){
+    setJob(decision.job);
+    stopPolling();
+    return;
+   }
+   if(decision.action==="stop-error" || decision.action==="stop-timeout"){
+    setJob(current=>{
+     const base=decision.job??current??{job_id:jobId,status:"dispatched"};
+     return {...base,error:decision.error};
+    });
+    stopPolling();
+   }
+  };
+  const tick=async()=>{
+   attempts+=1;
+   const current=pollScopeRef.current;
+   if(!current) return;
+   try{
+    const data=await getJob(land,jobId,abort.signal);
+    apply(decidePollTick({request:scope,current:pollScopeRef.current??current,response:data,attempts,consecutiveErrors}));
+    consecutiveErrors=0;
+   }catch(error){
+    if(abort.signal.aborted){
+     apply(decidePollTick({request:scope,current:pollScopeRef.current??current,cancelled:true,attempts,consecutiveErrors}));
+     return;
+    }
+    const message=error instanceof Error?error.message:"API_UNAVAILABLE";
+    const decision=decidePollTick({request:scope,current:pollScopeRef.current??current,error:message,attempts,consecutiveErrors});
+    if(decision.action==="retry") consecutiveErrors+=1;
+    apply(decision);
+   }
+  };
+  void tick();
+ };
+
+ useEffect(()=>()=>stopPolling(),[]);
 
  useEffect(()=>{
   if(maize || !resolvedLand) return;
   let cancelled=false;
+  stopPolling();
+  setTrackedJobId(null);
   const load=async()=>{
    try{
     const seasonPayload=await listSeasons(resolvedLand) as {seasons?:Array<any>;plan_status?:string;note?:string;plan_available?:boolean};
@@ -102,14 +201,18 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
      if(views.length){
       setSeasons(views);
       setSeasonId(views[0].season_id);
-      const preferred=views[0].periods.find(row=>row.period_id==="12")??views[0].periods[0];
-      if(preferred) setPeriodId(preferred.period_id);
+      const preferred=preferredPeriod(views[0].periods);
+      if(preferred){
+       setPeriodId(preferred.period_id);
+       setJob(jobFromLatest(preferred.latest_job));
+      }
       setLoadError(null);
      }else if(canUseFixture && resolvedLand===LOCAL_LAND_ID){
       setSeasons(LOCAL_SEASONS.map(item=>({...item,periods:item.periods,stages:planStagesFromPayload(item)})));
       setLoadError(null);
      }else{
       setSeasons([]);
+      setJob(null);
       setLoadError(seasonPayload.note || seasonPayload.plan_status || "NO_SEASONS");
      }
     }
@@ -120,18 +223,56 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
      setLoadError(null);
     }else{
      setSeasons([]);
+     setJob(null);
      setLoadError(error instanceof Error?error.message:"API_UNAVAILABLE");
     }
    }
   };
   void load();
-  return ()=>{cancelled=true;};
+  return ()=>{cancelled=true;stopPolling();};
  },[resolvedLand,maize,canUseFixture]);
 
- const choosePeriod=(item:{period_id:string})=>{setPeriodId(item.period_id);setJob(null);};
+ const showPeriodJob=(item:LocalPeriod|undefined)=>{
+  stopPolling();
+  setTrackedJobId(null);
+  if(!item){
+   setJob(null);
+   return;
+  }
+  setPeriodId(item.period_id);
+  setJob(jobFromLatest(item.latest_job));
+ };
+
+ const choosePeriod=(item:{period_id:string})=>{
+  const row=season?.periods.find(periodRow=>periodRow.period_id===item.period_id);
+  if(row){
+   showPeriodJob(row);
+   return;
+  }
+  stopPolling();
+  setTrackedJobId(null);
+  setPeriodId(item.period_id);
+  setJob(null);
+ };
+
+ const chooseSeason=(value:string)=>{
+  const nextSeason=seasons.find(item=>item.season_id===value);
+  setSeasonId(value);
+  const preferred=preferredPeriod(nextSeason?.periods||[]);
+  if(preferred){
+   showPeriodJob(preferred);
+   return;
+  }
+  stopPolling();
+  setTrackedJobId(null);
+  setPeriodId("12");
+  setJob(null);
+ };
+
  const run=async(action:"backfill-period"|"backfill-season"|"generate")=>{
   if(!resolvedLand||!season) return;
   if(action!=="backfill-season"&&!period) return;
+  if(action==="generate"&&isGenerateInFlight(displayedJob)) return;
   setBusy(true);
   try{
    const result=action==="backfill-period"
@@ -139,9 +280,25 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
     : action==="backfill-season"
      ? await triggerBackfillSeason(resolvedLand,season.season_id)
      : await triggerGenerate(resolvedLand,season.season_id,period!.period_id);
-   setJob(result as JobView);
+   const view=jobFromApi(result)??(result as JobView);
+   if(action==="generate"){
+    const id=view?.job_id;
+    setTrackedJobId(id??null);
+    setJob(view);
+    if(id&&isInFlightJobStatus(view?.status)&&period){
+     startPolling(resolvedLand,period.period_id,id);
+    }else{
+     stopPolling();
+    }
+   }else{
+    setJob(view);
+   }
   }catch(error){
-   setJob({status:"failed",error:error instanceof Error?error.message:"API_UNAVAILABLE"});
+   if(action==="generate"){
+    stopPolling();
+    setTrackedJobId(null);
+   }
+   setJob(clientFailedJob(error instanceof Error?error.message:"API_UNAVAILABLE"));
   }finally{setBusy(false);}
  };
 
@@ -152,12 +309,14 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
   </section></div>;
  }
 
+ const generateBusy=busy||isGenerateInFlight(displayedJob);
+
  return <div className={s.frame}><section className={s.root} aria-label="种植双周报" lang="zh-CN">
   <header className={s.header}>
    <h2>种植双周报 {canUseFixture&&!landId?<span className={s.mock}>本地夹具</span>:null}</h2>
    {season?<div className={s.seasonControls}>
     <div className={s.crop}>
-     <Select value={season.season_id} onValueChange={value=>{setSeasonId(value);setPeriodId("12");setJob(null);}}>
+     <Select value={season.season_id} onValueChange={chooseSeason}>
       <SelectTrigger className={s.selectTrigger} aria-label="选择种植季"><SelectValue/></SelectTrigger>
       <SelectContent align="end" collisionPadding={12} className={s.selectPopup}>
        {seasons.map(item=><SelectItem className={s.selectItem} key={item.season_id} value={item.season_id}>{item.crop_name||item.label} · {item.label}</SelectItem>)}
@@ -183,14 +342,14 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
     <Button type="button" variant="outline" size="sm" className={s.periodFill} disabled={busy||!period} onClick={()=>run("backfill-period")}>补齐本期数据</Button>
    </div>
    <div className={s.triggerRow} role="group" aria-label="生成双周报">
-    <Button type="button" variant="outline" size="sm" disabled={busy||!period} onClick={()=>run("generate")}>生成</Button>
-    {job?.job_id&&(job.status==="ready"||job.status==="evidence_limited")&&<Button type="button" variant="ghost" size="sm" asChild><a href={jobDownloadUrl(resolvedLand,job.job_id)} target="_blank" rel="noreferrer">下载产物</a></Button>}
+    <Button type="button" variant="outline" size="sm" disabled={generateBusy||!period} onClick={()=>run("generate")}>生成</Button>
+    {displayedJob?.job_id&&canDownloadBiweeklyJob(displayedJob)&&<Button type="button" variant="ghost" size="sm" asChild><a href={jobDownloadUrl(resolvedLand,displayedJob.job_id)} target="_blank" rel="noreferrer">下载产物</a></Button>}
    </div>
   </div>}
   {season?<PlanPhenologyTimeline stages={season.stages} period={period?{period_id:period.period_id,label:period.label,start:period.start,end_inclusive:period.end_inclusive,end_exclusive:period.end_exclusive,has_eligible_optics:period.has_eligible_optics}:null} periods={season.periods} onSelectPeriod={choosePeriod}/>:null}
   <div className={s.content} aria-live="polite">{period?<>
    <p className={s.cross}>{period.label} {period.start}—{period.end_inclusive}（结束日含，内部区间至 {period.end_exclusive} 不含）。{period.has_eligible_optics?`本期有 ${period.optical_descriptive_days} 个可用光学日。`:"本期暂无可用光学。可先补齐本期数据，再显式生成；确认无景后得到证据受限简报。"}{period.s1_products?"":" 本期无雷达。"} 有本田方案时按本田方案标注生育期。不会默认使用其他地块的参照计划；如使用参照，须由调用方显式传入并标注为参照。</p>
-   {job? <pre className={s.jobStatus}>{JSON.stringify({status:job.status,job_id:job.job_id,error:job.error,dispatched_to_production:job.dispatched_to_production,phase:job.result?.phase,planned_batch:job.result?.planned_batch,brief:job.result?.brief},null,2)}</pre> : <p className={s.empty}>{period.has_eligible_optics?"尚未生成报告。":"本期暂无可用光学报告。"}按钮走与其他地块接口同一套网关和登录态，不会自动出报。</p>}
+   {displayedJob? <pre className={s.jobStatus}>{JSON.stringify(jobStatusPreview(displayedJob),null,2)}</pre> : <p className={s.empty}>{period.has_eligible_optics?"尚未生成报告。":"本期暂无可用光学报告。"}按钮走与其他地块接口同一套网关和登录态，不会自动出报。</p>}
   </>: <p className={s.empty}>{loadError?planErrorMessage(loadError):"暂无报告。"}</p>}</div>
  </section></div>;
 }

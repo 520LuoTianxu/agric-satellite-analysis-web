@@ -80,6 +80,13 @@ export function listPeriods(landId: string, seasonId: string, signal?: AbortSign
   return call(biweeklyPath(`/lands/${landId}/biweekly/periods?season=${encodeURIComponent(seasonId)}`), "GET", undefined, signal);
 }
 
+export function getJob(landId: string, jobId: string, signal?: AbortSignal) {
+  if (!process.env.NEXT_PUBLIC_BIWEEKLY_API_BASE) {
+    return biweeklyApi.job(landId, jobId, signal);
+  }
+  return call(biweeklyPath(`/lands/${landId}/biweekly/jobs/${jobId}`), "GET", undefined, signal);
+}
+
 export function jobDownloadUrl(landId: string, jobId: string) {
   if (!process.env.NEXT_PUBLIC_BIWEEKLY_API_BASE) {
     return biweeklyApi.downloadUrl(landId, jobId);

@@ -2712,9 +2712,10 @@ export const biweeklyApi = {
                 ),
             },
         ),
-    job: (landId: string, jobId: string) =>
+    job: (landId: string, jobId: string, signal?: AbortSignal) =>
         apiFetch<Record<string, unknown>>(
             `/lands/${encodeURIComponent(landId)}/biweekly/jobs/${encodeURIComponent(jobId)}`,
+            { signal },
         ),
     download: (landId: string, jobId: string) =>
         apiDownload(
