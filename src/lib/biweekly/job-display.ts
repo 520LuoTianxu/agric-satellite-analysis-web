@@ -5,7 +5,9 @@ export const POLL_MAX_ATTEMPTS = 120;
 export const POLL_MAX_CONSECUTIVE_ERRORS = 3;
 
 export const TERMINAL_JOB_STATUSES = new Set(["ready", "failed", "evidence_limited"]);
-export const IN_FLIGHT_JOB_STATUSES = new Set(["queued", "running", "dispatched"]);
+export const IN_FLIGHT_JOB_STATUSES = new Set(["queued", "running", "dispatched", "registration_pending"]);
+
+export const REGISTRATION_PENDING_NOTE = "出报文件已上传，正在等待官方登记，可自动重试。此时不能下载。";
 
 /** Official periods list latest_job: job_id, status, created_at, reference only. */
 export interface BiweeklyLatestJob {
@@ -140,6 +142,7 @@ export function hasPersistedArtifact(job?: JobView | null): boolean {
  */
 export function canDownloadBiweeklyJob(job?: JobView | null): boolean {
   if (!job?.job_id) return false;
+  if (job.status === "registration_pending") return false;
   if (job.status === "ready") return true;
   if (job.status === "evidence_limited") return hasPersistedArtifact(job);
   return false;
@@ -246,12 +249,18 @@ export function decidePollTick(input: {
   return {action: "apply-and-continue", job};
 }
 
+export function jobRegistrationNote(job?: JobView | null): string | undefined {
+  if (job?.status === "registration_pending") return REGISTRATION_PENDING_NOTE;
+  return undefined;
+}
+
 export function jobStatusPreview(job: JobView): Record<string, unknown> {
   return {
     status: job.status,
     job_id: job.job_id,
     error: job.error,
     error_code: job.error_code,
+    note: jobRegistrationNote(job),
     dispatched_to_production: job.dispatched_to_production,
     phase: job.result?.phase,
     planned_batch: job.result?.planned_batch,

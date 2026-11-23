@@ -9,8 +9,10 @@ import {
   isTerminalJobStatus,
   jobFromApi,
   jobFromLatest,
+  jobRegistrationNote,
   jobStatusPreview,
   normalizeLatestJob,
+  REGISTRATION_PENDING_NOTE,
   selectPeriodJob,
   samePollScope,
 } from "./job-display.ts";
@@ -287,4 +289,36 @@ test("biweekly tab hydrates latest_job, polls GET job, and does not gate downloa
   assert.doesNotMatch(tab, /pack_pdf/);
   assert.doesNotMatch(tab, /snapshot/);
   assert.doesNotMatch(tab, /artifactUrl/);
+});
+
+test("registration_pending is in-flight, not downloadable, and keeps polling", () => {
+  const latest = {job_id: "bj-ef25e6391ad7437b", status: "registration_pending", created_at: "2026-11-23T15:21:02+08:00"};
+  const job = jobFromLatest(latest);
+  assert.equal(isInFlightJobStatus("registration_pending"), true);
+  assert.equal(isGenerateInFlight(job), true);
+  assert.equal(isTerminalJobStatus("registration_pending"), false);
+  assert.equal(canDownloadBiweeklyJob(job), false);
+  assert.equal(
+    canDownloadBiweeklyJob({...job, artifact: {path: "artifacts/x.pdf", key: "reports/default/32696/biweekly-bj-ef25e6391ad7437b.pdf"}}),
+    false,
+  );
+  assert.equal(jobRegistrationNote(job), REGISTRATION_PENDING_NOTE);
+  assert.equal(jobStatusPreview(job).note, REGISTRATION_PENDING_NOTE);
+  assert.equal(jobStatusPreview(job).status, "registration_pending");
+
+  const decision = decidePollTick({
+    request: {landId: "32696", periodId: "15", jobId: latest.job_id, generation: 1},
+    current: {landId: "32696", periodId: "15", jobId: latest.job_id, generation: 1},
+    response: {job_id: latest.job_id, status: "registration_pending"},
+    attempts: 2,
+    consecutiveErrors: 0,
+  });
+  assert.equal(decision.action, "apply-and-continue");
+});
+
+test("ready latest_job from official P15 is still downloadable after registration_pending handling", () => {
+  const job = jobFromLatest(PERIOD_15_FIXTURE.latest_job);
+  assert.equal(job?.status, "ready");
+  assert.equal(canDownloadBiweeklyJob(job), true);
+  assert.equal(isGenerateInFlight(job), false);
 });
