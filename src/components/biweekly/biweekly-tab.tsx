@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LOCAL_LAND_ID, LOCAL_SEASONS, adjacentPeriod, getLocalSeason, isMaizeCrop, type LocalPeriod } from "@/lib/biweekly/local-catalog";
-import { getJob, jobDownloadUrl, listPeriods, listSeasons, triggerBackfill, triggerBackfillSeason, triggerGenerate, usesLocalFixture } from "@/lib/biweekly/local-trigger";
+import { downloadJob, getJob, listPeriods, listSeasons, triggerBackfill, triggerBackfillSeason, triggerGenerate, usesLocalFixture } from "@/lib/biweekly/local-trigger";
 import {
  canDownloadBiweeklyJob,
  clientFailedJob,
@@ -92,6 +92,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  const [job,setJob]=useState<JobView|null>(null);
  const [trackedJobId,setTrackedJobId]=useState<string|null>(null);
  const [busy,setBusy]=useState(false);
+ const [downloading,setDownloading]=useState(false);
  const [loadError,setLoadError]=useState<string|null>(null);
  const pollTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
  const pollAbortRef=useRef<AbortController|null>(null);
@@ -302,6 +303,20 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
   }finally{setBusy(false);}
  };
 
+ const saveReport=async()=>{
+  if(!resolvedLand||!displayedJob?.job_id||!canDownloadBiweeklyJob(displayedJob)||downloading) return;
+  setDownloading(true);
+  try{
+   await downloadJob(resolvedLand,displayedJob.job_id);
+  }catch(error){
+   const message=error instanceof Error?error.message:"下载失败。";
+   setJob(current=>{
+    const base=current??displayedJob;
+    return {...base,error:message};
+   });
+  }finally{setDownloading(false);}
+ };
+
  if(maize){
   return <div className={s.frame}><section className={s.root} aria-label="种植双周报" lang="zh-CN">
    <header className={s.header}><h2>种植双周报</h2></header>
@@ -343,7 +358,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
    </div>
    <div className={s.triggerRow} role="group" aria-label="生成双周报">
     <Button type="button" variant="outline" size="sm" disabled={generateBusy||!period} onClick={()=>run("generate")}>生成</Button>
-    {displayedJob?.job_id&&canDownloadBiweeklyJob(displayedJob)&&<Button type="button" variant="ghost" size="sm" asChild><a href={jobDownloadUrl(resolvedLand,displayedJob.job_id)} target="_blank" rel="noreferrer">下载产物</a></Button>}
+    {displayedJob?.job_id&&canDownloadBiweeklyJob(displayedJob)&&<Button type="button" variant="ghost" size="sm" disabled={downloading} onClick={()=>{void saveReport();}}>下载产物</Button>}
    </div>
   </div>}
   {season?<PlanPhenologyTimeline stages={season.stages} period={period?{period_id:period.period_id,label:period.label,start:period.start,end_inclusive:period.end_inclusive,end_exclusive:period.end_exclusive,has_eligible_optics:period.has_eligible_optics}:null} periods={season.periods} onSelectPeriod={choosePeriod}/>:null}
