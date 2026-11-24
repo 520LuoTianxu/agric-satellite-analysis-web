@@ -44,6 +44,55 @@ function ConclusionLine({line}:{line:string}){
  })}</p>;
 }
 
+function formatCoreValue(value:number|null,decimals:number,unit:string){
+ if(value==null) return "—";
+ const text=value.toFixed(decimals);
+ return unit?`${text} ${unit}`:text;
+}
+
+function periodHeading(span:{label:string;start:string|null;end:string|null}){
+ if(span.start&&span.end) return `${span.label} ${range(span.start,span.end)}`;
+ return span.label;
+}
+
+function emptyConclusion(line:string):ReportCardView{
+ return {
+  title:"本期结论",
+  lines:[line],
+  periods:{current:{label:"本期",start:null,end:null},prior:{label:"上一期",start:null,end:null}},
+  metrics:[],
+  weather:[],
+ };
+}
+
+function ConclusionParameters({card}:{card:ReportCardView}){
+ if(!card.metrics.length&&!card.weather.length) return null;
+ return <div className={s.conclusionParams}>
+  <table className={s.conclusionTable}>
+   <caption className={s.conclusionCaption}>指数是可用光学日的田块均值。有效降雨和蒸散来自附近气象记录。</caption>
+   <thead>
+    <tr>
+     <th scope="col">参数</th>
+     <th scope="col">{periodHeading(card.periods.current)}</th>
+     <th scope="col">{periodHeading(card.periods.prior)}</th>
+    </tr>
+   </thead>
+   <tbody>
+    {card.metrics.map((row,index)=><tr key={`m-${index}-${row.key}`}>
+     <th scope="row">{row.abbr?`${row.abbr} ${row.name}`:row.name}</th>
+     <td>{formatCoreValue(row.current,row.decimals,row.unit)}</td>
+     <td>{formatCoreValue(row.prior,row.decimals,row.unit)}</td>
+    </tr>)}
+    {card.weather.map((row,index)=><tr key={`w-${index}-${row.key}`}>
+     <th scope="row">{row.name}</th>
+     <td>{formatCoreValue(row.current,row.decimals,row.unit)}</td>
+     <td>{formatCoreValue(row.prior,row.decimals,row.unit)}</td>
+    </tr>)}
+   </tbody>
+  </table>
+ </div>;
+}
+
 function planErrorMessage(code:string){
  if(code==="NO_SEASONS" || code.includes("未关联") || code.includes("无法读取 Smart")){
   return code.includes("本田") || code.includes("无法读取")
@@ -217,11 +266,11 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
   let alive=true;
   getJobSummary(resolvedLand, jobId, abort.signal).then(raw=>{
    if(!alive) return;
-   setCard(cardFromSummary(raw)??{title:"本期结论", lines:["这期还没有可显示的结论。"]});
+   setCard(cardFromSummary(raw)??emptyConclusion("这期还没有可显示的结论。"));
    setCardJobId(jobId);
   }).catch(()=>{
    if(!alive || abort.signal.aborted) return;
-   setCard({title:"本期结论", lines:["暂时读不到本期结论，可以下载报告查看。"]});
+   setCard(emptyConclusion("暂时读不到本期结论，可以下载报告查看。"));
    setCardJobId(jobId);
   });
   return ()=>{alive=false; abort.abort();};
@@ -426,6 +475,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
    {displayedJob? <div className={s.conclusion}>{card&&cardJobId===displayedJob.job_id?<>
     <p className={s.conclusionTitle}>{card.title}</p>
     {card.lines.map((line,index)=><ConclusionLine key={index} line={line}/>)}
+    <ConclusionParameters card={card}/>
    </>:<p className={s.conclusionLine}>正在读取本期结论。</p>}</div> : <p className={s.empty}>{period.has_eligible_optics?"尚未生成报告。":"本期暂无可用光学报告。"}按钮走与其他地块接口同一套网关和登录态，不会自动出报。</p>}
   </>: <p className={s.empty}>{loadError?planErrorMessage(loadError):"暂无报告。"}</p>}</div>
  </section></div>;
