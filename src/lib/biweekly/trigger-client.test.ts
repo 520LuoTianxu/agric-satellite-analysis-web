@@ -24,7 +24,9 @@ test("frontend biweekly client uses the shared satellite API base and land paths
   assert.doesNotMatch(client, /X-Biweekly-Dev-Token/);
   assert.match(client, /NEXT_PUBLIC_BIWEEKLY_LOCAL_FIXTURE/);
   assert.match(client, /export function getJob/);
+  assert.match(client, /export function getJobSummary/);
   assert.match(api, /biweekly\/jobs/);
+  assert.match(api, /jobs\/\$\{encodeURIComponent\(jobId\)\}\/summary/);
 });
 
 test("field detail wires the current land into the biweekly tab", () => {
@@ -37,6 +39,9 @@ test("field detail wires the current land into the biweekly tab", () => {
   assert.match(tab, /LOCAL_SEASONS/);
   assert.match(tab, /补齐本期数据/);
   assert.match(tab, /一键补齐全部双周报/);
+  assert.match(tab, /getJobSummary/);
+  assert.match(tab, /本期结论/);
+  assert.doesNotMatch(tab, /JSON.stringify\(jobStatusPreview/);
   assert.doesNotMatch(tab, /有界补数/);
   assert.doesNotMatch(tab, /生成（参照 15933）/);
   assert.doesNotMatch(tab, /generate-ref|15933/);
