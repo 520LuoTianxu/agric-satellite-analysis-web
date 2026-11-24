@@ -22,7 +22,7 @@ import {
  type JobView,
  type PollScope,
 } from "@/lib/biweekly/job-display";
-import { planStagesFromPayload, type PlanStage } from "@/lib/biweekly/plan-timeline";
+import { periodsWithinMonitoring, planStagesFromPayload, type PlanStage } from "@/lib/biweekly/plan-timeline";
 import { addDays } from "@/lib/biweekly/timeline";
 import { PlanPhenologyTimeline } from "./plan-timeline";
 import s from "./biweekly-tab.module.css";
@@ -46,7 +46,8 @@ function fixtureEnabled(allowLocalFixture?: boolean){
 }
 
 function toSeasonView(landId:string, raw:any, periods:LocalPeriod[], extra?:unknown):SeasonView{
- const stages=planStagesFromPayload(raw);
+ const fromSeason=planStagesFromPayload(raw);
+ const stages=fromSeason.length?fromSeason:planStagesFromPayload(extra);
  return {
   season_id:String(raw.season_id),
   label:String(raw.label||raw.season_id),
@@ -55,9 +56,14 @@ function toSeasonView(landId:string, raw:any, periods:LocalPeriod[], extra?:unkn
   land_id:String(raw.land_id||landId),
   land_name:raw.land_name?String(raw.land_name):undefined,
   note:raw.note?String(raw.note):"默认不出报，需显式触发补数或生成。",
-  periods,
-  stages:stages.length?stages:planStagesFromPayload(extra),
+  periods:periodsWithinMonitoring(periods, stages),
+  stages,
  };
+}
+
+function localSeasonView(item: (typeof LOCAL_SEASONS)[number]): SeasonView {
+ const stages = planStagesFromPayload(item);
+ return {...item, periods: periodsWithinMonitoring(item.periods, stages), stages};
 }
 
 function toPeriod(raw:any, index:number):LocalPeriod{
@@ -86,7 +92,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  const canUseFixture=fixtureEnabled(allowLocalFixture);
  const maize=isMaizeCrop(cropType);
  const resolvedLand=landId|| (canUseFixture?LOCAL_LAND_ID:"");
- const [seasons,setSeasons]=useState<SeasonView[]>(canUseFixture && !landId?LOCAL_SEASONS.map(item=>({...item,periods:item.periods,stages:planStagesFromPayload(item)})):[]);
+ const [seasons,setSeasons]=useState<SeasonView[]>(canUseFixture && !landId?LOCAL_SEASONS.map(localSeasonView):[]);
  const [seasonId,setSeasonId]=useState(seasons[0]?.season_id??"2025/26");
  const [periodId,setPeriodId]=useState("12");
  const [job,setJob]=useState<JobView|null>(null);
@@ -103,7 +109,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
   if(found) return found;
   if(canUseFixture && resolvedLand===LOCAL_LAND_ID){
    const local=getLocalSeason(seasonId);
-   return {...local,periods:local.periods,stages:planStagesFromPayload(local)};
+   return localSeasonView(local);
   }
   return seasons[0];
  },[seasons,seasonId,canUseFixture,resolvedLand]);
@@ -209,7 +215,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
       }
       setLoadError(null);
      }else if(canUseFixture && resolvedLand===LOCAL_LAND_ID){
-      setSeasons(LOCAL_SEASONS.map(item=>({...item,periods:item.periods,stages:planStagesFromPayload(item)})));
+      setSeasons(LOCAL_SEASONS.map(localSeasonView));
       setLoadError(null);
      }else{
       setSeasons([]);
@@ -220,7 +226,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
    }catch(error){
     if(cancelled) return;
     if(canUseFixture && resolvedLand===LOCAL_LAND_ID){
-     setSeasons(LOCAL_SEASONS.map(item=>({...item,periods:item.periods,stages:planStagesFromPayload(item)})));
+     setSeasons(LOCAL_SEASONS.map(localSeasonView));
      setLoadError(null);
     }else{
      setSeasons([]);
