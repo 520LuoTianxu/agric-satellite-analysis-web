@@ -320,7 +320,10 @@ export async function downloadBiweeklyPdf(input: DownloadAuthRequest): Promise<v
       parseContentDispositionFilename(response.headers.get("Content-Disposition")) || input.fallbackFilename,
       input.fallbackFilename,
     );
-    save(new Blob([bytes], {type: "application/pdf"}), filename);
+    // 流式读取得到的 Uint8Array 在当前 DOM 类型里不能直接作为 BlobPart。
+    const copy = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(copy).set(bytes);
+    save(new Blob([copy], {type: "application/pdf"}), filename);
     return;
   }
   throw new Error("下载重定向次数过多，已中止。");
