@@ -60,9 +60,75 @@ test("summary card keeps plain conclusion lines and drops an empty payload", () 
   assert.deepEqual(cardFromSummary({title: "本期结论", lines: [" 要留意浇水。 ", ""]}), {
     title: "本期结论",
     lines: ["要留意浇水。"],
+    periods: {
+      current: {label: "本期", start: null, end: null},
+      prior: {label: "上一期", start: null, end: null},
+    },
+    metrics: [],
+    weather: [],
   });
   assert.equal(cardFromSummary({title: "本期结论", lines: []}), null);
   assert.equal(cardFromSummary(null), null);
+});
+
+test("summary card keeps current and prior core parameters and drops unusable numbers", () => {
+  const card = cardFromSummary({
+    job_id: "bj-1",
+    status: "ready",
+    title: "本期结论",
+    lines: ["长势稳定。"],
+    source: "conclusion",
+    periods: {
+      current: {label: "本期", start: "2026-05-06", end: "2026-05-19"},
+      prior: {label: "上一期", start: "2026-04-22", end: "2026-05-05"},
+    },
+    metrics: [
+      {key: "ndvi", abbr: "NDVI", name: "长势", unit: "", decimals: 2, current: 0.65, prior: 0.5, current_days: 2, prior_days: 1},
+      {key: "lswi", abbr: "LSWI", name: "含水", unit: "", decimals: 2, current: "0.22", prior: 0.41},
+      {key: "savi", abbr: "SAVI", name: "裸土", unit: "", current: "bad", prior: "also-bad"},
+      {key: "blank", abbr: "E", name: " ", current: 1, prior: 1},
+    ],
+    weather: [
+      {key: "precipitation_mm", name: "有效降雨", unit: "毫米", decimals: 1, current: 0.1, prior: 5.5},
+      {key: "et0_mm", name: "蒸散", unit: "毫米", current: 31.7, prior: 5.5},
+      {key: "mean_c", name: "", unit: "℃", decimals: 1, current: 18.2, prior: 13.7},
+    ],
+  });
+  assert.ok(card);
+  assert.deepEqual(card.metrics.find(row => row.key === "ndvi"), {
+    key: "ndvi",
+    abbr: "NDVI",
+    name: "长势",
+    unit: "",
+    decimals: 2,
+    current: 0.65,
+    prior: 0.5,
+  });
+  assert.equal(card.weather.find(row => row.name === "有效降雨")?.name, "有效降雨");
+  assert.equal(card.periods.prior.start, "2026-04-22");
+  const partial = card.metrics.find(row => row.key === "lswi");
+  assert.ok(partial);
+  assert.equal(partial.current, null);
+  assert.equal(partial.prior, 0.41);
+  assert.equal(JSON.stringify(partial).includes("0.22"), false);
+  assert.equal(card.metrics.some(row => row.key === "savi"), false);
+  assert.equal(card.metrics.some(row => row.key === "blank"), false);
+  assert.equal(card.weather.some(row => row.key === "mean_c"), false);
+  assert.equal(card.weather.find(row => row.key === "et0_mm")?.decimals, 1);
+  assert.equal(JSON.stringify(card).includes("bad"), false);
+  assert.equal(JSON.stringify(card).includes("also-bad"), false);
+
+  const metricsOnly = cardFromSummary({
+    metrics: [{key: "ndvi", abbr: "NDVI", name: "长势", current: 0.65, prior: null}],
+    weather: null,
+  });
+  assert.equal(metricsOnly?.lines.length, 0);
+  assert.equal(metricsOnly?.metrics[0]?.current, 0.65);
+  assert.equal(metricsOnly?.metrics[0]?.decimals, 2);
+  assert.equal(metricsOnly?.periods.current.label, "本期");
+  assert.equal(metricsOnly?.periods.current.start, null);
+  assert.equal(metricsOnly?.weather.length, 0);
+  assert.equal(cardFromSummary({lines: [], metrics: [{name: "长势", current: "x", prior: null}], weather: []}), null);
 });
 
 test("P15 ready latest_job with null snapshot/pack_pdf hydrates a downloadable job", () => {

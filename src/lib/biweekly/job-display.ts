@@ -254,21 +254,132 @@ export function jobRegistrationNote(job?: JobView | null): string | undefined {
   return undefined;
 }
 
+export interface ReportCardPeriod {
+  label: string;
+  start: string | null;
+  end: string | null;
+}
+
+export interface ReportCardMetric {
+  key: string;
+  abbr: string;
+  name: string;
+  unit: string;
+  decimals: number;
+  current: number | null;
+  prior: number | null;
+}
+
+export interface ReportCardWeather {
+  key: string;
+  name: string;
+  unit: string;
+  decimals: number;
+  current: number | null;
+  prior: number | null;
+}
+
 export interface ReportCardView {
   title: string;
   lines: string[];
+  periods: {
+    current: ReportCardPeriod;
+    prior: ReportCardPeriod;
+  };
+  metrics: ReportCardMetric[];
+  weather: ReportCardWeather[];
 }
 
-/** The summary route already picks the sentences and keeps only bold plus three colors. */
+function trimmedText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function nullableText(value: unknown): string | null {
+  const text = trimmedText(value);
+  return text ? text : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function decimalsOr(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 20) return value;
+  return fallback;
+}
+
+function periodSpan(raw: unknown, fallbackLabel: string): ReportCardPeriod {
+  if (!raw || typeof raw !== "object") return {label: fallbackLabel, start: null, end: null};
+  const row = raw as Record<string, unknown>;
+  return {
+    label: trimmedText(row.label) || fallbackLabel,
+    start: nullableText(row.start),
+    end: nullableText(row.end),
+  };
+}
+
+function metricRow(raw: unknown): ReportCardMetric | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const name = trimmedText(row.name);
+  const current = finiteNumber(row.current);
+  const prior = finiteNumber(row.prior);
+  if (!name || (current === null && prior === null)) return null;
+  return {
+    key: trimmedText(row.key),
+    abbr: trimmedText(row.abbr),
+    name,
+    unit: trimmedText(row.unit),
+    decimals: decimalsOr(row.decimals, 2),
+    current,
+    prior,
+  };
+}
+
+function weatherRow(raw: unknown): ReportCardWeather | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const name = trimmedText(row.name);
+  const current = finiteNumber(row.current);
+  const prior = finiteNumber(row.prior);
+  if (!name || (current === null && prior === null)) return null;
+  return {
+    key: trimmedText(row.key),
+    name,
+    unit: trimmedText(row.unit),
+    decimals: decimalsOr(row.decimals, 1),
+    current,
+    prior,
+  };
+}
+
+function rowsOf<T>(raw: unknown, parse: (item: unknown) => T | null): T[] {
+  if (!Array.isArray(raw)) return [];
+  const rows: T[] = [];
+  for (const item of raw) {
+    const row = parse(item);
+    if (row) rows.push(row);
+  }
+  return rows;
+}
+
+/** Summary sentences, plus current and prior parameters when the payload includes them. */
 export function cardFromSummary(raw: unknown): ReportCardView | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
   const lines = Array.isArray(row.lines)
     ? row.lines.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map(item => item.trim())
     : [];
-  if (!lines.length) return null;
+  const periodsRaw = row.periods && typeof row.periods === "object" ? row.periods as Record<string, unknown> : null;
+  const periods = {
+    current: periodSpan(periodsRaw?.current, "本期"),
+    prior: periodSpan(periodsRaw?.prior, "上一期"),
+  };
+  const metrics = rowsOf(row.metrics, metricRow);
+  const weather = rowsOf(row.weather, weatherRow);
+  if (!lines.length && !metrics.length && !weather.length) return null;
   const title = typeof row.title === "string" && row.title.trim() ? row.title.trim() : "本期结论";
-  return {title, lines};
+  return {title, lines, periods, metrics, weather};
 }
 
 const CONCLUSION_MARKS: Record<string, {color: string; background: string}> = {
