@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { addDays } from "./timeline.ts";
-import { buildPlanTimeline, planStagesFromPayload, selectPeriodInWindow, PHASE_LABELS } from "./plan-timeline.ts";
+import { buildPlanTimeline, monitoringStart, periodsWithinMonitoring, planStagesFromPayload, selectPeriodInWindow, PHASE_LABELS } from "./plan-timeline.ts";
 
 const seasonPayload = {
   season_id: "2026/27",
@@ -177,6 +177,34 @@ test("places a clickable period dot at each biweek midpoint", () => {
   assert.equal(view.periods.find((row) => row.period_id === "16")?.has_eligible_optics, true);
 });
 
+test("period choices start at S1 while pre-monitoring stages stay on the timeline", () => {
+  const stages = planStagesFromPayload(seasonPayload);
+  assert.equal(monitoringStart(stages), "2026-10-16");
+  const before = [
+    period("1", "2026-09-20", "2026-10-03"),
+    period("2", "2026-10-04", "2026-10-17"),
+    period("3", "2026-10-18", "2026-10-31"),
+    period("4", "2026-11-01", "2026-11-14"),
+  ];
+  const visible = periodsWithinMonitoring(before, stages);
+  assert.deepEqual(visible.map((row) => row.period_id), ["2", "3", "4"]);
+  assert.deepEqual(visible.map((row) => row.label), ["第1期", "第2期", "第3期"]);
+  assert.equal(visible[0].start, "2026-10-04");
+  const view = buildPlanTimeline(stages, visible[1], visible);
+  assert.deepEqual(view.stages.slice(0, 2).map((row) => row.name), ["播种前准备", "播种期"]);
+  assert.equal(view.stages[0].monitored, false);
+  assert.deepEqual(view.periods.map((row) => row.period_id), ["2", "3", "4"]);
+  assert.ok(view.periods[0].left > view.stages[0].left);
+
+  const aligned = periodsWithinMonitoring(
+    [period("1", "2026-10-16", "2026-10-29", { label: "第1期" })],
+    stages,
+  );
+  assert.equal(aligned[0].label, "第1期");
+  assert.equal(aligned[0].period_id, "1");
+  assert.deepEqual(periodsWithinMonitoring(before, []), before);
+});
+
 test("selects the overlapping biweek, keeping the current period when it already sits in the window", () => {
   assert.equal(selectPeriodInWindow(seasonPeriods, "2026-10-11", "2026-11-21", "5")?.period_id, "5");
   assert.equal(selectPeriodInWindow(seasonPeriods, "2026-10-16", "2027-03-11", "5")?.period_id, "5");
@@ -199,6 +227,7 @@ test("live tab wires period selection into the plan timeline and keeps every sta
   const css = readFileSync("src/components/biweekly/plan-timeline.module.css", "utf8");
   assert.match(tab, /onSelectPeriod=\{choosePeriod\}/);
   assert.match(tab, /periods=\{season\.periods\}/);
+  assert.match(tab, /periodsWithinMonitoring/);
   assert.match(component, /onSelectPeriod/);
   assert.match(component, /<button/);
   assert.match(component, /aria-pressed/);
