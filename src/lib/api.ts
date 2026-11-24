@@ -2681,6 +2681,14 @@ export interface BiweeklyPeriodList {
     [key: string]: unknown;
 }
 
+export interface BiweeklyReportCard {
+    job_id?: string;
+    status?: string;
+    title: string;
+    lines: string[];
+    source?: string;
+}
+
 /** 种植双周报：与其他地块接口同一套 /satellite-api 网关和登录态。 */
 export const biweeklyApi = {
     seasons: (landId: string, signal?: AbortSignal) =>
@@ -2715,6 +2723,11 @@ export const biweeklyApi = {
     job: (landId: string, jobId: string, signal?: AbortSignal) =>
         apiFetch<Record<string, unknown>>(
             `/lands/${encodeURIComponent(landId)}/biweekly/jobs/${encodeURIComponent(jobId)}`,
+            { signal },
+        ),
+    summary: (landId: string, jobId: string, signal?: AbortSignal) =>
+        apiFetch<BiweeklyReportCard>(
+            `/lands/${encodeURIComponent(landId)}/biweekly/jobs/${encodeURIComponent(jobId)}/summary`,
             { signal },
         ),
     download: (landId: string, jobId: string) =>

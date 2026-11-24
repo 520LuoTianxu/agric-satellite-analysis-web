@@ -88,6 +88,13 @@ export function getJob(landId: string, jobId: string, signal?: AbortSignal) {
   return call(biweeklyPath(`/lands/${landId}/biweekly/jobs/${jobId}`), "GET", undefined, signal);
 }
 
+export function getJobSummary(landId: string, jobId: string, signal?: AbortSignal) {
+  if (!process.env.NEXT_PUBLIC_BIWEEKLY_API_BASE) {
+    return biweeklyApi.summary(landId, jobId, signal);
+  }
+  return call(biweeklyPath(`/lands/${landId}/biweekly/jobs/${jobId}/summary`), "GET", undefined, signal);
+}
+
 export function jobDownloadUrl(landId: string, jobId: string) {
   if (!process.env.NEXT_PUBLIC_BIWEEKLY_API_BASE) {
     return biweeklyApi.downloadUrl(landId, jobId);

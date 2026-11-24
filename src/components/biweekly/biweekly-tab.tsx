@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LOCAL_LAND_ID, LOCAL_SEASONS, adjacentPeriod, getLocalSeason, isMaizeCrop, type LocalPeriod } from "@/lib/biweekly/local-catalog";
-import { downloadJob, getJob, listPeriods, listSeasons, triggerBackfill, triggerBackfillSeason, triggerGenerate, usesLocalFixture } from "@/lib/biweekly/local-trigger";
+import { downloadJob, getJob, getJobSummary, listPeriods, listSeasons, triggerBackfill, triggerBackfillSeason, triggerGenerate, usesLocalFixture } from "@/lib/biweekly/local-trigger";
 import { downloadPercent, formatDownloadProgress, type DownloadProgress } from "@/lib/biweekly/job-download";
 import {
  canDownloadBiweeklyJob,
@@ -14,10 +14,12 @@ import {
  decidePollTick,
  isGenerateInFlight,
  isInFlightJobStatus,
+ cardFromSummary,
+ conclusionPieces,
  jobFromApi,
  jobFromLatest,
- jobStatusPreview,
  normalizeLatestJob,
+ type ReportCardView,
  selectPeriodJob,
  POLL_INTERVAL_MS,
  type JobView,
@@ -32,6 +34,15 @@ const md=(date:string)=>date.slice(5).replace("-",".");
 const range=(start:string,endInclusive:string)=>`${md(start)}–${md(endInclusive)}`;
 
 type SeasonView = {season_id:string;label?:string;crop?:string;crop_name?:string;land_id?:string;land_name?:string;note?:string;plan_status?:string;periods:LocalPeriod[];stages:PlanStage[]};
+
+function ConclusionLine({line}:{line:string}){
+ const pieces=conclusionPieces(line);
+ return <p className={s.conclusionLine}>{pieces.map((piece,index)=>{
+  if(piece.type==="mark") return <span className={s.conclusionMark} key={index} style={{color:piece.color,backgroundColor:piece.background}}>{piece.text}</span>;
+  if(piece.type==="bold") return <strong key={index}>{piece.text}</strong>;
+  return <span key={index}>{piece.text}</span>;
+ })}</p>;
+}
 
 function planErrorMessage(code:string){
  if(code==="NO_SEASONS" || code.includes("未关联") || code.includes("无法读取 Smart")){
@@ -103,6 +114,8 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  const [downloadProgress,setDownloadProgress]=useState<DownloadProgress|null>(null);
  const downloadPaintRef=useRef(0);
  const [loadError,setLoadError]=useState<string|null>(null);
+ const [card,setCard]=useState<ReportCardView|null>(null);
+ const [cardJobId,setCardJobId]=useState<string|null>(null);
  const pollTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
  const pollAbortRef=useRef<AbortController|null>(null);
  const pollGenerationRef=useRef(0);
@@ -192,6 +205,27 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  };
 
  useEffect(()=>()=>stopPolling(),[]);
+
+ useEffect(()=>{
+  const jobId=displayedJob?.job_id;
+  if(maize || !resolvedLand || !jobId){
+   setCard(null);
+   setCardJobId(null);
+   return;
+  }
+  const abort=new AbortController();
+  let alive=true;
+  getJobSummary(resolvedLand, jobId, abort.signal).then(raw=>{
+   if(!alive) return;
+   setCard(cardFromSummary(raw)??{title:"本期结论", lines:["这期还没有可显示的结论。"]});
+   setCardJobId(jobId);
+  }).catch(()=>{
+   if(!alive || abort.signal.aborted) return;
+   setCard({title:"本期结论", lines:["暂时读不到本期结论，可以下载报告查看。"]});
+   setCardJobId(jobId);
+  });
+  return ()=>{alive=false; abort.abort();};
+ },[maize, resolvedLand, displayedJob?.job_id, displayedJob?.status]);
 
  useEffect(()=>{
   if(maize || !resolvedLand) return;
@@ -389,7 +423,10 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
   {season?<PlanPhenologyTimeline stages={season.stages} period={period?{period_id:period.period_id,label:period.label,start:period.start,end_inclusive:period.end_inclusive,end_exclusive:period.end_exclusive,has_eligible_optics:period.has_eligible_optics}:null} periods={season.periods} onSelectPeriod={choosePeriod}/>:null}
   <div className={s.content} aria-live="polite">{period?<>
    <p className={s.cross}>{period.label} {period.start}—{period.end_inclusive}（结束日含，内部区间至 {period.end_exclusive} 不含）。{period.has_eligible_optics?`本期有 ${period.optical_descriptive_days} 个可用光学日。`:"本期暂无可用光学。可先补齐本期数据，再显式生成；确认无景后得到证据受限简报。"}{period.s1_products?"":" 本期无雷达。"} 有本田方案时按本田方案标注生育期。不会默认使用其他地块的参照计划；如使用参照，须由调用方显式传入并标注为参照。</p>
-   {displayedJob? <pre className={s.jobStatus}>{JSON.stringify(jobStatusPreview(displayedJob),null,2)}</pre> : <p className={s.empty}>{period.has_eligible_optics?"尚未生成报告。":"本期暂无可用光学报告。"}按钮走与其他地块接口同一套网关和登录态，不会自动出报。</p>}
+   {displayedJob? <div className={s.conclusion}>{card&&cardJobId===displayedJob.job_id?<>
+    <p className={s.conclusionTitle}>{card.title}</p>
+    {card.lines.map((line,index)=><ConclusionLine key={index} line={line}/>)}
+   </>:<p className={s.conclusionLine}>正在读取本期结论。</p>}</div> : <p className={s.empty}>{period.has_eligible_optics?"尚未生成报告。":"本期暂无可用光学报告。"}按钮走与其他地块接口同一套网关和登录态，不会自动出报。</p>}
   </>: <p className={s.empty}>{loadError?planErrorMessage(loadError):"暂无报告。"}</p>}</div>
  </section></div>;
 }
