@@ -2681,12 +2681,45 @@ export interface BiweeklyPeriodList {
     [key: string]: unknown;
 }
 
+export interface BiweeklyReportPeriodSpan {
+    label?: string;
+    start?: string | null;
+    end?: string | null;
+}
+
+export interface BiweeklyReportMetric {
+    key?: string;
+    abbr?: string;
+    name?: string;
+    unit?: string;
+    decimals?: number;
+    current?: number | null;
+    prior?: number | null;
+    current_days?: number | null;
+    prior_days?: number | null;
+}
+
+export interface BiweeklyReportWeather {
+    key?: string;
+    name?: string;
+    unit?: string;
+    decimals?: number;
+    current?: number | null;
+    prior?: number | null;
+}
+
 export interface BiweeklyReportCard {
     job_id?: string;
     status?: string;
     title: string;
     lines: string[];
     source?: string;
+    periods?: {
+        current?: BiweeklyReportPeriodSpan;
+        prior?: BiweeklyReportPeriodSpan;
+    };
+    metrics?: BiweeklyReportMetric[];
+    weather?: BiweeklyReportWeather[];
 }
 
 /** 种植双周报：与其他地块接口同一套 /satellite-api 网关和登录态。 */
