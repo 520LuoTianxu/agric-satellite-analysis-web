@@ -7,6 +7,7 @@ import {
   isGenerateInFlight,
   isInFlightJobStatus,
   isTerminalJobStatus,
+  cardFromSummary,
   jobFromApi,
   jobFromLatest,
   jobRegistrationNote,
@@ -38,6 +39,15 @@ const PERIOD_15_FIXTURE = {
   },
   observation_source: "parcel_scene_products",
 };
+
+test("summary card keeps plain conclusion lines and drops an empty payload", () => {
+  assert.deepEqual(cardFromSummary({title: "本期结论", lines: [" 要留意浇水。 ", ""]}), {
+    title: "本期结论",
+    lines: ["要留意浇水。"],
+  });
+  assert.equal(cardFromSummary({title: "本期结论", lines: []}), null);
+  assert.equal(cardFromSummary(null), null);
+});
 
 test("P15 ready latest_job with null snapshot/pack_pdf hydrates a downloadable job", () => {
   assert.equal(PERIOD_15_FIXTURE.snapshot, null);

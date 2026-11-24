@@ -254,6 +254,23 @@ export function jobRegistrationNote(job?: JobView | null): string | undefined {
   return undefined;
 }
 
+export interface ReportCardView {
+  title: string;
+  lines: string[];
+}
+
+/** The summary route already picks the sentences. Drop anything that is not plain text. */
+export function cardFromSummary(raw: unknown): ReportCardView | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const lines = Array.isArray(row.lines)
+    ? row.lines.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map(item => item.trim())
+    : [];
+  if (!lines.length) return null;
+  const title = typeof row.title === "string" && row.title.trim() ? row.title.trim() : "本期结论";
+  return {title, lines};
+}
+
 export function jobStatusPreview(job: JobView): Record<string, unknown> {
   return {
     status: job.status,
