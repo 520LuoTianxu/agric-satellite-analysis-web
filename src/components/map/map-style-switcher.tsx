@@ -18,6 +18,8 @@ interface MapStyleSwitcherProps {
     currentStyle: MapStyleId;
     onStyleChange: (styleId: MapStyleId) => void;
     className?: string;
+    /** Square icon button. The menu opens toward the left. */
+    iconOnly?: boolean;
 }
 
 /**
@@ -28,6 +30,7 @@ export default function MapStyleSwitcher({
     currentStyle,
     onStyleChange,
     className = "",
+    iconOnly = false,
 }: MapStyleSwitcherProps) {
     const t = useTranslations("mapControls");
 
@@ -60,18 +63,31 @@ export default function MapStyleSwitcher({
             <button
                 type="button"
                 onClick={() => setOpen(!open)}
-                className={cn("flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3", MAP_CHROME)}
+                className={cn(
+                    "text-foreground transition-colors hover:bg-surface-3",
+                    iconOnly
+                        ? "grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border/70 bg-background shadow-[0_4px_14px_rgba(16,36,22,0.14)]"
+                        : "flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium",
+                    !iconOnly && MAP_CHROME,
+                )}
                 title={t("mapLayers")}
+                aria-label={t("mapLayers")}
             >
                 <Layers className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                    {styleLabel(MAP_STYLES.find((s) => s.id === currentStyle))}
-                </span>
+                {!iconOnly && (
+                    <span className="hidden sm:inline">
+                        {styleLabel(MAP_STYLES.find((s) => s.id === currentStyle))}
+                    </span>
+                )}
             </button>
 
             {/* Expanded panel */}
             {open && (
-                <div className={cn("absolute top-full left-0 mt-2 flex gap-1.5 rounded-xl p-2", MAP_CHROME)}>
+                <div className={cn(
+                    "absolute top-full mt-2 flex gap-1.5 rounded-xl p-2",
+                    iconOnly ? "right-0" : "left-0",
+                    MAP_CHROME,
+                )}>
                     {MAP_STYLES.map((s) => (
                         <button
                             key={s.id}

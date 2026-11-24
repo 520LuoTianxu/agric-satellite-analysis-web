@@ -600,12 +600,13 @@ export default function AgriTimeseriesPanel({
                     }),
                 ]);
                 if (cancelled) return;
-                setSummary(sum);
+                const sensors = sum.sensors ?? [];
+                setSummary({ ...sum, sensors });
                 const s2Items = reverseDescScenesPage(s2Desc.items);
                 const s1Items = reverseDescScenesPage(s1Desc.items);
                 const all = [...s2Items, ...s1Items];
                 setScenes(all);
-                const hasS2 = sum.sensors.some((s) => s.sensor === "S2" && s.count > 0);
+                const hasS2 = sensors.some((s) => s.sensor === "S2" && s.count > 0);
                 const nextSeries: SeriesKey = modeProp ?? (hasS2 ? "ndvi" : "vv");
                 setSeriesInternal(nextSeries);
                 onModeChange?.(nextSeries);
@@ -1435,7 +1436,7 @@ export default function AgriTimeseriesPanel({
                         </Button>
                         {summary && (
                             <div className="flex flex-wrap gap-1 justify-end">
-                                {summary.sensors.map((s) => (
+                                {(summary.sensors ?? []).map((s) => (
                                     <Badge key={s.sensor} variant="secondary" className="text-[10px] tabular-nums">
                                         {s.sensor} {s.count}
                                     </Badge>

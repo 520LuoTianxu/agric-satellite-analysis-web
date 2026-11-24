@@ -453,7 +453,7 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
     return (
         <div className="p-4 space-y-4">
             <div className="space-y-1">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
+                <h3 className="flex items-center gap-2 text-base font-semibold">
                     <FileText className="h-4 w-4" />
                     {t("title")}
                 </h3>
@@ -580,9 +580,9 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                         </label>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         <Button
-                            size="sm"
+                            className="h-11 sm:h-9"
                             onClick={handleGenerate}
                             disabled={inFlight || (!isUsableCrop(pickCrop) && !isUsableCrop(boundCrop))}
                         >
@@ -598,7 +598,7 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                                   : t("pullAndGenerate")}
                         </Button>
                         <Button
-                            size="sm"
+                            className="h-11 sm:h-9"
                             variant="outline"
                             onClick={handleDownload}
                             disabled={!hasPdf || downloading}
@@ -793,7 +793,7 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
             {/* ── 生育期长势报告 ─────────────────────────────────────── */}
             <div className="border-t pt-4 space-y-3">
                 <div className="space-y-1">
-                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <h3 className="flex items-center gap-2 text-base font-semibold">
                         <Sprout className="h-4 w-4" />
                         {ts("title")}
                     </h3>
@@ -890,9 +890,9 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                             {ts("cdfinanceReuseHint")}
                         </p>
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                             <Button
-                                size="sm"
+                                className="h-11 sm:h-9"
                                 onClick={handleSgGenerate}
                                 disabled={sgInFlight || sgUploading}
                             >
@@ -908,7 +908,7 @@ export default function LandReportTab({ landId, cropType, onCropBound }: LandRep
                                       : ts("generate")}
                             </Button>
                             <Button
-                                size="sm"
+                                className="h-11 sm:h-9"
                                 variant="outline"
                                 onClick={handleSgDownload}
                                 disabled={!sgHasPdf || sgDownloading}

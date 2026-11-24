@@ -438,11 +438,11 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
         <div className="space-y-4">
             {/* ── Section: Run Analysis + Backfill for the canonical land ───── */}
             {/* 这些任务和场景产品都直接以 land_id 关联同一条地块主表记录。 */}
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                     variant="outline"
                     onClick={() => setShowJobForm(!showJobForm)}
-                    className="flex-1 flex items-center justify-between"
+                    className="flex h-11 w-full items-center justify-between sm:h-10 sm:flex-1"
                 >
                     <span className="flex items-center gap-1.5">
                         <PlayCircle className="h-4 w-4 text-primary" />
@@ -458,7 +458,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
                     variant="outline"
                     onClick={handleBackfill}
                     disabled={backfilling || backfillTriggered || backfillActive}
-                    className="flex items-center gap-1.5"
+                    className="flex h-11 w-full items-center justify-center gap-1.5 sm:h-10 sm:w-auto"
                     title={backfillActive ? tMon("backfill.inProgressTitle") : tMon("backfill.buttonTitle")}
                 >
                     {backfilling ? (
@@ -466,7 +466,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
                     ) : (
                         <History className="h-4 w-4" />
                     )}
-                    <span className="hidden sm:inline">{tMon("backfill.buttonLabel")}</span>
+                    <span>{tMon("backfill.buttonLabel")}</span>
                 </Button>
             </div>
 

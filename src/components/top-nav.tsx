@@ -38,8 +38,13 @@ export function TopNav() {
         };
     }, []);
 
+    const onFieldDetail = pathname.includes("/farms/fields/detail");
+
     return (
-        <header className="relative z-30 flex h-14 shrink-0 items-center border-b border-border/80 bg-background/90 px-2 backdrop-blur-md sm:px-4">
+        <header className={cn(
+            "relative z-30 flex h-14 shrink-0 items-center border-b border-border/80 bg-background/90 px-2 backdrop-blur-md sm:px-4",
+            onFieldDetail && "max-md:hidden",
+        )}>
             <Link
                 href="/overview"
                 className="relative z-10 hidden items-center gap-2 text-foreground sm:flex"

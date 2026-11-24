@@ -320,6 +320,7 @@
   },
   "fieldDetail": {
     "backToFarm": "Volver a finca",
+    "backShort": "Volver",
     "edit": "Editar",
     "delete": "Eliminar",
     "tabInfo": "Info",

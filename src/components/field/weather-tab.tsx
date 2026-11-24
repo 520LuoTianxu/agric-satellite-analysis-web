@@ -63,9 +63,9 @@ export default function WeatherTab({ landId }: WeatherTabProps) {
         try {
             const { start, end } = getDateRange(range);
             const res = await weatherApi.get(landId, start, end, true);
-            setData(res.data);
-            setForecast(res.forecast);
-            setSummary(res.summary);
+            setData(res.data ?? []);
+            setForecast(res.forecast ?? []);
+            setSummary(res.summary ?? null);
         } catch {
             // silent - empty state shown
         } finally {
