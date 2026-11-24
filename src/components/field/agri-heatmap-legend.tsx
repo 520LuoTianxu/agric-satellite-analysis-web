@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Maximize2, Minus, Plus, RotateCcw, Satellite } from "lucide-react";
+import { Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
 import type { AgriHeatmapImage } from "@/lib/agri-heatmap";
 import { MAP_CHROME } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,8 @@ import {
 interface AgriHeatmapLegendProps {
     heatmap: AgriHeatmapImage;
     compact?: boolean;
+    /** thumb：手机左上角小图。legend：宽屏图例。默认两者都渲染。 */
+    variant?: "thumb" | "legend";
 }
 
 function PreviewImg({
@@ -420,36 +422,49 @@ function OssPreviewStack({
     );
 }
 
-function satellitePreviewUrl(heatmap: AgriHeatmapImage): { src: string; captionKey: "trueColorTiles" | "trueColor" | "heatmap" } | null {
+function satellitePreviewCandidates(heatmap: AgriHeatmapImage): { src: string; captionKey: "trueColorTiles" | "trueColor" | "heatmap" }[] {
     const large = heatmap.previewLargeRgbUrl?.trim() || "";
     const parcel = heatmap.previewRgbUrl?.trim() || "";
     const heatmapUrl = heatmap.previewHeatmapUrl?.trim() || heatmap.previewS2HeatmapUrl?.trim() || "";
-    if (large) return { src: large, captionKey: "trueColorTiles" };
-    if (parcel) return { src: parcel, captionKey: "trueColor" };
-    if (heatmapUrl) return { src: heatmapUrl, captionKey: "heatmap" };
-    return null;
+    const candidates: { src: string; captionKey: "trueColorTiles" | "trueColor" | "heatmap" }[] = [];
+    if (large) candidates.push({ src: large, captionKey: "trueColorTiles" });
+    if (parcel) candidates.push({ src: parcel, captionKey: "trueColor" });
+    if (heatmapUrl) candidates.push({ src: heatmapUrl, captionKey: "heatmap" });
+    return candidates;
 }
 
-/** 手机端不展开图例和缩略图，只留一个按钮，点开后再加载卫星图。 */
-function MobileSatelliteButton({ heatmap }: { heatmap: AgriHeatmapImage }) {
+/** 手机端左上角固定一张小卫星图，点开后再放大查看。 */
+function MobileSatelliteThumb({ heatmap }: { heatmap: AgriHeatmapImage }) {
     const [open, setOpen] = useState(false);
+    const [index, setIndex] = useState(0);
     const t = useTranslations("agriPanel");
-    const preview = useMemo(() => satellitePreviewUrl(heatmap), [heatmap]);
+    const candidates = useMemo(() => satellitePreviewCandidates(heatmap), [heatmap]);
+    const candidateKey = candidates.map((item) => item.src).join("|");
+
+    useEffect(() => {
+        setIndex(0);
+    }, [candidateKey]);
+
+    const preview = candidates[index];
     if (!preview) return null;
 
     return (
         <>
             <button
                 type="button"
-                className={cn(
-                    MAP_CHROME,
-                    "inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-foreground",
-                )}
+                className="block h-16 w-20 overflow-hidden rounded-2xl border-2 border-white bg-muted shadow-lg"
                 onClick={() => setOpen(true)}
-                aria-label={t("openPreview", { caption: t(preview.captionKey) })}
+                aria-label={t("openPreview", { caption: t("viewSatellite") })}
             >
-                <Satellite className="h-3.5 w-3.5" aria-hidden="true" />
-                {t("viewSatellite")}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                    src={preview.src}
+                    alt=""
+                    width={160}
+                    height={128}
+                    className="h-full w-full object-cover"
+                    onError={() => setIndex((current) => current + 1)}
+                />
             </button>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="flex h-[min(85vh,56rem)] w-[min(94vw,80rem)] max-w-[94vw] flex-col gap-3 overflow-hidden overscroll-contain p-3">
@@ -468,7 +483,7 @@ function MobileSatelliteButton({ heatmap }: { heatmap: AgriHeatmapImage }) {
 }
 
 /** Map overlay legend + mean badge for agri pixel_data 色斑图 (figure-3 style). */
-export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeatmapLegendProps) {
+export default function AgriHeatmapLegend({ heatmap, compact = false, variant }: AgriHeatmapLegendProps) {
     const legend = heatmap.legend;
     const locale = useLocale();
     const t = useTranslations("agriPanel");
@@ -527,9 +542,10 @@ export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeat
 
     return (
         <>
-        <div className="md:hidden">
-            <MobileSatelliteButton heatmap={heatmap} />
-        </div>
+        {variant !== "legend" && (
+            <MobileSatelliteThumb heatmap={heatmap} />
+        )}
+        {variant !== "thumb" && (
         <div
             className={cn(
                 MAP_CHROME,
@@ -608,6 +624,7 @@ export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeat
                 {tIndex(heatmap.index)} · {t("pixelCount", { count: countFormat.format(heatmap.pixelCount) })}
             </p>
         </div>
+        )}
         </>
     );
 }

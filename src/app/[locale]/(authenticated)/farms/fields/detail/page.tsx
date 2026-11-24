@@ -44,6 +44,7 @@ import { tokenColor, MAP_CHROME } from "@/lib/design-tokens";
 import { wgs84GeometryToGcj02, wgs84ToGcj02 } from "@/lib/coordinate-transform";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TOUR_PREPARE_EVENT, type TourPrepareDetail } from "@/lib/product-tour";
+import { bindSheetGesture } from "@/lib/sheet-gesture";
 import {
     formatLandAreaMu,
     isOversizedLand,
@@ -324,6 +325,7 @@ function FieldDetailPageContent() {
     const sheetSnapRef = useRef<"peek" | "half" | "full">("half");
     const stageRef = useRef<HTMLDivElement>(null);
     const sheetRef = useRef<HTMLDivElement>(null);
+    const sheetScrollRef = useRef<HTMLDivElement>(null);
     const mapToolsRef = useRef<HTMLDivElement>(null);
     const sheetDragRef = useRef<{
         pointerId: number;
@@ -1549,6 +1551,63 @@ function FieldDetailPageContent() {
         event.stopPropagation();
     };
 
+    // 内容区的下拉在滚到顶之后继续带动整层抽屉，上拉则先把抽屉展开再滚内容。
+    useEffect(() => {
+        const root = sheetScrollRef.current;
+        if (!root) return;
+        return bindSheetGesture({
+            root,
+            enabled: () => window.matchMedia("(max-width: 767px)").matches,
+            readOffset: () => readSheetTop() ?? 0,
+            minOffset: () => SHEET_FULL_TOP_PX,
+            maxOffset: () => (stageRef.current?.clientHeight ?? window.innerHeight) - SHEET_PEEK_PX,
+            applyOffset: (offset) => {
+                const sheet = sheetRef.current;
+                if (!sheet) return;
+                sheet.dataset.dragging = "true";
+                sheet.style.transition = "none";
+                sheet.style.top = `${offset}px`;
+                placeMapTools(offset, "none");
+            },
+            onGestureStart: () => {
+                sheetSettleCleanupRef.current?.();
+                sheetSettleCleanupRef.current = null;
+                sheetDragGeneration.current += 1;
+            },
+            onSettle: ({ offset, velocity, moved, contentScrolled }) => {
+                const sheet = sheetRef.current;
+                const stage = stageRef.current;
+                if (!moved || !stage) {
+                    if (sheet?.dataset.dragging === "true") {
+                        delete sheet.dataset.dragging;
+                        sheet.style.transition = "";
+                        sheet.style.top = "";
+                        clearMapToolsStyle();
+                    }
+                    return;
+                }
+                const top = Math.min(
+                    stage.clientHeight - SHEET_PEEK_PX,
+                    Math.max(SHEET_FULL_TOP_PX, offset),
+                );
+                if (contentScrolled && top <= SHEET_FULL_TOP_PX + 24) {
+                    settleSheet("full");
+                    return;
+                }
+                const order = ["peek", "half", "full"] as const;
+                const index = order.indexOf(sheetSnapRef.current);
+                const snap = velocity <= -SHEET_FLICK_PX_PER_MS
+                    ? order[Math.min(order.length - 1, index + 1)]
+                    : velocity >= SHEET_FLICK_PX_PER_MS
+                        ? order[Math.max(0, index - 1)]
+                        : snapSheet(top, stage.clientHeight);
+                settleSheet(snap);
+            },
+        });
+        // 抽屉节点随地块一起挂上；手势内部只读 ref，不跟随每次渲染重绑。
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [land?.land_id]);
+
     if (loading) {
         return (
             <div className="relative h-full w-full overflow-hidden">
@@ -1760,16 +1819,23 @@ function FieldDetailPageContent() {
                 </div>
             )}
 
-            {/* Index / agri 色斑 Legend - bottom-left */}
+            {/* 手机端卫星图固定在地图左上角，不跟抽屉走。 */}
+            {shownHeatmap && (
+                <div
+                    className={cn(
+                        "absolute left-3 top-3 z-30 md:hidden",
+                        sheetSnap === "full" && "pointer-events-none opacity-0",
+                    )}
+                >
+                    <AgriHeatmapLegend heatmap={shownHeatmap} variant="thumb" />
+                </div>
+            )}
+
+            {/* Index / agri 色斑 Legend - desktop bottom-left */}
             {(shownHeatmap || indexLayer) && (
-                <div className={cn(
-                    "absolute left-4 z-20 transition-opacity duration-200 md:bottom-6",
-                    sheetSnap === "half" && "max-md:bottom-[calc(58%+12px)]",
-                    sheetSnap === "peek" && "max-md:bottom-16",
-                    sheetSnap === "full" && "max-md:hidden",
-                )}>
+                <div className="absolute bottom-6 left-4 z-20 hidden transition-opacity duration-200 md:block">
                     {shownHeatmap ? (
-                        <AgriHeatmapLegend heatmap={shownHeatmap} />
+                        <AgriHeatmapLegend heatmap={shownHeatmap} variant="legend" />
                     ) : indexLayer ? (
                         <div className="hidden md:block">
                             <NdviLegend layer={indexLayer} indexType={activeIndexType} />
@@ -1946,7 +2012,7 @@ function FieldDetailPageContent() {
                     onPointerUp={finishSheetDrag}
                     onPointerCancel={finishSheetDrag}
                 >
-                    <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
+                    <span className="h-1 w-8 rounded-full bg-muted-foreground/50" />
                 </button>
                 {/* Left-edge drag handle — always-visible short gray grip (centered) */}
                 <div
@@ -2083,7 +2149,10 @@ function FieldDetailPageContent() {
                             </div>
                         )}
 
-                        <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [scrollbar-gutter:stable]">
+                        <div
+                            ref={sheetScrollRef}
+                            className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [scrollbar-gutter:stable] max-md:overscroll-y-none"
+                        >
                             {editing ? (
                                 <div className="p-4">
                                     <h3 className="text-sm font-semibold mb-3">{t("editField")}</h3>
