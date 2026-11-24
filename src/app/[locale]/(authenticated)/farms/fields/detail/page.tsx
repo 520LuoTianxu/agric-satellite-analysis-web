@@ -15,19 +15,17 @@ import { formatAreaMu } from "@/lib/area";
 import { toast } from "sonner";
 import {
     ArrowLeft,
-    CloudSun,
+    Crosshair,
     Edit2,
-    Layers,
     Loader2,
+    Minus,
+    PanelRight,
+    PanelRightClose,
+    Plus,
+    Satellite,
     Save,
     Trash2,
     X,
-    Bell,
-    ClipboardList,
-    Share2,
-    PanelRight,
-    PanelRightClose,
-    Satellite,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -211,6 +209,8 @@ function computeGeomBounds(geom: GeoJSON.Geometry): [number, number, number, num
     return [minLng, minLat, maxLng, maxLat];
 }
 
+type SheetSnap = "peek" | "half" | "full";
+
 const PANEL_WIDTH_STORAGE_KEY = "openfarm.fieldPanelWidthPx";
 const PANEL_WIDTH_DEFAULT_PX = 400; // 为图表和双列信息保留阅读宽度
 const PANEL_WIDTH_MIN_PX = 288; // 18rem
@@ -248,8 +248,22 @@ function FieldDetailPageContent() {
     // Map
     const [mapInstance, setMapInstance] = useState<maplibregl.Map | null>(null);
     const [mapStyle, setMapStyle] = useState<MapStyleId>("satellite");
-    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(true);
     const [activeTab, setActiveTab] = useState("info");
+    const [sheetSnap, setSheetSnap] = useState<SheetSnap>("half");
+    const [dragTop, setDragTop] = useState<number | null>(null);
+    const stageRef = useRef<HTMLDivElement>(null);
+    const sheetRef = useRef<HTMLDivElement>(null);
+    const tabsListRef = useRef<HTMLDivElement>(null);
+    const locateMarkerRef = useRef<maplibregl.Marker | null>(null);
+    const sheetSnapRef = useRef<SheetSnap>("half");
+    const dragRef = useRef<{
+        pointerId: number;
+        startY: number;
+        startTop: number;
+        moved: boolean;
+        latestTop: number;
+    } | null>(null);
     const [panelWidthPx, setPanelWidthPx] = useState(PANEL_WIDTH_DEFAULT_PX);
     const [isResizingPanel, setIsResizingPanel] = useState(false);
     const panelWidthRef = useRef(PANEL_WIDTH_DEFAULT_PX);
@@ -301,6 +315,15 @@ function FieldDetailPageContent() {
     useEffect(() => {
         panelWidthRef.current = panelWidthPx;
     }, [panelWidthPx]);
+
+    useEffect(() => {
+        sheetSnapRef.current = sheetSnap;
+    }, [sheetSnap]);
+
+    useEffect(() => {
+        const active = tabsListRef.current?.querySelector<HTMLElement>('[data-state="active"]');
+        active?.scrollIntoView({ inline: "nearest", block: "nearest" });
+    }, [activeTab]);
 
     const persistPanelWidth = useCallback((px: number) => {
         try {
@@ -635,18 +658,103 @@ function FieldDetailPageContent() {
         if (bounds.isEmpty()) return;
         const width = map.getContainer().clientWidth;
         const height = map.getContainer().clientHeight;
-        const mobile = window.matchMedia("(max-width: 639px)").matches;
+        const mobile = window.matchMedia("(max-width: 767px)").matches;
+        const snap = sheetSnapRef.current;
+        const stageH = stageRef.current?.clientHeight ?? height;
+        const mapTop = mobile ? 48 : 0;
+        const sheetTopPx = !mobile
+            ? 0
+            : snap === "peek"
+              ? stageH - 32
+              : snap === "full"
+                ? 48
+                : Math.round(stageH * 0.42);
+        const coveredBySheet = mobile ? Math.max(24, mapTop + height - sheetTopPx) : 48;
         map.fitBounds(bounds, {
             padding: {
-                top: 80,
-                bottom: sidebarOpen && mobile ? Math.round(height * 0.52) + 28 : 48,
+                top: mobile ? 24 : 72,
+                bottom: coveredBySheet + 12,
                 left: 56,
-                right: sidebarOpen && !mobile ? Math.min(panelWidthPx + 48, Math.round(width * 0.65)) : 40,
+                right: !mobile && sidebarOpen ? Math.min(panelWidthPx + 32, Math.round(width * 0.65)) : 48,
             },
             maxZoom: 17,
             duration: 0,
         });
     }, [land, sidebarOpen, panelWidthPx]);
+
+    useEffect(() => {
+        if (!mapInstance || !land?.boundary_geojson) return;
+        if (!mapInstance.isStyleLoaded()) return;
+        fitFieldInView(mapInstance);
+    }, [sheetSnap, fitFieldInView, mapInstance, land]);
+
+    const handleLocate = useCallback(() => {
+        const map = mapInstance;
+        if (!map || !navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition((pos) => {
+            const lngLat: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+            map.flyTo({ center: lngLat, zoom: 17, duration: 800 });
+            if (locateMarkerRef.current) {
+                locateMarkerRef.current.setLngLat(lngLat);
+            } else {
+                locateMarkerRef.current = new maplibregl.Marker({ color: tokenColor("--primary") })
+                    .setLngLat(lngLat)
+                    .addTo(map);
+            }
+        });
+    }, [mapInstance]);
+
+    const onSheetPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (!window.matchMedia("(max-width: 767px)").matches) return;
+        const stage = stageRef.current;
+        const sheet = sheetRef.current;
+        if (!stage || !sheet) return;
+        const startTop = sheet.getBoundingClientRect().top - stage.getBoundingClientRect().top;
+        dragRef.current = {
+            pointerId: event.pointerId,
+            startY: event.clientY,
+            startTop,
+            moved: false,
+            latestTop: startTop,
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+    };
+
+    const onSheetPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+        const drag = dragRef.current;
+        const stage = stageRef.current;
+        if (!drag || !stage || event.pointerId !== drag.pointerId) return;
+        const dy = event.clientY - drag.startY;
+        if (Math.abs(dy) > 4) drag.moved = true;
+        const next = Math.min(stage.clientHeight - 32, Math.max(48, drag.startTop + dy));
+        drag.latestTop = next;
+        setDragTop(next);
+    };
+
+    const onSheetPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+        const drag = dragRef.current;
+        if (!drag || event.pointerId !== drag.pointerId) return;
+        dragRef.current = null;
+        const stage = stageRef.current;
+        if (!stage) {
+            setDragTop(null);
+            return;
+        }
+        if (!drag.moved) {
+            setSheetSnap((prev) => (prev === "half" ? "full" : "half"));
+            setDragTop(null);
+            return;
+        }
+        const height = stage.clientHeight;
+        const points: [SheetSnap, number][] = [
+            ["full", 48],
+            ["half", Math.round(height * 0.42)],
+            ["peek", height - 32],
+        ];
+        points.sort((a, b) => Math.abs(a[1] - drag.latestTop) - Math.abs(b[1] - drag.latestTop));
+        setSheetSnap(points[0][0]);
+        setDragTop(null);
+    };
 
     // Callback from BaseMap when ready
     const handleMapReady = useCallback(
@@ -817,13 +925,32 @@ function FieldDetailPageContent() {
 
     if (!land) return null;
 
+    const mapToolClass =
+        "grid h-10 w-10 place-items-center rounded-xl border border-border/70 bg-background text-foreground shadow-[0_4px_14px_rgba(16,36,22,0.14)]";
+
     return (
         <div
-            className="relative h-full w-full overflow-hidden"
+            ref={stageRef}
+            data-sheet={sheetSnap}
+            className="field-stage relative h-full w-full overflow-hidden bg-background"
             style={{ "--panel-w": `${panelWidthPx}px` } as React.CSSProperties}
         >
-            {/* Full-screen map */}
-            <div className="absolute inset-0">
+            <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center border-b border-border/80 bg-background px-1 md:hidden">
+                <Link
+                    href={`/farms/detail?farmId=${encodeURIComponent(farmId)}`}
+                    className="inline-flex h-10 items-center gap-0.5 px-1.5 text-sm font-medium text-foreground"
+                >
+                    <ArrowLeft className="h-5 w-5" />
+                    {t("backShort")}
+                </Link>
+                <h1 className="pointer-events-none absolute left-16 right-16 truncate text-center text-base font-semibold">
+                    {land.land_name || land.land_id}
+                </h1>
+                <LocationSearch anchor="end" className="ml-auto" onSelect={handleLocationSelect} />
+            </header>
+
+            {/* Full-screen map. On a phone it starts under the single header row. */}
+            <div className="absolute inset-x-0 bottom-0 top-12 md:inset-0">
                 {editing ? (
                     <DrawMap
                         initialGeometry={land.boundary_geojson}
@@ -835,8 +962,29 @@ function FieldDetailPageContent() {
                 )}
             </div>
 
-            {/* Top-left: Back + Style Switcher + Search */}
-            <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+            <div className={cn(
+                "absolute left-3 top-[4.25rem] z-30 overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_4px_14px_rgba(16,36,22,0.14)] md:hidden",
+                sheetSnap === "full" && "pointer-events-none opacity-0",
+            )}>
+                <button type="button" className="grid h-10 w-10 place-items-center border-b border-border/80" onClick={() => mapInstance?.zoomIn()} aria-label="放大">
+                    <Plus className="h-4 w-4" />
+                </button>
+                <button type="button" className="grid h-10 w-10 place-items-center" onClick={() => mapInstance?.zoomOut()} aria-label="缩小">
+                    <Minus className="h-4 w-4" />
+                </button>
+            </div>
+            <div className={cn(
+                "absolute right-3 top-[4.25rem] z-30 flex flex-col gap-2 md:hidden",
+                sheetSnap === "full" && "pointer-events-none opacity-0",
+            )}>
+                <MapStyleSwitcher iconOnly currentStyle={mapStyle} onStyleChange={handleStyleChange} />
+                <button type="button" className={mapToolClass} onClick={handleLocate} aria-label="定位">
+                    <Crosshair className="h-4 w-4" />
+                </button>
+            </div>
+
+            {/* Desktop: back, layers and search stay on the map. */}
+            <div className="absolute left-4 top-4 z-20 hidden items-center gap-2 md:flex">
                 <Link
                     href={`/farms/detail?farmId=${encodeURIComponent(farmId)}`}
                     className={cn("inline-flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3", MAP_CHROME)}
@@ -850,7 +998,12 @@ function FieldDetailPageContent() {
 
             {/* Index / agri 色斑 Legend - bottom-left */}
             {(agriHeatmap || indexLayer) && (
-                <div className="absolute bottom-6 left-4 z-20 transition-opacity duration-200">
+                <div className={cn(
+                    "absolute left-4 z-20 transition-opacity duration-200 md:bottom-6",
+                    sheetSnap === "peek" && "max-md:bottom-16",
+                    sheetSnap === "half" && "max-md:bottom-[calc(58%+12px)]",
+                    sheetSnap === "full" && "max-md:pointer-events-none max-md:opacity-0",
+                )}>
                     {agriHeatmap ? (
                         <AgriHeatmapLegend heatmap={agriHeatmap} />
                     ) : indexLayer ? (
@@ -863,11 +1016,13 @@ function FieldDetailPageContent() {
                 One container so the two can never overlap, and both stay
                 centred on the visible map rather than on the viewport. */}
             <div
-                className="absolute bottom-6 z-20 flex max-w-[calc(100%-2rem)] flex-col items-center gap-2"
-                style={{
-                    left: sidebarOpen ? "calc(50% - var(--panel-w) / 2)" : "50%",
-                    transform: "translateX(-50%)",
-                }}
+                className={cn(
+                    "field-index-stack absolute z-20 flex max-w-[calc(100%-5.5rem)] flex-col items-center gap-2 md:bottom-6 md:max-w-[calc(100%-2rem)]",
+                    sheetSnap === "peek" && "max-md:bottom-16",
+                    sheetSnap === "half" && "max-md:bottom-[calc(58%+12px)]",
+                    sheetSnap === "full" && "max-md:pointer-events-none max-md:opacity-0",
+                )}
+                style={{ "--index-left": sidebarOpen ? "calc(50% - var(--panel-w) / 2)" : "50%" } as React.CSSProperties}
             >
                 {activeTab === "ndvi" && (
                     <div className={cn("flex gap-1 rounded-lg p-1", MAP_CHROME)}>
@@ -956,8 +1111,8 @@ function FieldDetailPageContent() {
             <button
                 type="button"
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className={cn("absolute top-4 right-4 sm:right-[var(--toggle-right)] z-20 rounded-xl p-2.5 transition-all hover:bg-surface-3", MAP_CHROME)}
-                style={{ "--toggle-right": sidebarOpen ? "calc(var(--panel-w) + 2rem)" : "1rem" } as React.CSSProperties}
+                className={cn("absolute top-4 right-4 z-30 hidden rounded-xl p-2.5 transition-all hover:bg-surface-3 md:right-[var(--toggle-right)] md:inline-flex", MAP_CHROME)}
+                style={{ "--toggle-right": sidebarOpen ? "calc(var(--panel-w) + 0.75rem)" : "1rem" } as React.CSSProperties}
                 title={sidebarOpen ? "Hide panel (⌘.)" : "Show panel (⌘.)"}
             >
                 {sidebarOpen ? (
@@ -967,14 +1122,33 @@ function FieldDetailPageContent() {
                 )}
             </button>
 
-            {/* Floating tabbed sidebar - right */}
+            {/* Phone: edge-to-edge bottom sheet. Wide screens: full-height side panel. */}
             <div
+                ref={sheetRef}
                 className={cn(
-                    "absolute right-4 bottom-4 z-10 h-[52%] w-[calc(100%-2rem)] sm:top-4 sm:h-auto sm:w-[var(--panel-w)] max-w-[calc(100%-2rem)]",
-                    !isResizingPanel && "transition-transform duration-300 ease-in-out",
-                    sidebarOpen ? "translate-x-0" : "translate-x-[calc(100%+1rem)]",
+                    "absolute z-20 flex flex-col overflow-hidden bg-background",
+                    "max-md:inset-x-0 max-md:bottom-0 max-md:w-full max-md:rounded-t-[20px] max-md:shadow-[0_-10px_30px_rgba(16,32,22,0.14)]",
+                    sheetSnap === "half" && "max-md:top-[42%]",
+                    sheetSnap === "full" && "max-md:top-12",
+                    sheetSnap === "peek" && "max-md:top-auto max-md:h-8",
+                    "md:bottom-0 md:right-0 md:top-0 md:w-[var(--panel-w)] md:border-l md:border-border/80",
+                    !sidebarOpen && "md:translate-x-full",
+                    dragTop == null && !isResizingPanel && "transition-[top,transform] duration-300 ease-out",
                 )}
+                style={dragTop != null ? { top: dragTop, height: "auto" } : undefined}
             >
+                <div
+                    role="separator"
+                    aria-orientation="horizontal"
+                    aria-label="拖动面板"
+                    className="flex h-6 shrink-0 cursor-grab touch-none items-center justify-center active:cursor-grabbing md:hidden"
+                    onPointerDown={onSheetPointerDown}
+                    onPointerMove={onSheetPointerMove}
+                    onPointerUp={onSheetPointerUp}
+                    onPointerCancel={onSheetPointerUp}
+                >
+                    <div className="h-1 w-9 rounded-full bg-muted-foreground/30" />
+                </div>
                 {/* Left-edge drag handle — always-visible short gray grip (centered) */}
                 <div
                     role="separator"
@@ -983,7 +1157,7 @@ function FieldDetailPageContent() {
                     title="Drag to resize · double-click resets to default"
                     onMouseDown={handlePanelResizeStart}
                     onDoubleClick={handlePanelResizeReset}
-                    className="group/resize absolute left-0 top-0 bottom-0 z-20 hidden sm:flex w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center"
+                    className="group/resize absolute bottom-0 left-0 top-0 z-20 hidden w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center md:flex"
                 >
                     <div
                         className={cn(
@@ -993,42 +1167,41 @@ function FieldDetailPageContent() {
                         )}
                     />
                 </div>
-                <div className={cn("flex h-full flex-col overflow-hidden rounded-xl", MAP_CHROME)}>
-                    <Tabs defaultValue="info" value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 overflow-hidden">
-                        {/* 页签保持紧凑单行，窄侧栏允许横向滚动，不挤占内容高度。 */}
-                        <TabsList variant="underline" className="flex shrink-0 flex-nowrap gap-3 overflow-x-auto bg-background/95 px-3 py-1">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <Tabs defaultValue="info" value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                        <TabsList ref={tabsListRef} variant="underline" className="flex h-11 shrink-0 flex-nowrap justify-start gap-1 overflow-x-auto border-border/70 bg-background px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                             <TabsTrigger
                                 value="info"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 pb-0 pt-0 text-sm font-medium text-muted-foreground data-[state=active]:text-primary"
                             >
                                 {t("tabInfo")}
                             </TabsTrigger>
                             <TabsTrigger
                                 value="ndvi"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 pb-0 pt-0 text-sm font-medium text-muted-foreground data-[state=active]:text-primary"
                             >
                                 {t("tabNdvi")}
                             </TabsTrigger>
                             <TabsTrigger
                                 value="weather"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 pb-0 pt-0 text-sm font-medium text-muted-foreground data-[state=active]:text-primary"
                             >
                                 {t("tabWeather")}
                             </TabsTrigger>
                             <TabsTrigger
                                 value="soil"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 pb-0 pt-0 text-sm font-medium text-muted-foreground data-[state=active]:text-primary"
                             >
                                 {t("tabSoil")}
                             </TabsTrigger>
                             <TabsTrigger
                                 value="alerts"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 pb-0 pt-0 text-sm font-medium text-muted-foreground data-[state=active]:text-primary"
                             >
                                 <span className="relative">
                                     {t("tabAlerts")}
@@ -1040,21 +1213,21 @@ function FieldDetailPageContent() {
                             <TabsTrigger
                                 value="land-report"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 pb-0 pt-0 text-sm font-medium text-muted-foreground data-[state=active]:text-primary"
                             >
                                 {t("tabLandReport")}
                             </TabsTrigger>
                             <TabsTrigger
                                 value="scouting"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 pb-0 pt-0 text-sm font-medium text-muted-foreground data-[state=active]:text-primary"
                             >
                                 {t("tabScouting")}
                             </TabsTrigger>
                             <TabsTrigger
                                 value="share"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 pb-0 pt-0 text-sm font-medium text-muted-foreground data-[state=active]:text-primary"
                             >
                                 {t("tabShare")}
                             </TabsTrigger>
@@ -1147,107 +1320,63 @@ function FieldDetailPageContent() {
                                 </div>
                             ) : (
                                 <>
-                                    <TabsContent value="info" className="mt-0 p-3 space-y-3">
-                                        {/* Field header card */}
-                                        <div className="rounded-lg bg-card p-3">
-                                            <h2 className="text-sm font-semibold">{land.land_name || land.land_id}</h2>
-                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                    <TabsContent value="info" className="mt-0 space-y-4 p-4">
+                                        <div className="space-y-1">
+                                            <h2 className="text-lg font-semibold tracking-tight">{land.land_name || land.land_id}</h2>
+                                            <p className="text-sm text-muted-foreground">
                                                 {land.area_ha != null ? formatAreaMu(land.area_ha) : ""}
                                                 {land.crop_type && land.crop_type !== "unknown" && ` · ${land.crop_type}`}
                                                 {land.season && ` · ${land.season}`}
                                             </p>
                                         </div>
 
-                                        {/* Field details card */}
-                                        <div className="rounded-lg bg-card p-3">
-                                            <dl className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-3">
-                                                <InfoRow label={t("name")} value={land.land_name || land.land_id} />
-                                                <InfoRow
-                                                    label={t("area")}
-                                                    value={
-                                                        formatAreaMu(land.area_ha)
-                                                    }
-                                                />
-                                                <InfoRow
-                                                    label={t("cropType")}
-                                                    value={land.crop_type && land.crop_type !== "unknown" ? land.crop_type : t("cropUnset")}
-                                                />
-                                                <InfoRow
-                                                    label={t("season")}
-                                                    value={land.season || "-"}
-                                                />
-                                                <InfoRow
-                                                    label={t("agriLandId")}
-                                                    value={land.land_id}
-                                                />
-                                                <InfoRow
-                                                    label={t("cdfinanceGroupId")}
-                                                    value={land.group_id || "-"}
-                                                />
-                                                <InfoRow
-                                                    label={t("tags")}
-                                                    value={land.tags_json?.join(", ") || "-"}
-                                                />
-                                                <InfoRow
-                                                    label={t("created")}
-                                                    value={new Date(
-                                                        land.created_at,
-                                                    ).toLocaleDateString()}
-                                                />
-                                                <InfoRow
-                                                    label={t("updated")}
-                                                    value={new Date(
-                                                        land.updated_at,
-                                                    ).toLocaleDateString()}
-                                                />
-                                            </dl>
-                                        </div>
+                                        <dl className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+                                            <InfoRow label={t("name")} value={land.land_name || land.land_id} />
+                                            <InfoRow label={t("area")} value={formatAreaMu(land.area_ha)} />
+                                            <InfoRow
+                                                label={t("cropType")}
+                                                value={land.crop_type && land.crop_type !== "unknown" ? land.crop_type : t("cropUnset")}
+                                            />
+                                            <InfoRow label={t("season")} value={land.season || "-"} />
+                                            <InfoRow label={t("agriLandId")} value={land.land_id} />
+                                            <InfoRow label={t("cdfinanceGroupId")} value={land.group_id || "-"} />
+                                            <InfoRow label={t("tags")} value={land.tags_json?.join(", ") || "-"} />
+                                            <InfoRow label={t("created")} value={new Date(land.created_at).toLocaleDateString()} />
+                                            <InfoRow label={t("updated")} value={new Date(land.updated_at).toLocaleDateString()} />
+                                        </dl>
 
-                                        {/* Actions */}
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="w-full"
-                                            onClick={() => {
-                                                setEditName(land.land_name || land.land_id);
-                                                setEditCropType(land.crop_type || "");
-                                                setEditSeason(land.season || "");
-                                                setEditGroupId(land.group_id || "");
-                                                setEditGeom(land.boundary_geojson);
-                                                setEditing(true);
-                                            }}
-                                        >
-                                            <Edit2 className="h-4 w-4 mr-2" />
-                                            {t("edit")}
-                                        </Button>
-
-                                        <div className="rounded-lg border border-destructive/20 bg-destructive/5 shadow-sm p-3">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p className="text-xs font-medium text-destructive">
-                                                        {t("delete")}
-                                                    </p>
-                                                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                                                        {t("confirmDelete")}
-                                                    </p>
-                                                </div>
-                                                <Button
-                                                    variant="destructive"
-                                                    size="sm"
-                                                    className="shrink-0 px-3 text-xs"
-                                                    onClick={handleDelete}
-                                                >
-                                                    <Trash2 className="h-3 w-3 mr-2" />
-                                                    {t("delete")}
-                                                </Button>
-                                            </div>
+                                        <div className="space-y-2">
+                                            <Button
+                                                variant="outline"
+                                                className="h-11 w-full"
+                                                onClick={() => {
+                                                    setEditName(land.land_name || land.land_id);
+                                                    setEditCropType(land.crop_type || "");
+                                                    setEditSeason(land.season || "");
+                                                    setEditGroupId(land.group_id || "");
+                                                    setEditGeom(land.boundary_geojson);
+                                                    setEditing(true);
+                                                }}
+                                            >
+                                                <Edit2 className="mr-2 h-4 w-4" />
+                                                {t("edit")}
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                className="h-11 w-full text-destructive hover:text-destructive"
+                                                onClick={handleDelete}
+                                            >
+                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                {t("delete")}
+                                            </Button>
+                                            <p className="text-center text-xs text-muted-foreground">{t("confirmDelete")}</p>
                                         </div>
                                     </TabsContent>
 
                                     <TabsContent
                                         value="ndvi"
                                         forceMount
-                                        className="mt-0 p-3 data-[state=inactive]:hidden data-[state=inactive]:!hidden"
+                                        className="mt-0 p-4 data-[state=inactive]:hidden data-[state=inactive]:!hidden"
                                     >
                                         <NdviTab
                                             landId={landId}
@@ -1264,7 +1393,7 @@ function FieldDetailPageContent() {
                                         />
                                     </TabsContent>
 
-                                    <TabsContent value="alerts" className="mt-0 p-3">
+                                    <TabsContent value="alerts" className="mt-0 p-4">
                                         <AlertsTab landId={landId} onOpenCountChange={setOpenAlertCount} />
                                     </TabsContent>
 
@@ -1282,11 +1411,11 @@ function FieldDetailPageContent() {
                                         <ScoutingTab landId={landId} mapInstance={mapInstance} activeTab={activeTab} />
                                     </TabsContent>
 
-                                    <TabsContent value="weather" className="mt-0 p-3">
+                                    <TabsContent value="weather" className="mt-0 p-4">
                                         <WeatherTab landId={landId} />
                                     </TabsContent>
 
-                                    <TabsContent value="soil" className="mt-0 p-3">
+                                    <TabsContent value="soil" className="mt-0 p-4">
                                         <SoilTab landId={landId} mapInstance={mapInstance} activeTab={activeTab} />
                                     </TabsContent>
 
@@ -1305,9 +1434,9 @@ function FieldDetailPageContent() {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
     return (
-        <div className="min-w-0 rounded-lg bg-muted/35 px-3 py-2.5">
-            <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-            <dd className="mt-1 break-words text-xs font-medium leading-relaxed">{value}</dd>
+        <div className="flex items-start justify-between gap-4 px-3 py-3">
+            <dt className="shrink-0 text-sm text-muted-foreground">{label}</dt>
+            <dd className="min-w-0 break-words text-right text-sm font-medium leading-snug">{value}</dd>
         </div>
     );
 }

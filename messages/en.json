@@ -320,6 +320,7 @@
   },
   "fieldDetail": {
     "backToFarm": "Back to farm",
+    "backShort": "Back",
     "edit": "Edit",
     "delete": "Delete",
     "tabInfo": "Info",

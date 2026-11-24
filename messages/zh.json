@@ -320,6 +320,7 @@
   },
   "fieldDetail": {
     "backToFarm": "返回农场",
+    "backShort": "返回",
     "edit": "编辑",
     "delete": "删除",
     "tabInfo": "信息",

@@ -4,12 +4,15 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Search, X } from "lucide-react";
 import { useLocale } from "next-intl";
 import { MAP_CHROME } from "@/lib/design-tokens";
+import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 
 interface LocationSearchProps {
     /** Called when user selects a location */
     onSelect: (lngLat: [number, number], label: string) => void;
     className?: string;
+    /** Grow and align the expanded field from the right edge. */
+    anchor?: "start" | "end";
 }
 
 interface NominatimResult {
@@ -23,7 +26,7 @@ interface NominatimResult {
  * Expandable location search box using Nominatim (OpenStreetMap).
  * Starts as a collapsed icon button, expands on click.
  */
-export default function LocationSearch({ onSelect, className = "" }: LocationSearchProps) {
+export default function LocationSearch({ onSelect, className = "", anchor = "start" }: LocationSearchProps) {
     const t = useTranslations("mapControls");
     const locale = useLocale();
     const [expanded, setExpanded] = useState(false);
@@ -101,10 +104,18 @@ export default function LocationSearch({ onSelect, className = "" }: LocationSea
     };
 
     return (
-        <div ref={containerRef} className={`relative ${className}`}>
+        <div ref={containerRef} className={cn("relative shrink-0", anchor === "end" && "h-10 w-10", className)}>
             <div
-                className={`${MAP_CHROME} flex h-10 items-center rounded-lg transition-all duration-300 ease-in-out overflow-hidden ${expanded ? "w-72" : "w-10"
-                    }`}
+                className={cn(
+                    MAP_CHROME,
+                    "flex h-10 items-center overflow-hidden rounded-lg transition-all duration-300 ease-in-out",
+                    expanded
+                        ? anchor === "end"
+                            ? "absolute right-0 top-0 z-40 w-72"
+                            : "w-72"
+                        : "w-10",
+                    anchor === "end" && expanded && "flex-row-reverse",
+                )}
             >
                 {/* Search icon / toggle */}
                 <button
@@ -147,7 +158,11 @@ export default function LocationSearch({ onSelect, className = "" }: LocationSea
 
             {/* Dropdown results */}
             {expanded && results.length > 0 && (
-                <div className={`${MAP_CHROME} absolute top-full left-0 mt-1 w-72 rounded-lg overflow-hidden z-50`}>
+                <div className={cn(
+                    MAP_CHROME,
+                    "absolute top-full z-50 mt-1 w-72 overflow-hidden rounded-lg",
+                    anchor === "end" ? "right-0" : "left-0",
+                )}>
                     {results.map((r) => (
                         <button
                             key={r.place_id}
@@ -163,7 +178,11 @@ export default function LocationSearch({ onSelect, className = "" }: LocationSea
 
             {/* Loading indicator */}
             {expanded && loading && (
-                <div className={`${MAP_CHROME} absolute top-full left-0 mt-1 w-72 rounded-lg px-3 py-2 text-xs text-muted-foreground`}>
+                <div className={cn(
+                    MAP_CHROME,
+                    "absolute top-full z-50 mt-1 w-72 rounded-lg px-3 py-2 text-xs text-muted-foreground",
+                    anchor === "end" ? "right-0" : "left-0",
+                )}>
                     Searching...
                 </div>
             )}

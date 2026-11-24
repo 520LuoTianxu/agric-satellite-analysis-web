@@ -315,6 +315,41 @@
     }
 }
 
+/* 地块详情手机版用页面内的缩放和定位按钮，避免和顶栏、底栏叠在一起。 */
+@media (max-width: 767px) {
+    .field-stage .maplibregl-ctrl-top-left {
+        display: none !important;
+    }
+
+    .field-stage[data-sheet="half"] .maplibregl-ctrl-bottom-right {
+        bottom: 68% !important;
+        left: 8px !important;
+        right: auto !important;
+    }
+
+    .field-stage[data-sheet="peek"] .maplibregl-ctrl-bottom-right {
+        bottom: 3rem !important;
+    }
+
+    .field-stage[data-sheet="full"] .maplibregl-ctrl-bottom-right {
+        display: none !important;
+    }
+}
+
+@media (max-width: 767px) {
+    .field-stage .field-index-stack {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+}
+
+@media (min-width: 768px) {
+    .field-stage .field-index-stack {
+        left: var(--index-left);
+        transform: translateX(-50%);
+    }
+}
+
 /* Visually merge consecutive control groups into one block (nav + geolocate) */
 .maplibregl-ctrl-top-left .maplibregl-ctrl-group+.maplibregl-ctrl-group {
     margin-top: -1px;
