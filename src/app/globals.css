@@ -315,7 +315,7 @@
     }
 }
 
-/* 地块详情手机端使用自定义缩放和图层按钮，底部面板改为通栏抽屉。 */
+/* 地块详情手机端隐藏地图自带控件，右侧圆角按钮贴着抽屉上沿。 */
 @media (max-width: 767px) {
     .field-stage .maplibregl-ctrl-top-left {
         display: none !important;
@@ -328,9 +328,42 @@
     }
 
     .field-stage[data-sheet="peek"] .maplibregl-ctrl-bottom-right {
-        bottom: 48px;
+        bottom: 60px;
         left: 8px;
         right: auto;
+    }
+
+    .field-sheet[data-dragging="true"] {
+        height: auto !important;
+        bottom: 0 !important;
+    }
+
+    .field-page[data-sheet="half"] {
+        --sheet-top: 42%;
+    }
+
+    .field-page[data-sheet="peek"] {
+        --sheet-top: calc(100% - 44px);
+    }
+
+    .field-page[data-sheet="full"] {
+        --sheet-top: 0px;
+    }
+
+    .field-map-tools {
+        top: max(0.75rem, calc(var(--sheet-top, 42%) - 6rem - 0.75rem));
+    }
+
+    .field-map-tool {
+        display: grid;
+        width: 2.75rem;
+        height: 2.75rem;
+        place-items: center;
+        border-radius: 1rem;
+        border: 1px solid rgb(0 0 0 / 0.06);
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        box-shadow: 0 2px 10px rgb(0 0 0 / 0.16);
     }
 
     .field-stage[data-sheet="full"] .maplibregl-ctrl-bottom-right {

@@ -382,7 +382,7 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
         generating || latest?.status === "pending" || latest?.status === "running";
     const needsCrop = !isUsableCrop(boundCrop);
     const reportActions = (
-        <div className="rounded-lg border bg-card p-3 space-y-2">
+        <div className="hidden space-y-2 rounded-lg border bg-card p-3 md:block">
             <p className="text-[11px] text-muted-foreground leading-relaxed">
                 {t("reportActionsHint")}
             </p>

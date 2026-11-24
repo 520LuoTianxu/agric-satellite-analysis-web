@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect, useState, useCallback, useRef, useMemo } from "react";
+import React, { Suspense, useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
 import dynamic from "next/dynamic";
@@ -18,8 +18,6 @@ import {
     Edit2,
     Layers,
     Loader2,
-    Minus,
-    Plus,
     Save,
     Search,
     X,
@@ -271,6 +269,9 @@ const PANEL_WIDTH_STORAGE_KEY = "openfarm.fieldPanelWidthPx";
 const PANEL_WIDTH_DEFAULT_PX = 400; // 为图表和双列信息保留阅读宽度
 const PANEL_WIDTH_MIN_PX = 288; // 18rem
 const PANEL_WIDTH_MAX_PX = 640; // 40rem
+const SHEET_PEEK_PX = 44;
+const SHEET_FULL_TOP_PX = 0;
+const SHEET_FLICK_PX_PER_MS = 0.55;
 
 function clampPanelWidthPx(px: number): number {
     const vwCap =
@@ -320,11 +321,27 @@ function FieldDetailPageContent() {
     // 地块详情需要优先展示分析内容，进入页面时默认展开右侧分析侧栏，并打开长势分析。
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [sheetSnap, setSheetSnap] = useState<"peek" | "half" | "full">("half");
-    const [sheetDragTop, setSheetDragTop] = useState<number | null>(null);
-    const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
     const sheetSnapRef = useRef<"peek" | "half" | "full">("half");
     const stageRef = useRef<HTMLDivElement>(null);
-    const sheetDragRef = useRef<{ pointerId: number; startY: number; startTop: number } | null>(null);
+    const sheetRef = useRef<HTMLDivElement>(null);
+    const mapToolsRef = useRef<HTMLDivElement>(null);
+    const sheetDragRef = useRef<{
+        pointerId: number;
+        origin: "handle" | "bar";
+        startX: number;
+        startY: number;
+        startTop: number;
+        lastY: number;
+        lastT: number;
+        velocity: number;
+        moved: boolean;
+        active: boolean;
+    } | null>(null);
+    const sheetDragGeneration = useRef(0);
+    const sheetSettleTimerRef = useRef<number | null>(null);
+    const sheetSettleCleanupRef = useRef<(() => void) | null>(null);
+    const sheetStyleLockRef = useRef(false);
+    const sheetSuppressClickRef = useRef(false);
     const locateMarkerRef = useRef<maplibregl.Marker | null>(null);
     sheetSnapRef.current = sheetSnap;
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -1048,16 +1065,16 @@ function FieldDetailPageContent() {
         const width = map.getContainer().clientWidth;
         const height = map.getContainer().clientHeight;
         const mobile = window.matchMedia("(max-width: 767px)").matches;
-        const stageHeight = stageRef.current?.clientHeight ?? height + (mobile ? 48 : 0);
+        const stageHeight = stageRef.current?.clientHeight ?? height;
         const snap = sheetSnapRef.current;
         const sheetTop = !mobile
             ? 0
             : snap === "peek"
-                ? stageHeight - 32
+                ? stageHeight - SHEET_PEEK_PX
                 : snap === "full"
-                    ? 48
+                    ? SHEET_FULL_TOP_PX
                     : Math.round(stageHeight * 0.42);
-        const covered = mobile ? Math.max(16, 48 + height - sheetTop) : 0;
+        const covered = mobile ? Math.max(16, height - sheetTop) : 0;
         map.fitBounds(bounds, {
             padding: {
                 top: mobile ? 16 : 80,
@@ -1089,16 +1106,16 @@ function FieldDetailPageContent() {
         const width = map.getContainer().clientWidth;
         const height = map.getContainer().clientHeight;
         const mobile = window.matchMedia("(max-width: 767px)").matches;
-        const stageHeight = stageRef.current?.clientHeight ?? height + (mobile ? 48 : 0);
+        const stageHeight = stageRef.current?.clientHeight ?? height;
         const snap = sheetSnapRef.current;
         const sheetTop = !mobile
             ? 0
             : snap === "peek"
-                ? stageHeight - 32
+                ? stageHeight - SHEET_PEEK_PX
                 : snap === "full"
-                    ? 48
+                    ? SHEET_FULL_TOP_PX
                     : Math.round(stageHeight * 0.42);
-        const covered = mobile ? Math.max(16, 48 + height - sheetTop) : 0;
+        const covered = mobile ? Math.max(16, height - sheetTop) : 0;
         map.fitBounds(bounds, {
             padding: {
                 top: mobile ? 16 : 80,
@@ -1295,7 +1312,44 @@ function FieldDetailPageContent() {
 
     useEffect(() => () => {
         locateMarkerRef.current?.remove();
+        sheetSettleCleanupRef.current?.();
     }, []);
+
+    const clearMapToolsStyle = () => {
+        const tools = mapToolsRef.current;
+        if (!tools) return;
+        tools.style.transition = "";
+        tools.style.top = "";
+        tools.style.opacity = "";
+        tools.style.pointerEvents = "";
+    };
+
+    const placeMapTools = (sheetTop: number, transition: string) => {
+        const tools = mapToolsRef.current;
+        if (!tools || window.matchMedia("(min-width: 768px)").matches) return;
+        const next = sheetTop - (tools.offsetHeight || 96) - 12;
+        tools.style.transition = transition;
+        if (next < 12) {
+            tools.style.top = "12px";
+            tools.style.opacity = "0";
+            tools.style.pointerEvents = "none";
+            return;
+        }
+        tools.style.top = `${next}px`;
+        tools.style.opacity = "1";
+        tools.style.pointerEvents = "";
+    };
+
+    useLayoutEffect(() => {
+        if (!sheetStyleLockRef.current) return;
+        sheetStyleLockRef.current = false;
+        const sheet = sheetRef.current;
+        if (!sheet) return;
+        delete sheet.dataset.dragging;
+        sheet.style.transition = "";
+        sheet.style.top = "";
+        clearMapToolsStyle();
+    }, [sheetSnap]);
 
     const locateMe = () => {
         if (!mapInstance || !navigator.geolocation) return;
@@ -1314,52 +1368,185 @@ function FieldDetailPageContent() {
 
     const snapSheet = (top: number, height: number) => {
         const stops = [
-            { snap: "full" as const, top: 48 },
+            { snap: "full" as const, top: SHEET_FULL_TOP_PX },
             { snap: "half" as const, top: height * 0.42 },
-            { snap: "peek" as const, top: height - 32 },
+            { snap: "peek" as const, top: height - SHEET_PEEK_PX },
         ];
         return stops.reduce((best, item) => (
             Math.abs(item.top - top) < Math.abs(best.top - top) ? item : best
         )).snap;
     };
 
-    const onSheetPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
-        if (window.matchMedia("(min-width: 768px)").matches) return;
+    const readSheetTop = () => {
         const stage = stageRef.current;
-        const sheet = event.currentTarget.parentElement;
-        if (!stage || !sheet) return;
-        event.currentTarget.setPointerCapture(event.pointerId);
-        const startTop = sheet.getBoundingClientRect().top - stage.getBoundingClientRect().top;
-        sheetDragRef.current = { pointerId: event.pointerId, startY: event.clientY, startTop };
-        setSheetDragTop(startTop);
+        const sheet = sheetRef.current;
+        if (!stage || !sheet) return null;
+        return sheet.getBoundingClientRect().top - stage.getBoundingClientRect().top;
     };
 
-    const onSheetPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const settleSheet = (snap: "peek" | "half" | "full") => {
+        const sheet = sheetRef.current;
+        const stage = stageRef.current;
+        if (!sheet || !stage) {
+            setSheetSnap(snap);
+            return;
+        }
+        const generation = ++sheetDragGeneration.current;
+        const height = stage.clientHeight;
+        const target = snap === "full"
+            ? SHEET_FULL_TOP_PX
+            : snap === "half"
+                ? height * 0.42
+                : height - SHEET_PEEK_PX;
+        const sheetTransition = "top 280ms cubic-bezier(0.22, 1, 0.36, 1)";
+        sheet.dataset.dragging = "true";
+        sheet.style.transition = sheetTransition;
+        sheet.style.top = `${target}px`;
+        placeMapTools(target, sheetTransition);
+        let settled = false;
+        const finish = () => {
+            sheet.removeEventListener("transitionend", onEnd);
+            if (sheetSettleTimerRef.current != null) {
+                window.clearTimeout(sheetSettleTimerRef.current);
+                sheetSettleTimerRef.current = null;
+            }
+            if (sheetSettleCleanupRef.current === cleanup) sheetSettleCleanupRef.current = null;
+            if (settled || generation !== sheetDragGeneration.current) return;
+            settled = true;
+            if (sheetSnapRef.current === snap) {
+                delete sheet.dataset.dragging;
+                sheet.style.transition = "";
+                sheet.style.top = "";
+                clearMapToolsStyle();
+                return;
+            }
+            // 等档位 class 写进 DOM 后再清掉内联 top，避免松手时闪回旧位置。
+            sheetStyleLockRef.current = true;
+            setSheetSnap(snap);
+        };
+        const onEnd = (event: TransitionEvent) => {
+            if (event.propertyName !== "top") return;
+            finish();
+        };
+        const cleanup = () => {
+            sheet.removeEventListener("transitionend", onEnd);
+            if (sheetSettleTimerRef.current != null) {
+                window.clearTimeout(sheetSettleTimerRef.current);
+                sheetSettleTimerRef.current = null;
+            }
+        };
+        sheetSettleCleanupRef.current = cleanup;
+        sheet.addEventListener("transitionend", onEnd);
+        sheetSettleTimerRef.current = window.setTimeout(finish, 340);
+    };
+
+    const beginSheetDrag = (
+        event: React.PointerEvent<HTMLElement>,
+        origin: "handle" | "bar",
+        active: boolean,
+    ) => {
+        if (window.matchMedia("(min-width: 768px)").matches) return;
+        const startTop = readSheetTop();
+        const sheet = sheetRef.current;
+        if (startTop == null || !sheet) return;
+        sheetSettleCleanupRef.current?.();
+        sheetSettleCleanupRef.current = null;
+        sheetDragGeneration.current += 1;
+        const now = performance.now();
+        sheetDragRef.current = {
+            pointerId: event.pointerId,
+            origin,
+            startX: event.clientX,
+            startY: event.clientY,
+            startTop,
+            lastY: event.clientY,
+            lastT: now,
+            velocity: 0,
+            moved: false,
+            active,
+        };
+        if (!active) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        sheet.dataset.dragging = "true";
+        sheet.style.transition = "none";
+        sheet.style.top = `${startTop}px`;
+        placeMapTools(startTop, "none");
+    };
+
+    const onSheetPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+        beginSheetDrag(event, "handle", true);
+    };
+
+    const onSheetBarPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (event.button !== 0) return;
+        beginSheetDrag(event, "bar", false);
+    };
+
+    const onSheetPointerMove = (event: React.PointerEvent<HTMLElement>) => {
         const drag = sheetDragRef.current;
         const stage = stageRef.current;
-        if (!drag || drag.pointerId !== event.pointerId || !stage) return;
+        const sheet = sheetRef.current;
+        if (!drag || drag.pointerId !== event.pointerId || !stage || !sheet) return;
+        const dy = event.clientY - drag.startY;
+        const dx = event.clientX - drag.startX;
+        const now = performance.now();
+        drag.velocity = (event.clientY - drag.lastY) / Math.max(8, now - drag.lastT);
+        drag.lastY = event.clientY;
+        drag.lastT = now;
+        if (!drag.active) {
+            if (Math.abs(dy) < 10 && Math.abs(dx) < 10) return;
+            if (Math.abs(dx) > Math.abs(dy)) {
+                sheetDragRef.current = null;
+                return;
+            }
+            drag.active = true;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            sheet.dataset.dragging = "true";
+            sheet.style.transition = "none";
+        }
+        if (Math.abs(dy) > 6) drag.moved = true;
         const next = Math.min(
-            stage.clientHeight - 32,
-            Math.max(48, drag.startTop + event.clientY - drag.startY),
+            stage.clientHeight - SHEET_PEEK_PX,
+            Math.max(SHEET_FULL_TOP_PX, drag.startTop + dy),
         );
-        setSheetDragTop(next);
+        sheet.style.top = `${next}px`;
+        placeMapTools(next, "none");
     };
 
-    const finishSheetDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const finishSheetDrag = (event: React.PointerEvent<HTMLElement>) => {
         const drag = sheetDragRef.current;
         const stage = stageRef.current;
         if (!drag || drag.pointerId !== event.pointerId || !stage) return;
         sheetDragRef.current = null;
+        if (!drag.active) return;
+        const dy = event.clientY - drag.startY;
         const top = Math.min(
-            stage.clientHeight - 32,
-            Math.max(48, drag.startTop + event.clientY - drag.startY),
+            stage.clientHeight - SHEET_PEEK_PX,
+            Math.max(SHEET_FULL_TOP_PX, drag.startTop + dy),
         );
-        if (Math.abs(event.clientY - drag.startY) < 6) {
-            setSheetSnap((current) => (current === "full" ? "half" : "full"));
-        } else {
-            setSheetSnap(snapSheet(top, stage.clientHeight));
+        if (drag.origin === "bar" && drag.moved) sheetSuppressClickRef.current = true;
+        if (!drag.moved) {
+            if (drag.origin === "handle") {
+                const current = sheetSnapRef.current;
+                settleSheet(current === "peek" ? "half" : current === "half" ? "full" : "half");
+            }
+            return;
         }
-        setSheetDragTop(null);
+        const order = ["peek", "half", "full"] as const;
+        const index = order.indexOf(sheetSnapRef.current);
+        const snap = drag.velocity <= -SHEET_FLICK_PX_PER_MS
+            ? order[Math.min(order.length - 1, index + 1)]
+            : drag.velocity >= SHEET_FLICK_PX_PER_MS
+                ? order[Math.max(0, index - 1)]
+                : snapSheet(top, stage.clientHeight);
+        settleSheet(snap);
+    };
+
+    const onSheetBarClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!sheetSuppressClickRef.current) return;
+        sheetSuppressClickRef.current = false;
+        event.preventDefault();
+        event.stopPropagation();
     };
 
     if (loading) {
@@ -1380,43 +1567,17 @@ function FieldDetailPageContent() {
     const landAreaMu = resolveLandAreaMu(land.land_area_mu, land.area_ha);
     const oversizedLand = isOversizedLand(landAreaMu);
 
-    const mapToolButton = "grid h-10 w-10 place-items-center rounded-lg border border-border/70 bg-background text-foreground shadow-sm";
+    const mapToolButton = "field-map-tool";
 
     return (
         <div
             ref={stageRef}
-            className="relative h-full w-full overflow-hidden"
+            data-sheet={sheetSnap}
+            className="field-page relative h-full w-full overflow-hidden"
             style={{ "--panel-w": `${panelWidthPx}px` } as React.CSSProperties}
         >
-            <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center gap-1 border-b border-border/80 bg-background px-1 md:hidden">
-                <Link
-                    href={backHref as "/farms"}
-                    className="inline-flex h-10 shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-medium text-foreground"
-                >
-                    <ArrowLeft className="h-4 w-4" />
-                    {t("backShort")}
-                </Link>
-                <h1 className="min-w-0 flex-1 truncate text-center text-sm font-semibold">
-                    {land.land_name?.trim() || land.land_id}
-                </h1>
-                <button
-                    type="button"
-                    className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-foreground"
-                    aria-label={t("searchProjectLand")}
-                    aria-expanded={mobileSearchOpen}
-                    onClick={() => {
-                        setMobileSearchOpen((open) => {
-                            setProjectLandListOpen(!open);
-                            return !open;
-                        });
-                    }}
-                >
-                    {mobileSearchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
-                </button>
-            </header>
-
             {/* Full-screen map */}
-            <div className="field-stage absolute inset-0 max-md:top-12" data-sheet={sheetSnap}>
+            <div className="field-stage absolute inset-0" data-sheet={sheetSnap}>
                 {editing ? (
                     <DrawMap
                         initialGeometry={land.boundary_geojson}
@@ -1434,34 +1595,21 @@ function FieldDetailPageContent() {
                 )}
             </div>
 
-            <div className={cn(
-                "absolute left-3 top-[18%] z-20 flex flex-col overflow-hidden rounded-lg border border-border/70 bg-background shadow-sm md:hidden",
-                sheetSnap === "peek" && "top-1/2 -translate-y-1/2",
-                sheetSnap === "full" && "hidden",
-            )}>
-                <button type="button" className="grid h-10 w-10 place-items-center" aria-label={t("zoomIn")} onClick={() => mapInstance?.zoomIn()}>
-                    <Plus className="h-4 w-4" />
-                </button>
-                <button type="button" className="grid h-10 w-10 place-items-center border-t border-border/70" aria-label={t("zoomOut")} onClick={() => mapInstance?.zoomOut()}>
-                    <Minus className="h-4 w-4" />
-                </button>
-            </div>
-            <div className={cn(
-                "absolute right-3 top-[18%] z-20 flex flex-col gap-2 md:hidden",
-                sheetSnap === "peek" && "top-1/2 -translate-y-1/2",
-                sheetSnap === "full" && "hidden",
-            )}>
+            <div
+                ref={mapToolsRef}
+                className={cn(
+                    "field-map-tools absolute right-3 z-30 flex w-11 flex-col gap-2 transition-[top,opacity] duration-300 ease-out md:hidden",
+                    sheetSnap === "full" && "pointer-events-none opacity-0",
+                )}
+            >
                 <MapStyleSwitcher iconOnly currentStyle={mapStyle} onStyleChange={handleStyleChange} />
                 <button type="button" className={mapToolButton} aria-label={t("locateMe")} onClick={locateMe}>
-                    <Crosshair className="h-4 w-4" />
+                    <Crosshair className="h-5 w-5" />
                 </button>
             </div>
 
             {/* Top-left: Back + Style Switcher + project land search */}
-            <div className={cn(
-                "absolute z-20 flex-col items-start gap-2 md:left-4 md:top-4 md:flex",
-                mobileSearchOpen ? "left-3 right-3 top-14 z-30 flex" : "max-md:hidden",
-            )}>
+            <div className="absolute z-20 hidden flex-col items-start gap-2 md:left-4 md:top-4 md:flex">
                 <div className="flex w-full flex-col items-stretch gap-2 md:w-auto md:flex-row md:items-center">
                     <Link
                         href={backHref as "/farms"}
@@ -1623,7 +1771,9 @@ function FieldDetailPageContent() {
                     {shownHeatmap ? (
                         <AgriHeatmapLegend heatmap={shownHeatmap} />
                     ) : indexLayer ? (
-                        <NdviLegend layer={indexLayer} indexType={activeIndexType} />
+                        <div className="hidden md:block">
+                            <NdviLegend layer={indexLayer} indexType={activeIndexType} />
+                        </div>
                     ) : null}
                 </div>
             )}
@@ -1633,7 +1783,7 @@ function FieldDetailPageContent() {
                 centred on the visible map rather than on the viewport. */}
             <div
                 className={cn(
-                    "field-index-stack absolute z-20 flex max-w-[calc(100%-5rem)] flex-col items-center gap-2 md:bottom-6",
+                    "field-index-stack absolute z-20 hidden max-w-[calc(100%-5rem)] flex-col items-center gap-2 md:bottom-6 md:flex",
                     sheetSnap === "half" && "max-md:bottom-[calc(58%+12px)]",
                     sheetSnap === "peek" && "max-md:bottom-16",
                     sheetSnap === "full" && "max-md:hidden",
@@ -1774,29 +1924,29 @@ function FieldDetailPageContent() {
             {/* Floating tabbed sidebar - right */}
             <div
                 id="field-detail-analysis-panel"
+                ref={sheetRef}
                 inert={!sidebarOpen ? true : undefined}
                 className={cn(
                     "field-sheet absolute z-20 flex flex-col overflow-hidden bg-background",
                     "max-md:inset-x-0 max-md:bottom-0 max-md:w-full max-md:rounded-t-[20px] max-md:shadow-[0_-8px_24px_rgba(0,0,0,0.18)]",
-                    sheetDragTop == null && sheetSnap === "half" && "max-md:top-[42%]",
-                    sheetDragTop == null && sheetSnap === "full" && "max-md:top-12",
-                    sheetDragTop == null && sheetSnap === "peek" && "max-md:top-auto max-md:h-8",
+                    sheetSnap === "half" && "max-md:top-[42%]",
+                    sheetSnap === "full" && "max-md:top-0",
+                    sheetSnap === "peek" && "max-md:top-auto max-md:h-11",
                     "md:bottom-4 md:right-4 md:top-4 md:h-auto md:w-[var(--panel-w)] md:max-w-[calc(100%-2rem)]",
-                    !isResizingPanel && sheetDragTop == null && "transition-[top,height,transform] duration-300 ease-out",
+                    !isResizingPanel && "transition-[top,height,transform] duration-300 ease-out",
                     !sidebarOpen && "md:translate-x-[calc(100%+1rem)]",
                 )}
-                style={sheetDragTop != null ? { top: sheetDragTop } : undefined}
             >
                 <button
                     type="button"
-                    className="flex h-8 w-full shrink-0 touch-none items-center justify-center md:hidden"
+                    className="flex h-11 w-full shrink-0 touch-none items-center justify-center md:hidden"
                     aria-label={t("sheetHandle")}
                     onPointerDown={onSheetPointerDown}
                     onPointerMove={onSheetPointerMove}
                     onPointerUp={finishSheetDrag}
                     onPointerCancel={finishSheetDrag}
                 >
-                    <span className="h-1 w-10 rounded-full bg-muted-foreground/40" />
+                    <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
                 </button>
                 {/* Left-edge drag handle — always-visible short gray grip (centered) */}
                 <div
@@ -1829,7 +1979,26 @@ function FieldDetailPageContent() {
                 <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden md:rounded-xl", MAP_CHROME)}>
                     <Tabs defaultValue={FIELD_DETAIL_DEFAULT_TAB} value={activeTab} onValueChange={handleActiveTabChange} className="flex flex-col flex-1 overflow-hidden">
                         {/* 页签保持紧凑单行，窄侧栏允许横向滚动，不挤占内容高度。 */}
-                        <div className="flex min-w-0 shrink-0 items-center border-b bg-background/95">
+                        <div
+                            className="flex min-w-0 shrink-0 touch-pan-x items-center border-b bg-background/95 md:touch-auto"
+                            onPointerDown={onSheetBarPointerDown}
+                            onPointerMove={onSheetPointerMove}
+                            onPointerUpCapture={(event) => {
+                                const drag = sheetDragRef.current;
+                                const moved = Boolean(
+                                    drag &&
+                                    drag.pointerId === event.pointerId &&
+                                    drag.origin === "bar" &&
+                                    drag.moved,
+                                );
+                                finishSheetDrag(event);
+                                if (!moved) return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                            }}
+                            onPointerCancel={finishSheetDrag}
+                            onClickCapture={onSheetBarClickCapture}
+                        >
                             <TabsList variant="underline" className="h-11 min-w-0 !w-auto flex-1 flex-nowrap items-end gap-1 overflow-x-auto !border-b-0 px-2 [scrollbar-width:none]">
                             <TabsTrigger
                                 value="ndvi"
@@ -1883,7 +2052,7 @@ function FieldDetailPageContent() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="mr-1 h-11 w-11 shrink-0 md:mr-2 md:h-7 md:w-7"
+                                className="mr-2 hidden h-7 w-7 shrink-0 md:inline-flex"
                                 aria-label={t("edit")}
                                 title={t("edit")}
                                 disabled={editing}

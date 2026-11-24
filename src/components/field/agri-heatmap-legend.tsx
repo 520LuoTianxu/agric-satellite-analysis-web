@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
+import { Maximize2, Minus, Plus, RotateCcw, Satellite } from "lucide-react";
 import type { AgriHeatmapImage } from "@/lib/agri-heatmap";
 import { MAP_CHROME } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
@@ -420,6 +420,53 @@ function OssPreviewStack({
     );
 }
 
+function satellitePreviewUrl(heatmap: AgriHeatmapImage): { src: string; captionKey: "trueColorTiles" | "trueColor" | "heatmap" } | null {
+    const large = heatmap.previewLargeRgbUrl?.trim() || "";
+    const parcel = heatmap.previewRgbUrl?.trim() || "";
+    const heatmapUrl = heatmap.previewHeatmapUrl?.trim() || heatmap.previewS2HeatmapUrl?.trim() || "";
+    if (large) return { src: large, captionKey: "trueColorTiles" };
+    if (parcel) return { src: parcel, captionKey: "trueColor" };
+    if (heatmapUrl) return { src: heatmapUrl, captionKey: "heatmap" };
+    return null;
+}
+
+/** 手机端不展开图例和缩略图，只留一个按钮，点开后再加载卫星图。 */
+function MobileSatelliteButton({ heatmap }: { heatmap: AgriHeatmapImage }) {
+    const [open, setOpen] = useState(false);
+    const t = useTranslations("agriPanel");
+    const preview = useMemo(() => satellitePreviewUrl(heatmap), [heatmap]);
+    if (!preview) return null;
+
+    return (
+        <>
+            <button
+                type="button"
+                className={cn(
+                    MAP_CHROME,
+                    "inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-foreground",
+                )}
+                onClick={() => setOpen(true)}
+                aria-label={t("openPreview", { caption: t(preview.captionKey) })}
+            >
+                <Satellite className="h-3.5 w-3.5" aria-hidden="true" />
+                {t("viewSatellite")}
+            </button>
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="flex h-[min(85vh,56rem)] w-[min(94vw,80rem)] max-w-[94vw] flex-col gap-3 overflow-hidden overscroll-contain p-3">
+                    <DialogHeader className="space-y-1 pr-8">
+                        <DialogTitle className="text-sm font-medium">{t(preview.captionKey)}</DialogTitle>
+                    </DialogHeader>
+                    <ZoomableScene
+                        src={preview.src}
+                        alt={t("trueColorPreview")}
+                        active={open}
+                    />
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}
+
 /** Map overlay legend + mean badge for agri pixel_data 色斑图 (figure-3 style). */
 export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeatmapLegendProps) {
     const legend = heatmap.legend;
@@ -479,10 +526,14 @@ export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeat
     const hasPreview = Boolean(parcelRgbUrl || largeRgbUrl || heatmapUrl);
 
     return (
+        <>
+        <div className="md:hidden">
+            <MobileSatelliteButton heatmap={heatmap} />
+        </div>
         <div
             className={cn(
                 MAP_CHROME,
-                "rounded-lg",
+                "hidden rounded-lg md:block",
                 compact ? "px-2 py-1.5 w-[150px]" : "px-3 py-2.5 w-[200px]",
             )}
         >
@@ -557,5 +608,6 @@ export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeat
                 {tIndex(heatmap.index)} · {t("pixelCount", { count: countFormat.format(heatmap.pixelCount) })}
             </p>
         </div>
+        </>
     );
 }
