@@ -32,7 +32,7 @@ export default function AlertsTab({ landId, onOpenCountChange }: AlertsTabProps)
     const loadAlerts = useCallback(async () => {
         try {
             const res = await alertsApi.listForLand(landId, 200);
-            setAlerts(res.items);
+            setAlerts(res.items ?? []);
         } catch {
             // silent
         } finally {

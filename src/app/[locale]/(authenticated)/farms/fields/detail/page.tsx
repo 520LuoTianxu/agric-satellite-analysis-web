@@ -14,16 +14,15 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
     ArrowLeft,
-    CloudSun,
+    Crosshair,
     Edit2,
     Layers,
     Loader2,
+    Minus,
+    Plus,
     Save,
     Search,
     X,
-    Bell,
-    ClipboardList,
-    Share2,
     PanelRight,
     PanelRightClose,
     Satellite,
@@ -320,6 +319,14 @@ function FieldDetailPageContent() {
     const mapStyleRef = useRef<MapStyleId>("satellite");
     // 地块详情需要优先展示分析内容，进入页面时默认展开右侧分析侧栏，并打开长势分析。
     const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [sheetSnap, setSheetSnap] = useState<"peek" | "half" | "full">("half");
+    const [sheetDragTop, setSheetDragTop] = useState<number | null>(null);
+    const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+    const sheetSnapRef = useRef<"peek" | "half" | "full">("half");
+    const stageRef = useRef<HTMLDivElement>(null);
+    const sheetDragRef = useRef<{ pointerId: number; startY: number; startTop: number } | null>(null);
+    const locateMarkerRef = useRef<maplibregl.Marker | null>(null);
+    sheetSnapRef.current = sheetSnap;
     const [activeTab, setActiveTab] = useState(initialTab);
     const [parcelSection, setParcelSection] = useState<ParcelAnalysisSection>(initialParcelSection);
     const [harvestSectionOpen, setHarvestSectionOpen] = useState(initialParcelSection === "harvest");
@@ -1040,12 +1047,22 @@ function FieldDetailPageContent() {
         if (bounds.isEmpty()) return;
         const width = map.getContainer().clientWidth;
         const height = map.getContainer().clientHeight;
-        const mobile = window.matchMedia("(max-width: 639px)").matches;
+        const mobile = window.matchMedia("(max-width: 767px)").matches;
+        const stageHeight = stageRef.current?.clientHeight ?? height + (mobile ? 48 : 0);
+        const snap = sheetSnapRef.current;
+        const sheetTop = !mobile
+            ? 0
+            : snap === "peek"
+                ? stageHeight - 32
+                : snap === "full"
+                    ? 48
+                    : Math.round(stageHeight * 0.42);
+        const covered = mobile ? Math.max(16, 48 + height - sheetTop) : 0;
         map.fitBounds(bounds, {
             padding: {
-                top: 80,
-                bottom: sidebarOpen && mobile ? Math.round(height * 0.52) + 28 : 48,
-                left: 56,
+                top: mobile ? 16 : 80,
+                bottom: mobile ? covered + 12 : 48,
+                left: mobile ? 48 : 56,
                 right: sidebarOpen && !mobile ? Math.min(panelWidthPx + 48, Math.round(width * 0.65)) : 40,
             },
             maxZoom: 17,
@@ -1071,12 +1088,22 @@ function FieldDetailPageContent() {
 
         const width = map.getContainer().clientWidth;
         const height = map.getContainer().clientHeight;
-        const mobile = window.matchMedia("(max-width: 639px)").matches;
+        const mobile = window.matchMedia("(max-width: 767px)").matches;
+        const stageHeight = stageRef.current?.clientHeight ?? height + (mobile ? 48 : 0);
+        const snap = sheetSnapRef.current;
+        const sheetTop = !mobile
+            ? 0
+            : snap === "peek"
+                ? stageHeight - 32
+                : snap === "full"
+                    ? 48
+                    : Math.round(stageHeight * 0.42);
+        const covered = mobile ? Math.max(16, 48 + height - sheetTop) : 0;
         map.fitBounds(bounds, {
             padding: {
-                top: 80,
-                bottom: sidebarOpen && mobile ? Math.round(height * 0.52) + 28 : 48,
-                left: 56,
+                top: mobile ? 16 : 80,
+                bottom: mobile ? covered + 12 : 48,
+                left: mobile ? 48 : 56,
                 right: sidebarOpen && !mobile ? Math.min(panelWidthPx + 48, Math.round(width * 0.65)) : 40,
             },
             maxZoom: 16,
@@ -1123,7 +1150,7 @@ function FieldDetailPageContent() {
         });
         observer.observe(mapInstance.getContainer());
         return () => observer.disconnect();
-    }, [land, mapInstance, setupMapLayers, fitFieldInView]);
+    }, [land, mapInstance, setupMapLayers, fitFieldInView, sheetSnap]);
 
     useEffect(() => {
         const map = mapInstance;
@@ -1266,6 +1293,75 @@ function FieldDetailPageContent() {
         }
     };
 
+    useEffect(() => () => {
+        locateMarkerRef.current?.remove();
+    }, []);
+
+    const locateMe = () => {
+        if (!mapInstance || !navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition((position) => {
+            const raw: [number, number] = [position.coords.longitude, position.coords.latitude];
+            const center = usesGcj02Coordinates(mapStyleRef.current)
+                ? wgs84ToGcj02(raw[0], raw[1])
+                : raw;
+            mapInstance.flyTo({ center, zoom: Math.max(mapInstance.getZoom(), 15) });
+            locateMarkerRef.current?.remove();
+            locateMarkerRef.current = new maplibregl.Marker({ color: "#16a34a" })
+                .setLngLat(center)
+                .addTo(mapInstance);
+        });
+    };
+
+    const snapSheet = (top: number, height: number) => {
+        const stops = [
+            { snap: "full" as const, top: 48 },
+            { snap: "half" as const, top: height * 0.42 },
+            { snap: "peek" as const, top: height - 32 },
+        ];
+        return stops.reduce((best, item) => (
+            Math.abs(item.top - top) < Math.abs(best.top - top) ? item : best
+        )).snap;
+    };
+
+    const onSheetPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+        if (window.matchMedia("(min-width: 768px)").matches) return;
+        const stage = stageRef.current;
+        const sheet = event.currentTarget.parentElement;
+        if (!stage || !sheet) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        const startTop = sheet.getBoundingClientRect().top - stage.getBoundingClientRect().top;
+        sheetDragRef.current = { pointerId: event.pointerId, startY: event.clientY, startTop };
+        setSheetDragTop(startTop);
+    };
+
+    const onSheetPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+        const drag = sheetDragRef.current;
+        const stage = stageRef.current;
+        if (!drag || drag.pointerId !== event.pointerId || !stage) return;
+        const next = Math.min(
+            stage.clientHeight - 32,
+            Math.max(48, drag.startTop + event.clientY - drag.startY),
+        );
+        setSheetDragTop(next);
+    };
+
+    const finishSheetDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+        const drag = sheetDragRef.current;
+        const stage = stageRef.current;
+        if (!drag || drag.pointerId !== event.pointerId || !stage) return;
+        sheetDragRef.current = null;
+        const top = Math.min(
+            stage.clientHeight - 32,
+            Math.max(48, drag.startTop + event.clientY - drag.startY),
+        );
+        if (Math.abs(event.clientY - drag.startY) < 6) {
+            setSheetSnap((current) => (current === "full" ? "half" : "full"));
+        } else {
+            setSheetSnap(snapSheet(top, stage.clientHeight));
+        }
+        setSheetDragTop(null);
+    };
+
     if (loading) {
         return (
             <div className="relative h-full w-full overflow-hidden">
@@ -1284,13 +1380,43 @@ function FieldDetailPageContent() {
     const landAreaMu = resolveLandAreaMu(land.land_area_mu, land.area_ha);
     const oversizedLand = isOversizedLand(landAreaMu);
 
+    const mapToolButton = "grid h-10 w-10 place-items-center rounded-lg border border-border/70 bg-background text-foreground shadow-sm";
+
     return (
         <div
+            ref={stageRef}
             className="relative h-full w-full overflow-hidden"
             style={{ "--panel-w": `${panelWidthPx}px` } as React.CSSProperties}
         >
+            <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center gap-1 border-b border-border/80 bg-background px-1 md:hidden">
+                <Link
+                    href={backHref as "/farms"}
+                    className="inline-flex h-10 shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-medium text-foreground"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    {t("backShort")}
+                </Link>
+                <h1 className="min-w-0 flex-1 truncate text-center text-sm font-semibold">
+                    {land.land_name?.trim() || land.land_id}
+                </h1>
+                <button
+                    type="button"
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-foreground"
+                    aria-label={t("searchProjectLand")}
+                    aria-expanded={mobileSearchOpen}
+                    onClick={() => {
+                        setMobileSearchOpen((open) => {
+                            setProjectLandListOpen(!open);
+                            return !open;
+                        });
+                    }}
+                >
+                    {mobileSearchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                </button>
+            </header>
+
             {/* Full-screen map */}
-            <div className="absolute inset-0">
+            <div className="field-stage absolute inset-0 max-md:top-12" data-sheet={sheetSnap}>
                 {editing ? (
                     <DrawMap
                         initialGeometry={land.boundary_geojson}
@@ -1308,17 +1434,43 @@ function FieldDetailPageContent() {
                 )}
             </div>
 
+            <div className={cn(
+                "absolute left-3 top-[18%] z-20 flex flex-col overflow-hidden rounded-lg border border-border/70 bg-background shadow-sm md:hidden",
+                sheetSnap === "peek" && "top-1/2 -translate-y-1/2",
+                sheetSnap === "full" && "hidden",
+            )}>
+                <button type="button" className="grid h-10 w-10 place-items-center" aria-label={t("zoomIn")} onClick={() => mapInstance?.zoomIn()}>
+                    <Plus className="h-4 w-4" />
+                </button>
+                <button type="button" className="grid h-10 w-10 place-items-center border-t border-border/70" aria-label={t("zoomOut")} onClick={() => mapInstance?.zoomOut()}>
+                    <Minus className="h-4 w-4" />
+                </button>
+            </div>
+            <div className={cn(
+                "absolute right-3 top-[18%] z-20 flex flex-col gap-2 md:hidden",
+                sheetSnap === "peek" && "top-1/2 -translate-y-1/2",
+                sheetSnap === "full" && "hidden",
+            )}>
+                <MapStyleSwitcher iconOnly currentStyle={mapStyle} onStyleChange={handleStyleChange} />
+                <button type="button" className={mapToolButton} aria-label={t("locateMe")} onClick={locateMe}>
+                    <Crosshair className="h-4 w-4" />
+                </button>
+            </div>
+
             {/* Top-left: Back + Style Switcher + project land search */}
-            <div className="absolute top-4 left-4 z-20 flex flex-col items-start gap-2">
-                <div className="flex items-center gap-2">
+            <div className={cn(
+                "absolute z-20 flex-col items-start gap-2 md:left-4 md:top-4 md:flex",
+                mobileSearchOpen ? "left-3 right-3 top-14 z-30 flex" : "max-md:hidden",
+            )}>
+                <div className="flex w-full flex-col items-stretch gap-2 md:w-auto md:flex-row md:items-center">
                     <Link
                         href={backHref as "/farms"}
-                        className={cn("inline-flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3", MAP_CHROME)}
+                        className={cn("hidden h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3 md:inline-flex", MAP_CHROME)}
                     >
                         <ArrowLeft className="h-4 w-4" />
                         {t("backToFarm")}
                     </Link>
-                    <MapStyleSwitcher currentStyle={mapStyle} onStyleChange={handleStyleChange} />
+                    <MapStyleSwitcher className="hidden md:block" currentStyle={mapStyle} onStyleChange={handleStyleChange} />
                     <div
                         className="relative"
                         onBlur={(event) => {
@@ -1328,7 +1480,7 @@ function FieldDetailPageContent() {
                             }
                         }}
                     >
-                        <div className={cn("relative flex h-10 w-72 max-w-[calc(100vw-2rem)] items-center rounded-lg", MAP_CHROME)}>
+                        <div className={cn("relative flex h-10 w-full items-center rounded-lg md:w-72", MAP_CHROME)}>
                             <Search className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                             <Input
                                 value={projectLandQuery}
@@ -1364,7 +1516,7 @@ function FieldDetailPageContent() {
                         )}
 
                         {projectLandListOpen && !projectLandsLoading && projectLands.length > 0 && (
-                            <div className={cn("absolute left-0 top-[calc(100%+0.5rem)] z-30 w-72 max-w-[calc(100vw-2rem)] rounded-xl p-2", MAP_CHROME)}>
+                            <div className={cn("absolute left-0 top-[calc(100%+0.5rem)] z-30 w-full rounded-xl p-2 md:w-72", MAP_CHROME)}>
                                 <p className="px-2 pb-1 text-xs font-medium text-foreground">
                                     {t("projectLandSelect")} · {projectLands.length}
                                 </p>
@@ -1421,7 +1573,7 @@ function FieldDetailPageContent() {
             </div>
 
             {pendingProjectLand && (
-                <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2">
+                <div className="pointer-events-none absolute left-1/2 top-16 z-30 -translate-x-1/2 md:top-20">
                     <div
                         className={cn(
                             "pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-lg px-3 py-2 shadow-lg",
@@ -1462,7 +1614,12 @@ function FieldDetailPageContent() {
 
             {/* Index / agri 色斑 Legend - bottom-left */}
             {(shownHeatmap || indexLayer) && (
-                <div className="absolute bottom-6 left-4 z-20 transition-opacity duration-200">
+                <div className={cn(
+                    "absolute left-4 z-20 transition-opacity duration-200 md:bottom-6",
+                    sheetSnap === "half" && "max-md:bottom-[calc(58%+12px)]",
+                    sheetSnap === "peek" && "max-md:bottom-16",
+                    sheetSnap === "full" && "max-md:hidden",
+                )}>
                     {shownHeatmap ? (
                         <AgriHeatmapLegend heatmap={shownHeatmap} />
                     ) : indexLayer ? (
@@ -1475,14 +1632,18 @@ function FieldDetailPageContent() {
                 One container so the two can never overlap, and both stay
                 centred on the visible map rather than on the viewport. */}
             <div
-                className="absolute bottom-6 z-20 flex max-w-[calc(100%-2rem)] flex-col items-center gap-2"
+                className={cn(
+                    "field-index-stack absolute z-20 flex max-w-[calc(100%-5rem)] flex-col items-center gap-2 md:bottom-6",
+                    sheetSnap === "half" && "max-md:bottom-[calc(58%+12px)]",
+                    sheetSnap === "peek" && "max-md:bottom-16",
+                    sheetSnap === "full" && "max-md:hidden",
+                )}
                 style={{
-                    left: sidebarOpen ? "calc(50% - var(--panel-w) / 2)" : "50%",
-                    transform: "translateX(-50%)",
-                }}
+                    "--index-left": sidebarOpen ? "calc(50% - var(--panel-w) / 2)" : "50%",
+                } as React.CSSProperties}
             >
                 {activeTab === "ndvi" && (
-                    <div data-tour="heatmap-modes" className={cn("flex gap-1 rounded-lg p-1", MAP_CHROME)}>
+                    <div data-tour="heatmap-modes" className={cn("flex max-w-full flex-wrap justify-center gap-1 rounded-lg p-1", MAP_CHROME)}>
                         {AGRI_PRIMARY_MODES.map((mode) => (
                             <Button
                                 key={mode}
@@ -1505,7 +1666,7 @@ function FieldDetailPageContent() {
                 )}
 
                 {activeTab === "ndvi" && availableTypes.length > 0 && (
-                    <div className={cn("flex gap-1 rounded-lg p-1", MAP_CHROME)}>
+                    <div className={cn("flex max-w-full flex-wrap justify-center gap-1 rounded-lg p-1", MAP_CHROME)}>
                         {availableTypes.filter((idx) => idx !== "EVI").map((idx) => (
                             <Button
                                 key={idx}
@@ -1596,7 +1757,7 @@ function FieldDetailPageContent() {
             <button
                 type="button"
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className={cn("absolute top-4 right-4 sm:right-[var(--toggle-right)] z-20 rounded-xl p-2.5 transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", MAP_CHROME)}
+                className={cn("absolute top-4 right-4 z-20 hidden rounded-xl p-2.5 transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:right-[var(--toggle-right)] md:block", MAP_CHROME)}
                 style={{ "--toggle-right": sidebarOpen ? "calc(var(--panel-w) + 2rem)" : "1rem" } as React.CSSProperties}
                 aria-label={t(sidebarOpen ? "hidePanel" : "showPanel")}
                 aria-expanded={sidebarOpen}
@@ -1613,13 +1774,30 @@ function FieldDetailPageContent() {
             {/* Floating tabbed sidebar - right */}
             <div
                 id="field-detail-analysis-panel"
-                inert={!sidebarOpen}
+                inert={!sidebarOpen ? true : undefined}
                 className={cn(
-                    "absolute right-4 bottom-4 z-10 h-[52%] w-[calc(100%-2rem)] sm:top-4 sm:h-auto sm:w-[var(--panel-w)] max-w-[calc(100%-2rem)]",
-                    !isResizingPanel && "transition-transform duration-300 ease-in-out",
-                    sidebarOpen ? "translate-x-0" : "translate-x-[calc(100%+1rem)]",
+                    "field-sheet absolute z-20 flex flex-col overflow-hidden bg-background",
+                    "max-md:inset-x-0 max-md:bottom-0 max-md:w-full max-md:rounded-t-[20px] max-md:shadow-[0_-8px_24px_rgba(0,0,0,0.18)]",
+                    sheetDragTop == null && sheetSnap === "half" && "max-md:top-[42%]",
+                    sheetDragTop == null && sheetSnap === "full" && "max-md:top-12",
+                    sheetDragTop == null && sheetSnap === "peek" && "max-md:top-auto max-md:h-8",
+                    "md:bottom-4 md:right-4 md:top-4 md:h-auto md:w-[var(--panel-w)] md:max-w-[calc(100%-2rem)]",
+                    !isResizingPanel && sheetDragTop == null && "transition-[top,height,transform] duration-300 ease-out",
+                    !sidebarOpen && "md:translate-x-[calc(100%+1rem)]",
                 )}
+                style={sheetDragTop != null ? { top: sheetDragTop } : undefined}
             >
+                <button
+                    type="button"
+                    className="flex h-8 w-full shrink-0 touch-none items-center justify-center md:hidden"
+                    aria-label={t("sheetHandle")}
+                    onPointerDown={onSheetPointerDown}
+                    onPointerMove={onSheetPointerMove}
+                    onPointerUp={finishSheetDrag}
+                    onPointerCancel={finishSheetDrag}
+                >
+                    <span className="h-1 w-10 rounded-full bg-muted-foreground/40" />
+                </button>
                 {/* Left-edge drag handle — always-visible short gray grip (centered) */}
                 <div
                     role="separator"
@@ -1635,7 +1813,7 @@ function FieldDetailPageContent() {
                     onPointerDown={handlePanelResizeStart}
                     onKeyDown={handlePanelResizeKeyDown}
                     onDoubleClick={handlePanelResizeReset}
-                    className="group/resize absolute left-0 top-0 bottom-0 z-20 hidden sm:flex w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                    className="group/resize absolute bottom-0 left-0 top-0 z-20 hidden w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset md:flex"
                 >
                     <div
                         className={cn(
@@ -1648,15 +1826,15 @@ function FieldDetailPageContent() {
                 <span id="field-detail-panel-resize-hint" className="sr-only">
                     {t("resizePanelHint")}
                 </span>
-                <div className={cn("flex h-full flex-col overflow-hidden rounded-xl", MAP_CHROME)}>
+                <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden md:rounded-xl", MAP_CHROME)}>
                     <Tabs defaultValue={FIELD_DETAIL_DEFAULT_TAB} value={activeTab} onValueChange={handleActiveTabChange} className="flex flex-col flex-1 overflow-hidden">
                         {/* 页签保持紧凑单行，窄侧栏允许横向滚动，不挤占内容高度。 */}
                         <div className="flex min-w-0 shrink-0 items-center border-b bg-background/95">
-                            <TabsList variant="underline" className="min-w-0 !w-auto flex-1 flex-nowrap gap-3 overflow-x-auto !border-b-0 px-3 py-1">
+                            <TabsList variant="underline" className="h-11 min-w-0 !w-auto flex-1 flex-nowrap items-end gap-1 overflow-x-auto !border-b-0 px-2 [scrollbar-width:none]">
                             <TabsTrigger
                                 value="ndvi"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary"
                                 data-tour="tab-ndvi"
                             >
                                 {t("tabNdvi")}
@@ -1664,7 +1842,7 @@ function FieldDetailPageContent() {
                             <TabsTrigger
                                 value="weather"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary"
                                 data-tour="tab-weather"
                             >
                                 {t("tabWeather")}
@@ -1672,14 +1850,14 @@ function FieldDetailPageContent() {
                             <TabsTrigger
                                 value="soil"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary"
                             >
                                 {t("tabSoil")}
                             </TabsTrigger>
                             <TabsTrigger
                                 value="alerts"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary"
                             >
                                 <span className="relative">
                                     {t("tabAlerts")}
@@ -1691,12 +1869,12 @@ function FieldDetailPageContent() {
                             <TabsTrigger
                                 value="parcel-analysis"
                                 variant="underline"
-                                className="shrink-0 pb-2 pt-2 text-[11px]"
+                                className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary"
                                 data-tour="tab-report"
                             >
                                 {t("tabParcelAnalysis")}
                             </TabsTrigger>
-                            <TabsTrigger value="biweekly" variant="underline" className="shrink-0 pb-2 pt-2 text-[11px]">
+                            <TabsTrigger value="biweekly" variant="underline" className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary">
                                 {t("tabBiweekly")}
                             </TabsTrigger>
                             </TabsList>
@@ -1705,7 +1883,7 @@ function FieldDetailPageContent() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="mr-2 h-7 w-7 shrink-0"
+                                className="mr-1 h-11 w-11 shrink-0 md:mr-2 md:h-7 md:w-7"
                                 aria-label={t("edit")}
                                 title={t("edit")}
                                 disabled={editing}
@@ -1736,7 +1914,7 @@ function FieldDetailPageContent() {
                             </div>
                         )}
 
-                        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
+                        <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [scrollbar-gutter:stable]">
                             {editing ? (
                                 <div className="p-4">
                                     <h3 className="text-sm font-semibold mb-3">{t("editField")}</h3>

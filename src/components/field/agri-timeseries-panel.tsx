@@ -704,7 +704,8 @@ export default function AgriTimeseriesPanel({
                     }),
                 ]);
                 if (cancelled) return;
-                setSummary(sum);
+                const sensors = sum.sensors ?? [];
+                setSummary({ ...sum, sensors });
                 const s2Items = reverseDescScenesPage(s2Desc.items);
                 const s1Items = reverseDescScenesPage(s1Desc.items);
                 const initialGradeDates = s2Items
@@ -727,7 +728,7 @@ export default function AgriTimeseriesPanel({
                     } : null,
                 });
                 setScenes(all);
-                const hasS2 = sum.sensors.some((s) => s.sensor === "S2" && s.count > 0);
+                const hasS2 = sensors.some((s) => s.sensor === "S2" && s.count > 0);
                 const nextSeries: SeriesKey = modeProp ?? (hasS2 ? "ndvi" : "vv");
                 setSeriesInternal(nextSeries);
                 onModeChange?.(nextSeries);
@@ -1333,11 +1334,11 @@ export default function AgriTimeseriesPanel({
             }
             setSummary((current) => {
                 if (!current) return current;
-                const previousCount = current.sensors.find((item) => item.sensor === sensor)?.count ?? 0;
+                const previousCount = (current.sensors ?? []).find((item) => item.sensor === sensor)?.count ?? 0;
                 return {
                     ...current,
                     total: Math.max(0, current.total + page.total - previousCount),
-                    sensors: current.sensors.map((item) => (
+                    sensors: (current.sensors ?? []).map((item) => (
                         item.sensor === sensor ? { ...item, count: page.total } : item
                     )),
                 };
@@ -1797,7 +1798,7 @@ export default function AgriTimeseriesPanel({
     return (
         <Card data-tour="timeseries" className="overflow-hidden border-border/60 bg-card shadow-sm">
             <CardHeader className="border-b border-border/50 bg-muted/20 px-3 py-2.5">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
                         <CardTitle className="flex flex-wrap items-center gap-1.5 text-xs font-semibold tracking-tight">
                             <span>{t("title")}</span>
@@ -1834,7 +1835,7 @@ export default function AgriTimeseriesPanel({
                         </Button>
                         {summary && (
                             <div className="flex flex-wrap gap-1 justify-end">
-                                {summary.sensors.map((s) => (
+                                {(summary.sensors ?? []).map((s) => (
                                     <Badge key={s.sensor} variant="secondary" className="text-[10px] tabular-nums">
                                         {s.sensor} {s.count}
                                     </Badge>
@@ -1885,7 +1886,7 @@ export default function AgriTimeseriesPanel({
                 <PhenologyPicker landId={landId}
                     onLoaded={data => {
                         setInferredPhenology(data);
-                        setSeasonWindows(current => current.length ? current : data.windows.slice(-MAX_SEASON_WINDOWS).map(window => ({
+                        setSeasonWindows(current => current.length ? current : (data.windows ?? []).slice(-MAX_SEASON_WINDOWS).map(window => ({
                             id: newWindowId(), start_date: window.start_date || window.observed_start || "",
                             end_date: window.end_date || window.observed_end || "", crops: cropOption?.key ? [cropOption.key] : [], label: t("remoteSensingWindow"),
                         })));

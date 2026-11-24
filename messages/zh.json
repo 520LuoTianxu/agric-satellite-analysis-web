@@ -410,6 +410,11 @@
   },
   "fieldDetail": {
     "backToFarm": "返回项目",
+    "backShort": "返回",
+    "sheetHandle": "拖动面板",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "locateMe": "定位到我的位置",
     "edit": "编辑",
     "delete": "删除",
     "tabInfo": "信息",

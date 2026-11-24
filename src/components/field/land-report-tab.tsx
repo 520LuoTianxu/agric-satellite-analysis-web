@@ -574,7 +574,7 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
                                 </p>
                             </div>
 
-                            <div className="flex items-end gap-3">
+                            <div className="flex flex-wrap items-end gap-3">
                                 <div
                                     className={`rounded-md px-3 py-2 text-center min-w-[4.5rem] ${lightBadgeClass(light)}`}
                                 >
@@ -673,7 +673,7 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
 
                     {latest && (
                         <div className="rounded-lg border bg-card p-3 space-y-2">
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span className="text-xs text-muted-foreground">
                                     {t("status")}
                                 </span>
