@@ -132,6 +132,32 @@ export function planStagesFromPayload(raw: unknown): PlanStage[] {
   return stages.sort((a, b) => a.start.localeCompare(b.start) || a.end_exclusive.localeCompare(b.end_exclusive));
 }
 
+/** First day with observation value: S1, or the first monitored stage when S1 is absent. */
+export function monitoringStart(stages: PlanStage[]): string | null {
+  const monitored = stages.filter((stage) => stage.monitored && stage.phase_label);
+  const s1 = monitored.filter((stage) => stage.phase_label === "S1");
+  const pool = s1.length ? s1 : monitored;
+  if (!pool.length) return null;
+  return pool.reduce((left, stage) => (stage.start < left ? stage.start : left), pool[0].start);
+}
+
+/**
+ * Drop biweekly periods that end before monitoring starts.
+ * S1 之前的整地、播种仍由 stages 展示，但不出现在周期选择里。
+ * 删掉前置期次时，可见序号从第 1 期重排；period_id 仍用接口原值，避免补数和生成对错窗。
+ * 接口已经从 S1 起算时这里不再改标签。
+ */
+export function periodsWithinMonitoring<T extends PlanPeriodMarker>(periods: T[], stages: PlanStage[]): T[] {
+  const start = monitoringStart(stages);
+  if (!start) return periods;
+  const kept = periods.filter((row) => {
+    if (!isIsoDay(row.end_exclusive) || !isIsoDay(row.start)) return true;
+    return row.end_exclusive > start;
+  });
+  if (kept.length === periods.length) return kept;
+  return kept.map((row, index) => ({ ...row, label: `第${index + 1}期` }));
+}
+
 function overlapDays(startA: string, endA: string, startB: string, endB: string): number {
   const start = startA > startB ? startA : startB;
   const end = endA < endB ? endA : endB;

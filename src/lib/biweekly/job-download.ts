@@ -2,16 +2,58 @@
 
 export const MAX_OFFICIAL_REDIRECTS = 5;
 
+export interface DownloadProgress {
+  receivedBytes: number;
+  totalBytes: number | null;
+  complete: boolean;
+}
+
 export interface DownloadAuthRequest {
   url: string;
   authHeaders: Record<string, string>;
   fallbackFilename: string;
   trustedOrigins: string[];
   signal?: AbortSignal;
+  onProgress?: (progress: DownloadProgress) => void;
   fetchImpl?: typeof fetch;
   saveBlob?: (blob: Blob, filename: string) => void;
   createObjectURL?: (blob: Blob) => string;
   revokeObjectURL?: (url: string) => void;
+}
+
+export function contentLengthOf(headers: { get(name: string): string | null }): number | null {
+  const raw = headers.get("Content-Length")?.trim() ?? "";
+  if (!/^\d+$/.test(raw)) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
+export function formatByteSize(bytes: number): string {
+  const size = Math.max(0, Math.round(bytes));
+  if (size < 1024) return `${size} B`;
+  const kb = size / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb >= 100 ? 0 : 1)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
+/** Percent stays below 100 until the body has been validated. Unknown length has no percent. */
+export function downloadPercent(progress: DownloadProgress): number | null {
+  if (progress.totalBytes == null || progress.totalBytes <= 0) return null;
+  if (progress.complete) return 100;
+  return Math.min(99, Math.floor((progress.receivedBytes / progress.totalBytes) * 100));
+}
+
+export function formatDownloadProgress(progress: DownloadProgress): string {
+  if (!progress.complete && progress.receivedBytes <= 0 && progress.totalBytes == null) {
+    return "正在下载…";
+  }
+  const received = formatByteSize(progress.receivedBytes);
+  const percent = downloadPercent(progress);
+  if (percent != null && progress.totalBytes != null) {
+    return `下载中 ${percent}% · ${received} / ${formatByteSize(progress.totalBytes)}`;
+  }
+  return `下载中 · 已接收 ${received}`;
 }
 
 export function sanitizeFilename(name: string, fallback: string): string {
@@ -169,6 +211,46 @@ function authHeaderMap(headers: Record<string, string>): Record<string, string> 
   return out;
 }
 
+async function readBody(
+  response: Response,
+  onProgress?: (progress: DownloadProgress) => void,
+): Promise<{ bytes: Uint8Array; totalBytes: number | null }> {
+  const totalBytes = contentLengthOf(response.headers);
+  const report = (receivedBytes: number) => {
+    onProgress?.({ receivedBytes, totalBytes, complete: false });
+  };
+  const body = response.body;
+  if (!body || typeof body.getReader !== "function") {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    report(bytes.byteLength);
+    return { bytes, totalBytes };
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  report(0);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      chunks.push(value.slice());
+      received += value.byteLength;
+      report(received);
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { bytes, totalBytes };
+}
+
 function defaultSaveBlob(
   blob: Blob,
   filename: string,
@@ -223,7 +305,7 @@ export async function downloadBiweeklyPdf(input: DownloadAuthRequest): Promise<v
       continue;
     }
 
-    const bytes = new Uint8Array(await response.arrayBuffer());
+    const { bytes, totalBytes } = await readBody(response, input.onProgress);
     if (!response.ok) {
       const body = looksLikeJsonBytes(bytes) ? parseJsonBody(bytes) : null;
       throw new Error(formatDownloadError(response.status, body));
@@ -233,11 +315,15 @@ export async function downloadBiweeklyPdf(input: DownloadAuthRequest): Promise<v
       if (body) throw new Error(formatDownloadError(response.status, body));
       throw new Error("下载结果不是 PDF，未保存文件。这不一定表示报告不存在，请稍后在已登录页面重试。");
     }
+    input.onProgress?.({ receivedBytes: bytes.byteLength, totalBytes, complete: true });
     const filename = sanitizeFilename(
       parseContentDispositionFilename(response.headers.get("Content-Disposition")) || input.fallbackFilename,
       input.fallbackFilename,
     );
-    save(new Blob([bytes], {type: "application/pdf"}), filename);
+    // 流式读取得到的 Uint8Array 在当前 DOM 类型里不能直接作为 BlobPart。
+    const copy = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(copy).set(bytes);
+    save(new Blob([copy], {type: "application/pdf"}), filename);
     return;
   }
   throw new Error("下载重定向次数过多，已中止。");

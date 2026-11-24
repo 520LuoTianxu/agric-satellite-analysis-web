@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LOCAL_LAND_ID, LOCAL_SEASONS, adjacentPeriod, getLocalSeason, isMaizeCrop, type LocalPeriod } from "@/lib/biweekly/local-catalog";
 import { downloadJob, getJob, listPeriods, listSeasons, triggerBackfill, triggerBackfillSeason, triggerGenerate, usesLocalFixture } from "@/lib/biweekly/local-trigger";
+import { downloadPercent, formatDownloadProgress, type DownloadProgress } from "@/lib/biweekly/job-download";
 import {
  canDownloadBiweeklyJob,
  clientFailedJob,
@@ -22,7 +23,7 @@ import {
  type JobView,
  type PollScope,
 } from "@/lib/biweekly/job-display";
-import { planStagesFromPayload, type PlanStage } from "@/lib/biweekly/plan-timeline";
+import { periodsWithinMonitoring, planStagesFromPayload, type PlanStage } from "@/lib/biweekly/plan-timeline";
 import { addDays } from "@/lib/biweekly/timeline";
 import { PlanPhenologyTimeline } from "./plan-timeline";
 import s from "./biweekly-tab.module.css";
@@ -46,7 +47,8 @@ function fixtureEnabled(allowLocalFixture?: boolean){
 }
 
 function toSeasonView(landId:string, raw:any, periods:LocalPeriod[], extra?:unknown):SeasonView{
- const stages=planStagesFromPayload(raw);
+ const fromSeason=planStagesFromPayload(raw);
+ const stages=fromSeason.length?fromSeason:planStagesFromPayload(extra);
  return {
   season_id:String(raw.season_id),
   label:String(raw.label||raw.season_id),
@@ -55,9 +57,14 @@ function toSeasonView(landId:string, raw:any, periods:LocalPeriod[], extra?:unkn
   land_id:String(raw.land_id||landId),
   land_name:raw.land_name?String(raw.land_name):undefined,
   note:raw.note?String(raw.note):"默认不出报，需显式触发补数或生成。",
-  periods,
-  stages:stages.length?stages:planStagesFromPayload(extra),
+  periods:periodsWithinMonitoring(periods, stages),
+  stages,
  };
+}
+
+function localSeasonView(item: (typeof LOCAL_SEASONS)[number]): SeasonView {
+ const stages = planStagesFromPayload(item);
+ return {...item, periods: periodsWithinMonitoring(item.periods, stages), stages};
 }
 
 function toPeriod(raw:any, index:number):LocalPeriod{
@@ -86,13 +93,15 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  const canUseFixture=fixtureEnabled(allowLocalFixture);
  const maize=isMaizeCrop(cropType);
  const resolvedLand=landId|| (canUseFixture?LOCAL_LAND_ID:"");
- const [seasons,setSeasons]=useState<SeasonView[]>(canUseFixture && !landId?LOCAL_SEASONS.map(item=>({...item,periods:item.periods,stages:planStagesFromPayload(item)})):[]);
+ const [seasons,setSeasons]=useState<SeasonView[]>(canUseFixture && !landId?LOCAL_SEASONS.map(localSeasonView):[]);
  const [seasonId,setSeasonId]=useState(seasons[0]?.season_id??"2025/26");
  const [periodId,setPeriodId]=useState("12");
  const [job,setJob]=useState<JobView|null>(null);
  const [trackedJobId,setTrackedJobId]=useState<string|null>(null);
  const [busy,setBusy]=useState(false);
  const [downloading,setDownloading]=useState(false);
+ const [downloadProgress,setDownloadProgress]=useState<DownloadProgress|null>(null);
+ const downloadPaintRef=useRef(0);
  const [loadError,setLoadError]=useState<string|null>(null);
  const pollTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
  const pollAbortRef=useRef<AbortController|null>(null);
@@ -103,7 +112,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
   if(found) return found;
   if(canUseFixture && resolvedLand===LOCAL_LAND_ID){
    const local=getLocalSeason(seasonId);
-   return {...local,periods:local.periods,stages:planStagesFromPayload(local)};
+   return localSeasonView(local);
   }
   return seasons[0];
  },[seasons,seasonId,canUseFixture,resolvedLand]);
@@ -209,7 +218,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
       }
       setLoadError(null);
      }else if(canUseFixture && resolvedLand===LOCAL_LAND_ID){
-      setSeasons(LOCAL_SEASONS.map(item=>({...item,periods:item.periods,stages:planStagesFromPayload(item)})));
+      setSeasons(LOCAL_SEASONS.map(localSeasonView));
       setLoadError(null);
      }else{
       setSeasons([]);
@@ -220,7 +229,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
    }catch(error){
     if(cancelled) return;
     if(canUseFixture && resolvedLand===LOCAL_LAND_ID){
-     setSeasons(LOCAL_SEASONS.map(item=>({...item,periods:item.periods,stages:planStagesFromPayload(item)})));
+     setSeasons(LOCAL_SEASONS.map(localSeasonView));
      setLoadError(null);
     }else{
      setSeasons([]);
@@ -306,15 +315,25 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
  const saveReport=async()=>{
   if(!resolvedLand||!displayedJob?.job_id||!canDownloadBiweeklyJob(displayedJob)||downloading) return;
   setDownloading(true);
+  downloadPaintRef.current=0;
+  setDownloadProgress({receivedBytes:0,totalBytes:null,complete:false});
   try{
-   await downloadJob(resolvedLand,displayedJob.job_id);
+   await downloadJob(resolvedLand,displayedJob.job_id,undefined,(progress)=>{
+    const now=Date.now();
+    if(!progress.complete && progress.receivedBytes>0 && now-downloadPaintRef.current<100) return;
+    downloadPaintRef.current=now;
+    setDownloadProgress(progress);
+   });
   }catch(error){
    const message=error instanceof Error?error.message:"下载失败。";
    setJob(current=>{
     const base=current??displayedJob;
     return {...base,error:message};
    });
-  }finally{setDownloading(false);}
+  }finally{
+   setDownloading(false);
+   setDownloadProgress(null);
+  }
  };
 
  if(maize){
@@ -358,7 +377,13 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
    </div>
    <div className={s.triggerRow} role="group" aria-label="生成双周报">
     <Button type="button" variant="outline" size="sm" disabled={generateBusy||!period} onClick={()=>run("generate")}>生成</Button>
-    {displayedJob?.job_id&&canDownloadBiweeklyJob(displayedJob)&&<Button type="button" variant="ghost" size="sm" disabled={downloading} onClick={()=>{void saveReport();}}>下载产物</Button>}
+    {displayedJob?.job_id&&canDownloadBiweeklyJob(displayedJob)&&<>
+     <Button type="button" variant="ghost" size="sm" disabled={downloading} onClick={()=>{void saveReport();}}>{downloading?"下载中":"下载产物"}</Button>
+     {downloading&&downloadProgress?<div className={s.downloadProgress} role="progressbar" aria-valuemin={0} aria-valuemax={downloadProgress.totalBytes??undefined} aria-valuenow={downloadProgress.totalBytes!=null?downloadProgress.receivedBytes:undefined} aria-label={formatDownloadProgress(downloadProgress)}>
+      <span>{formatDownloadProgress(downloadProgress)}</span>
+      <span className={s.downloadTrack} aria-hidden="true"><span className={s.downloadFill} data-unknown={downloadProgress.totalBytes==null?"true":"false"} style={downloadPercent(downloadProgress)!=null?{width:`${downloadPercent(downloadProgress)}%`}:undefined}/></span>
+     </div>:null}
+    </>}
    </div>
   </div>}
   {season?<PlanPhenologyTimeline stages={season.stages} period={period?{period_id:period.period_id,label:period.label,start:period.start,end_inclusive:period.end_inclusive,end_exclusive:period.end_exclusive,has_eligible_optics:period.has_eligible_optics}:null} periods={season.periods} onSelectPeriod={choosePeriod}/>:null}
