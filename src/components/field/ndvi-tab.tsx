@@ -252,7 +252,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
             {(layers.length > 0 || stats.length > 0) && (
             <Card>
                 <CardHeader className="pb-2 pt-3 px-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                         <CardTitle className="text-xs font-semibold">{tMon("timeSeries", { index: config.label })}</CardTitle>
                         <Button
                             variant={showWeatherOverlay ? "secondary" : "ghost"}
@@ -285,7 +285,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
             {layers.length > 0 && (
                 <Card>
                     <CardHeader className="pb-2 pt-3 px-3">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                             <CardTitle className="text-xs font-semibold">
                                 {config.label} {tMon("layerListTitle")}
                                 <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 tabular-nums">

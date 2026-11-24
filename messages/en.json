@@ -410,6 +410,11 @@
   },
   "fieldDetail": {
     "backToFarm": "Back to project",
+    "backShort": "Back",
+    "sheetHandle": "Drag panel",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "locateMe": "My location",
     "edit": "Edit",
     "delete": "Delete",
     "tabInfo": "Info",
