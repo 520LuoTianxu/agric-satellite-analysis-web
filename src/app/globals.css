@@ -380,6 +380,57 @@
     .field-sheet svg {
         max-width: 100%;
     }
+
+    /* 窄屏弹层改成可贴底拖动的页面抽屉：上拉展开，滚到顶后再下拉收起。 */
+    .mobile-page-sheet {
+        position: fixed !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        top: var(--sheet-top, 36%) !important;
+        width: 100% !important;
+        max-width: none !important;
+        height: auto !important;
+        max-height: none !important;
+        transform: none !important;
+        border-radius: 20px 20px 0 0 !important;
+        animation: none !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        overscroll-behavior-y: none;
+        padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+        transition: top 280ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .mobile-page-sheet[data-dragging="true"] {
+        transition: none !important;
+    }
+
+    /* 选择器不用贴在触发器上的小菜单，改成底部圆角卡片。 */
+    [data-mobile-picker] {
+        position: fixed !important;
+        top: auto !important;
+        right: 0.75rem !important;
+        bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+        left: 0.75rem !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-height: min(70vh, 32rem) !important;
+        transform: none !important;
+        border-radius: 1rem !important;
+        z-index: 80 !important;
+    }
+
+    [data-mobile-picker] [role="option"],
+    [data-mobile-picker] [role="menuitem"] {
+        min-height: 44px;
+        font-size: 16px;
+    }
+
+    [data-mobile-picker] [data-radix-select-viewport] {
+        height: auto !important;
+        max-height: min(60vh, 28rem) !important;
+    }
 }
 
 @media (min-width: 768px) {

@@ -102,7 +102,8 @@ export default function CropSelect({
             </DropdownMenuTrigger>
             <DropdownMenuContent
                 align="start"
-                className="w-[min(22rem,calc(100vw-2rem))] p-0"
+                data-mobile-picker=""
+                className="w-[min(22rem,calc(100vw-2rem))] p-0 max-md:w-auto"
                 onCloseAutoFocus={(e) => e.preventDefault()}
             >
                 <div className="p-2">
@@ -115,7 +116,7 @@ export default function CropSelect({
                         autoFocus
                     />
                 </div>
-                <div className="max-h-64 overflow-y-auto p-1">
+                <div className="max-h-64 overflow-y-auto p-1 max-md:max-h-[50vh]">
                     {!required && (
                         <DropdownMenuItem
                             onSelect={() => {

@@ -143,7 +143,8 @@ export function DatePicker({
             </DropdownMenuTrigger>
             <DropdownMenuContent
                 align="start"
-                className="w-[280px] p-3"
+                data-mobile-picker=""
+                className="w-[280px] p-3 max-md:w-auto"
                 onCloseAutoFocus={(e) => e.preventDefault()}
             >
                 <div className="mb-2 flex items-center justify-between gap-1">
@@ -189,7 +190,7 @@ export function DatePicker({
                                 variant={c.iso === value ? "default" : "ghost"}
                                 size="sm"
                                 disabled={c.disabled}
-                                className="h-8 w-8 p-0 text-xs"
+                                className="h-8 w-8 p-0 text-xs max-md:h-11 max-md:w-full max-md:text-base"
                                 onPointerDown={(e) => e.preventDefault()}
                                 onClick={() => {
                                     if (!c.iso || c.disabled) return;
