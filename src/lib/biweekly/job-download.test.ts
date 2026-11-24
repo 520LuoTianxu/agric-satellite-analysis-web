@@ -3,7 +3,10 @@ import {readFileSync} from "node:fs";
 import test from "node:test";
 import {
   downloadBiweeklyPdf,
+  downloadPercent,
+  formatByteSize,
   formatDownloadError,
+  formatDownloadProgress,
   isPdfResponse,
   parseContentDispositionFilename,
   resolveOfficialRedirect,
@@ -11,6 +14,7 @@ import {
   startsWithPdfMagic,
   trustedOriginsFor,
   urlContainsCredential,
+  type DownloadProgress,
 } from "./job-download.ts";
 
 const SAMPLE_TOKEN = "test-tenant-token-not-a-real-secret";
@@ -282,9 +286,84 @@ test("tab uses authenticated downloadJob and no longer bare-hrefs the official d
   const client = readFileSync("src/lib/biweekly/local-trigger.ts", "utf8");
   assert.match(client, /export async function downloadJob/);
   assert.match(client, /getSatelliteAuthHeaders/);
+  assert.match(client, /onProgress/);
   assert.match(tab, /downloadJob\(/);
   assert.match(tab, /下载产物/);
+  assert.match(tab, /role="progressbar"/);
+  assert.match(tab, /formatDownloadProgress/);
   assert.doesNotMatch(tab, /href=\{jobDownloadUrl/);
   assert.doesNotMatch(tab, /<a href=\{jobDownloadUrl/);
   assert.doesNotMatch(tab, /token=|access_token=/);
+});
+
+test("download progress reports bytes as the PDF streams, and 100% only after it is a PDF", async () => {
+  const head = PDF_BYTES.slice(0, 5);
+  const tail = PDF_BYTES.slice(5);
+  const events: DownloadProgress[] = [];
+  let saved = 0;
+  await downloadBiweeklyPdf({
+    url: "https://app.example/satellite-api/lands/32696/biweekly/jobs/bj-ready/download",
+    authHeaders: AUTH,
+    fallbackFilename: "fallback.pdf",
+    trustedOrigins: ["https://app.example"],
+    fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(head);
+        controller.enqueue(tail);
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Length": String(PDF_BYTES.byteLength),
+      },
+    }),
+    onProgress: (progress) => {
+      events.push({...progress});
+    },
+    saveBlob: (blob) => {
+      saved = blob.size;
+    },
+  });
+  assert.equal(saved, PDF_BYTES.byteLength);
+  assert.ok(events.some((event) => event.receivedBytes === head.byteLength && event.complete === false));
+  const last = events.at(-1);
+  assert.ok(last);
+  assert.equal(last.receivedBytes, PDF_BYTES.byteLength);
+  assert.equal(last.totalBytes, PDF_BYTES.byteLength);
+  assert.equal(last.complete, true);
+  assert.equal(downloadPercent({...last, complete: false}), 99);
+  assert.equal(downloadPercent(last), 100);
+  assert.equal(
+    formatDownloadProgress(last),
+    `下载中 100% · ${formatByteSize(PDF_BYTES.byteLength)} / ${formatByteSize(PDF_BYTES.byteLength)}`,
+  );
+
+  const unknown: DownloadProgress[] = [];
+  await downloadBiweeklyPdf({
+    url: "https://app.example/satellite-api/lands/32696/biweekly/jobs/bj-ready/download",
+    authHeaders: AUTH,
+    fallbackFilename: "fallback.pdf",
+    trustedOrigins: ["https://app.example"],
+    fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(PDF_BYTES);
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: {"Content-Type": "application/pdf"},
+    }),
+    onProgress: (progress) => {
+      unknown.push(progress);
+    },
+    saveBlob: () => undefined,
+  });
+  assert.equal(unknown.at(-1)?.totalBytes, null);
+  assert.equal(unknown.at(-1)?.complete, true);
+  assert.equal(downloadPercent(unknown.at(-1)!), null);
+  assert.equal(formatDownloadProgress({receivedBytes: 0, totalBytes: null, complete: false}), "正在下载…");
+  assert.equal(formatDownloadProgress({receivedBytes: 2048, totalBytes: null, complete: false}), "下载中 · 已接收 2.0 KB");
+  assert.equal(formatByteSize(5 * 1024 * 1024), "5.0 MB");
 });

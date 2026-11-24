@@ -10,4 +10,9 @@
 @container(min-width:600px){.root{padding-inline:var(--space-6)}}
 
 .triggerRow{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+.downloadProgress{display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:8.5rem;max-width:16rem;font-size:11px;line-height:1.4;color:hsl(var(--muted-foreground))}
+.downloadTrack{display:block;height:4px;border-radius:999px;background:hsl(var(--muted));overflow:hidden}
+.downloadFill{display:block;height:100%;width:0;border-radius:inherit;background:var(--bw-active,hsl(var(--primary)))}
+.downloadFill[data-unknown="true"]{width:35%;animation:biweeklyDownloadSlide 1.1s ease-in-out infinite}
+@keyframes biweeklyDownloadSlide{from{transform:translateX(-120%)}to{transform:translateX(320%)}}
 .jobStatus{margin:0;padding:12px;font-size:11px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:hsl(var(--muted));border-radius:var(--radius-md);color:hsl(var(--foreground))}
