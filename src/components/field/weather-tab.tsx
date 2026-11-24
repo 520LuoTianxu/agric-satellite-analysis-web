@@ -199,13 +199,13 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
             )}
             {/* Range selector */}
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-1 rounded-lg border bg-surface-2 p-0.5">
+                <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border bg-surface-2 p-0.5 [scrollbar-width:none] max-md:w-full max-md:flex-nowrap">
                     {rangeOptions.map((opt) => (
                         <button
                             key={opt.value}
                             type="button"
                             onClick={() => setRange(opt.value)}
-                            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${range === opt.value
+                            className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${range === opt.value
                                 ? "bg-background shadow-sm text-foreground"
                                 : "text-muted-foreground hover:text-foreground"
                                 }`}
@@ -214,8 +214,8 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                         </button>
                     ))}
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center gap-1.5">
+                <div className="flex min-w-0 items-center gap-2 max-md:w-full">
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
                         <Label htmlFor="weather-start-date" className="text-[11px] text-muted-foreground whitespace-nowrap">
                             {t("startDate")}
                         </Label>
@@ -230,7 +230,7 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                                 setCustomStartDate(event.target.value);
                                 setRange("custom");
                             }}
-                            className="h-9 w-full max-w-[160px] text-sm"
+                            className="h-9 w-full min-w-0 max-w-[160px] text-sm max-md:max-w-none"
                         />
                     </div>
                     <Button
@@ -267,60 +267,60 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
 
                 return (
                     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                        {/* Row 1: Temp (2 cols) + Precip (2 cols) */}
-                        <div className="col-span-2 rounded-lg border bg-card p-2.5 shadow-sm">
+                        {/* 手机端每个指标占一格，避免一行一个把面板拉得很长。 */}
+                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:col-span-2 md:p-2.5">
                             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("avgTemp")}</p>
-                            <p className="text-lg font-bold leading-tight mt-0.5 tabular-nums text-sig-temp">
+                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-sig-temp md:text-lg">
                                 {summary.avg_temperature != null ? `${summary.avg_temperature.toFixed(1)}°C` : "-"}
                             </p>
                             {summary.min_temperature != null && summary.max_temperature != null && (
                                 <p className="text-[10px] text-muted-foreground mt-0.5">{summary.min_temperature.toFixed(1)}° – {summary.max_temperature.toFixed(1)}°</p>
                             )}
                         </div>
-                        <div className="col-span-2 rounded-lg border bg-card p-2.5 shadow-sm">
+                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:col-span-2 md:p-2.5">
                             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("totalPrecip")}</p>
-                            <p className="text-lg font-bold leading-tight mt-0.5 tabular-nums text-sig-precip">
+                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-sig-precip md:text-lg">
                                 {summary.total_precipitation != null ? `${summary.total_precipitation.toFixed(1)} mm` : "-"}
                             </p>
                         </div>
 
                         {/* Row 2: Water Deficit + GDD + Soil Moisture + Frost/Heat */}
-                        <div className="col-span-2 rounded-lg border bg-card p-2.5 shadow-sm">
+                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:col-span-2 md:p-2.5">
                             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("waterDeficit")}</p>
-                            <p className={`text-lg font-bold leading-tight mt-0.5 tabular-nums ${summary.water_deficit_mm != null && summary.water_deficit_mm < 0 ? "text-danger" : "text-success"}`}>
+                            <p className={`mt-0.5 text-base font-bold leading-tight tabular-nums md:text-lg ${summary.water_deficit_mm != null && summary.water_deficit_mm < 0 ? "text-danger" : "text-success"}`}>
                                 {summary.water_deficit_mm != null ? `${summary.water_deficit_mm.toFixed(1)} mm` : "-"}
                             </p>
                         </div>
-                        <div className="col-span-1 rounded-lg border bg-card p-2.5 shadow-sm">
+                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:p-2.5">
                             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("gddCumulative")}</p>
-                            <p className="text-lg font-bold leading-tight mt-0.5 tabular-nums text-sig-temp">
+                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-sig-temp md:text-lg">
                                 {summary.gdd_cumulative != null ? `${summary.gdd_cumulative.toFixed(0)}` : "-"}
                             </p>
                         </div>
-                        <div className="col-span-1 rounded-lg border bg-card p-2.5 shadow-sm">
+                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:p-2.5">
                             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("soilMoisture")}</p>
-                            <p className="text-lg font-bold leading-tight mt-0.5 tabular-nums text-sig-water">
+                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-sig-water md:text-lg">
                                 {summary.avg_soil_moisture_top != null ? `${(summary.avg_soil_moisture_top * 100).toFixed(0)}%` : "-"}
                             </p>
                         </div>
 
                         {/* Row 3: VPD (3 cols) + Frost + Heat */}
                         {vpd != null && vpdZone && (
-                            <div className="col-span-2 rounded-lg border bg-card p-2.5 shadow-sm">
+                            <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:col-span-2 md:p-2.5">
                                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">VPD</p>
-                                <p className={`text-lg font-bold leading-tight mt-0.5 ${vpdColor}`}>{vpd.toFixed(2)} kPa</p>
+                                <p className={`mt-0.5 text-base font-bold leading-tight md:text-lg ${vpdColor}`}>{vpd.toFixed(2)} kPa</p>
                                 <p className="text-[10px] text-muted-foreground mt-0.5">{t(`vpd${vpdZone.charAt(0).toUpperCase() + vpdZone.slice(1)}`)}</p>
                             </div>
                         )}
-                        <div className="col-span-1 rounded-lg border bg-card p-2.5 shadow-sm">
+                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:p-2.5">
                             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("frostDays")}</p>
-                            <p className="text-lg font-bold leading-tight mt-0.5 tabular-nums text-info">
+                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-info md:text-lg">
                                 {summary.frost_days}
                             </p>
                         </div>
-                        <div className="col-span-1 rounded-lg border bg-card p-2.5 shadow-sm">
+                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:p-2.5">
                             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("heatStressDays")}</p>
-                            <p className="text-lg font-bold leading-tight mt-0.5 tabular-nums text-danger">
+                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-danger md:text-lg">
                                 {summary.heat_stress_days}
                             </p>
                         </div>

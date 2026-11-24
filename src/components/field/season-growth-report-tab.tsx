@@ -368,7 +368,7 @@ export default function SeasonGrowthReportTab({
                         {t("cdfinanceReuseHint")}
                     </p>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="hidden flex-wrap gap-2 md:flex">
                         <Button size="sm" onClick={handleGenerate} disabled={inFlight || uploading}>
                             {inFlight || uploading ? (
                                 <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />

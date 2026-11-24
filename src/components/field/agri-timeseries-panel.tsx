@@ -1797,13 +1797,13 @@ export default function AgriTimeseriesPanel({
 
     return (
         <Card data-tour="timeseries" className="overflow-hidden border-border/60 bg-card shadow-sm">
-            <CardHeader className="border-b border-border/50 bg-muted/20 px-3 py-2.5">
+            <CardHeader className="border-b border-border/50 bg-muted/20 px-3 py-2.5 max-md:border-0 max-md:bg-transparent max-md:px-0 max-md:py-0">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                        <CardTitle className="flex flex-wrap items-center gap-1.5 text-xs font-semibold tracking-tight">
+                        <CardTitle className="flex flex-wrap items-center gap-1.5 text-xs font-semibold tracking-tight max-md:hidden">
                             <span>{t("title")}</span>
                         </CardTitle>
-                        <p className="text-[11px] leading-snug text-muted-foreground">
+                        <p className="text-[11px] leading-snug text-muted-foreground max-md:hidden">
                             {t("subtitle", {
                                 landId: landId ?? "—",
                                 scenes: summary ? t("scenesCount", { total: summary.total }) : "",
@@ -1816,7 +1816,7 @@ export default function AgriTimeseriesPanel({
                             </div>
                         )}
                     </div>
-                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    <div className="flex shrink-0 flex-col items-end gap-1.5 max-md:hidden">
                         <Button
                             type="button"
                             size="sm"
@@ -1883,6 +1883,7 @@ export default function AgriTimeseriesPanel({
                 </div>
             </CardHeader>
             <CardContent className="p-3 space-y-3">
+                <div className="max-md:hidden">
                 <PhenologyPicker landId={landId}
                     onLoaded={data => {
                         setInferredPhenology(data);
@@ -1892,6 +1893,7 @@ export default function AgriTimeseriesPanel({
                         })));
                     }}
                     onSelect={window => setSeasonWindows([{ id: newWindowId(), start_date: window.start_date!, end_date: window.end_date!, crops: cropOption?.key ? [cropOption.key] : [], label: t("remoteSensingWindow") }])} />
+                </div>
                 <IndexExplainer index={series} />
                 <Dialog open={refreshDateOpen} onOpenChange={setRefreshDateOpen}>
                     <DialogContent className="sm:max-w-lg">
