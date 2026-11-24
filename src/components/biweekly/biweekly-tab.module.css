@@ -19,3 +19,4 @@
 .conclusionTitle{margin:0 0 6px;font-size:13px;font-weight:600;line-height:1.5}
 .conclusionLine{margin:0;font-size:13px;line-height:1.7}
 .conclusionLine+.conclusionLine{margin-top:4px}
+.conclusionMark{font-weight:600;padding:0 3px;border-radius:3px}

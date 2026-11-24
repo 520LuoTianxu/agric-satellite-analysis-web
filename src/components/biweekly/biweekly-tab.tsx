@@ -15,6 +15,7 @@ import {
  isGenerateInFlight,
  isInFlightJobStatus,
  cardFromSummary,
+ conclusionPieces,
  jobFromApi,
  jobFromLatest,
  normalizeLatestJob,
@@ -33,6 +34,15 @@ const md=(date:string)=>date.slice(5).replace("-",".");
 const range=(start:string,endInclusive:string)=>`${md(start)}–${md(endInclusive)}`;
 
 type SeasonView = {season_id:string;label?:string;crop?:string;crop_name?:string;land_id?:string;land_name?:string;note?:string;plan_status?:string;periods:LocalPeriod[];stages:PlanStage[]};
+
+function ConclusionLine({line}:{line:string}){
+ const pieces=conclusionPieces(line);
+ return <p className={s.conclusionLine}>{pieces.map((piece,index)=>{
+  if(piece.type==="mark") return <span className={s.conclusionMark} key={index} style={{color:piece.color,backgroundColor:piece.background}}>{piece.text}</span>;
+  if(piece.type==="bold") return <strong key={index}>{piece.text}</strong>;
+  return <span key={index}>{piece.text}</span>;
+ })}</p>;
+}
 
 function planErrorMessage(code:string){
  if(code==="NO_SEASONS" || code.includes("未关联") || code.includes("无法读取 Smart")){
@@ -415,7 +425,7 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
    <p className={s.cross}>{period.label} {period.start}—{period.end_inclusive}（结束日含，内部区间至 {period.end_exclusive} 不含）。{period.has_eligible_optics?`本期有 ${period.optical_descriptive_days} 个可用光学日。`:"本期暂无可用光学。可先补齐本期数据，再显式生成；确认无景后得到证据受限简报。"}{period.s1_products?"":" 本期无雷达。"} 有本田方案时按本田方案标注生育期。不会默认使用其他地块的参照计划；如使用参照，须由调用方显式传入并标注为参照。</p>
    {displayedJob? <div className={s.conclusion}>{card&&cardJobId===displayedJob.job_id?<>
     <p className={s.conclusionTitle}>{card.title}</p>
-    {card.lines.map((line,index)=><p className={s.conclusionLine} key={index}>{line}</p>)}
+    {card.lines.map((line,index)=><ConclusionLine key={index} line={line}/>)}
    </>:<p className={s.conclusionLine}>正在读取本期结论。</p>}</div> : <p className={s.empty}>{period.has_eligible_optics?"尚未生成报告。":"本期暂无可用光学报告。"}按钮走与其他地块接口同一套网关和登录态，不会自动出报。</p>}
   </>: <p className={s.empty}>{loadError?planErrorMessage(loadError):"暂无报告。"}</p>}</div>
  </section></div>;

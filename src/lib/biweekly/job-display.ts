@@ -259,7 +259,7 @@ export interface ReportCardView {
   lines: string[];
 }
 
-/** The summary route already picks the sentences. Drop anything that is not plain text. */
+/** The summary route already picks the sentences and keeps only bold plus three colors. */
 export function cardFromSummary(raw: unknown): ReportCardView | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
@@ -269,6 +269,87 @@ export function cardFromSummary(raw: unknown): ReportCardView | null {
   if (!lines.length) return null;
   const title = typeof row.title === "string" && row.title.trim() ? row.title.trim() : "本期结论";
   return {title, lines};
+}
+
+const CONCLUSION_MARKS: Record<string, {color: string; background: string}> = {
+  "1F4D38": {color: "#1F4D38", background: "#D9F2E3"},
+  "9C2B1B": {color: "#9C2B1B", background: "#F8D6D2"},
+  "8A5A12": {color: "#8A5A12", background: "#F8E8C8"},
+};
+
+export type ConclusionPiece =
+  | {type: "text"; text: string}
+  | {type: "bold"; text: string}
+  | {type: "mark"; text: string; color: string; background: string};
+
+type ConclusionFrame = "bold" | "skip" | {color: string; background: string};
+
+function decodeConclusionText(text: string): string {
+  return text.replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
+function pushConclusionPiece(pieces: ConclusionPiece[], piece: ConclusionPiece) {
+  if (!piece.text) return;
+  const last = pieces[pieces.length - 1];
+  if (last?.type === "text" && piece.type === "text") {
+    last.text += piece.text;
+    return;
+  }
+  if (last?.type === "bold" && piece.type === "bold") {
+    last.text += piece.text;
+    return;
+  }
+  if (
+    last?.type === "mark" &&
+    piece.type === "mark" &&
+    last.color === piece.color &&
+    last.background === piece.background
+  ) {
+    last.text += piece.text;
+    return;
+  }
+  pieces.push(piece);
+}
+
+/** Turn the summary markup into text, bold, and the three highlight colors. Other tags are ignored. */
+export function conclusionPieces(line: string): ConclusionPiece[] {
+  const pieces: ConclusionPiece[] = [];
+  const stack: ConclusionFrame[] = [];
+  const token = /<\s*(\/?)\s*(b|font)\b([^>]*)>|([^<]+)|<[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = token.exec(line))) {
+    if (match[4]) {
+      const text = decodeConclusionText(match[4]);
+      const mark = [...stack].reverse().find((item): item is {color: string; background: string} => typeof item === "object");
+      if (mark) pushConclusionPiece(pieces, {type: "mark", text, color: mark.color, background: mark.background});
+      else if (stack.includes("bold")) pushConclusionPiece(pieces, {type: "bold", text});
+      else pushConclusionPiece(pieces, {type: "text", text});
+      continue;
+    }
+    if (!match[2]) continue;
+    const closing = Boolean(match[1]);
+    const name = match[2].toLowerCase();
+    if (closing) {
+      const wanted = name === "b" ? "bold" : "font";
+      for (let index = stack.length - 1; index >= 0; index -= 1) {
+        const frame = stack[index];
+        const isBold = frame === "bold";
+        if ((wanted === "bold" && isBold) || (wanted === "font" && !isBold)) {
+          stack.splice(index, 1);
+          break;
+        }
+      }
+      continue;
+    }
+    if (name === "b") {
+      if (!match[3].trim()) stack.push("bold");
+      continue;
+    }
+    const color = /color\s*=\s*['"]#?([0-9A-Fa-f]{6})['"]/i.exec(match[3]);
+    const mark = color ? CONCLUSION_MARKS[color[1].toUpperCase()] : undefined;
+    stack.push(mark ?? "skip");
+  }
+  return pieces;
 }
 
 export function jobStatusPreview(job: JobView): Record<string, unknown> {

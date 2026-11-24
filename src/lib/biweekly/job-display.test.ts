@@ -8,6 +8,7 @@ import {
   isInFlightJobStatus,
   isTerminalJobStatus,
   cardFromSummary,
+  conclusionPieces,
   jobFromApi,
   jobFromLatest,
   jobRegistrationNote,
@@ -39,6 +40,21 @@ const PERIOD_15_FIXTURE = {
   },
   observation_source: "parcel_scene_products",
 };
+
+test("conclusion pieces keep bold and the three colors, and ignore other tags", () => {
+  assert.deepEqual(conclusionPieces("叶子里的水少了一些，<b>要留意浇水</b>。"), [
+    {type: "text", text: "叶子里的水少了一些，"},
+    {type: "bold", text: "要留意浇水"},
+    {type: "text", text: "。"},
+  ]);
+  assert.deepEqual(conclusionPieces('<font color="#9C2B1B" backColor="#F8D6D2">东北部偏弱</font>'), [
+    {type: "mark", text: "东北部偏弱", color: "#9C2B1B", background: "#F8D6D2"},
+  ]);
+  assert.deepEqual(conclusionPieces("<script>alert(1)</script>你好"), [
+    {type: "text", text: "alert(1)你好"},
+  ]);
+  assert.deepEqual(conclusionPieces("A &amp; B"), [{type: "text", text: "A & B"}]);
+});
 
 test("summary card keeps plain conclusion lines and drops an empty payload", () => {
   assert.deepEqual(cardFromSummary({title: "本期结论", lines: [" 要留意浇水。 ", ""]}), {
