@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { Loader2, RefreshCw, CloudOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land-schedule-filter";
 import ForecastBar from "@/components/field/forecast-bar";
@@ -198,14 +198,14 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                 </div>
             )}
             {/* Range selector */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between">
                 <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border bg-surface-2 p-0.5 [scrollbar-width:none] max-md:w-full max-md:flex-nowrap">
                     {rangeOptions.map((opt) => (
                         <button
                             key={opt.value}
                             type="button"
                             onClick={() => setRange(opt.value)}
-                            className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${range === opt.value
+                            className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors max-md:h-9 max-md:px-3 max-md:text-sm ${range === opt.value
                                 ? "bg-background shadow-sm text-foreground"
                                 : "text-muted-foreground hover:text-foreground"
                                 }`}
@@ -214,29 +214,28 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                         </button>
                     ))}
                 </div>
-                <div className="flex min-w-0 items-center gap-2 max-md:w-full">
-                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                <div className="flex min-w-0 items-end gap-2 max-md:w-full">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <Label htmlFor="weather-start-date" className="text-[11px] text-muted-foreground whitespace-nowrap">
                             {t("startDate")}
                         </Label>
-                        <Input
+                        <DatePicker
                             id="weather-start-date"
-                            type="date"
                             value={customStartDate}
                             min={dateYearsAgo(MAX_WEATHER_HISTORY_YEARS)}
                             max={todayInputValue()}
                             disabled={range !== "custom"}
-                            onChange={(event) => {
-                                setCustomStartDate(event.target.value);
-                                setRange("custom");
+                            onChange={(value) => {
+                                setCustomStartDate(value);
+                                if (value) setRange("custom");
                             }}
-                            className="h-9 w-full min-w-0 max-w-[160px] text-sm max-md:max-w-none"
+                            className="h-10"
                         />
                     </div>
                     <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 gap-1.5 text-xs"
+                        className="h-10 shrink-0 gap-1.5 text-xs"
                         onClick={() => { void handleBackfill(); }}
                         disabled={oversizedLand || backfilling || fetchProgress}
                         title={t("refresh")}
