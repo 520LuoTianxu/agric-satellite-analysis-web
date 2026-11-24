@@ -7,7 +7,7 @@ as the only path. Optional NEXT_PUBLIC_BIWEEKLY_API_BASE is an escape
 hatch for a raw API process; it must not default to a production domain.
 */
 import { biweeklyApi, getApiBase, getSatelliteAuthHeaders } from "@/lib/api";
-import { downloadBiweeklyPdf, trustedOriginsFor } from "@/lib/biweekly/job-download";
+import { downloadBiweeklyPdf, trustedOriginsFor, type DownloadProgress } from "@/lib/biweekly/job-download";
 
 export const DEFAULT_API_BASE = "/satellite-api";
 
@@ -95,7 +95,12 @@ export function jobDownloadUrl(landId: string, jobId: string) {
   return biweeklyPath(`/lands/${landId}/biweekly/jobs/${jobId}/download`);
 }
 
-export async function downloadJob(landId: string, jobId: string, signal?: AbortSignal) {
+export async function downloadJob(
+  landId: string,
+  jobId: string,
+  signal?: AbortSignal,
+  onProgress?: (progress: DownloadProgress) => void,
+) {
   const url = jobDownloadUrl(landId, jobId);
   const pageOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
   await downloadBiweeklyPdf({
@@ -104,6 +109,7 @@ export async function downloadJob(landId: string, jobId: string, signal?: AbortS
     fallbackFilename: `biweekly-${landId}-${jobId}.pdf`,
     trustedOrigins: trustedOriginsFor(url, [getApiBase(), biweeklyRequestBase()], pageOrigin),
     signal,
+    onProgress,
   });
 }
 
