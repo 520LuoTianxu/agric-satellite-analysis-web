@@ -398,7 +398,7 @@ export default function SeasonGrowthReportTab({
 
                     {latest && (
                         <div className="rounded-lg border bg-card p-3 space-y-2">
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span className="text-xs text-muted-foreground">{t("status")}</span>
                                 <Badge variant="secondary" className="text-xs">
                                     {latest.status === "succeeded" && (

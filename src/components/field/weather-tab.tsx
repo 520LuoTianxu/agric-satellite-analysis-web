@@ -113,9 +113,9 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
         try {
             const { start, end } = selectedWindow;
             const res = await weatherApi.get(landId, start, end, false);
-            setData(res.data);
-            setForecast(res.forecast);
-            setSummary(res.summary);
+            setData(res.data ?? []);
+            setForecast(res.forecast ?? []);
+            setSummary(res.summary ?? null);
         } catch {
             // silent - empty state shown
         } finally {
@@ -150,9 +150,9 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                 attempts += 1;
                 try {
                     const res = await weatherApi.get(landId, start, end, false);
-                    setData(res.data);
-                    setForecast(res.forecast);
-                    setSummary(res.summary);
+                    setData(res.data ?? []);
+                    setForecast(res.forecast ?? []);
+                    setSummary(res.summary ?? null);
                 } catch {
                     /* ignore */
                 }
@@ -230,7 +230,7 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                                 setCustomStartDate(event.target.value);
                                 setRange("custom");
                             }}
-                            className="h-8 w-[132px] text-xs"
+                            className="h-9 w-full max-w-[160px] text-sm"
                         />
                     </div>
                     <Button
@@ -266,7 +266,7 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                 }[vpdZone] : "";
 
                 return (
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                         {/* Row 1: Temp (2 cols) + Precip (2 cols) */}
                         <div className="col-span-2 rounded-lg border bg-card p-2.5 shadow-sm">
                             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("avgTemp")}</p>

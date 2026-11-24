@@ -197,7 +197,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
 
     useEffect(() => {
         const map = mapInstance;
-        if (!map || !samplingZones) return;
+        if (!map || !samplingZones?.features) return;
 
         const geojson: GeoJSON.FeatureCollection = {
             type: "FeatureCollection",
@@ -361,8 +361,8 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                 soilApi.getSummary(landId),
             ]);
             const coreDataLoaded = p.status === "fulfilled" && s.status === "fulfilled";
-            if (p.status === "fulfilled") setProfile(p.value);
-            if (s.status === "fulfilled") setSummary(s.value);
+            if (p.status === "fulfilled" && Array.isArray(p.value?.layers)) setProfile(p.value);
+            if (s.status === "fulfilled" && s.value) setSummary(s.value);
 
             try {
                 const cachedNpk = await soilApi.getNpk(landId);
@@ -391,7 +391,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                 if (nc.status === "fulfilled") setNutrientContext(nc.value);
                 if (ce.status === "fulfilled") setCarbonEstimate(ce.value);
                 if (ws.status === "fulfilled") setWeatherStress(ws.value);
-                if (sz.status === "fulfilled") setSamplingZones(sz.value);
+                if (sz.status === "fulfilled" && Array.isArray(sz.value?.features)) setSamplingZones(sz.value);
             }
             return coreDataLoaded;
         } catch {
@@ -563,7 +563,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
     }
 
     /* Empty state - no soil profile yet */
-    if (!profile) {
+    if (!profile?.layers) {
         return (
             <div className="flex flex-col items-center justify-center py-12 text-center">
                 {oversizedLand && (
@@ -660,7 +660,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
 
             {/* Depth profile: sand/silt/clay stacked bars */}
             <section>
-                <div className="flex items-center justify-between mb-2">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-xs font-semibold">{t("depthProfile")}</h3>
                     <div className="flex items-center gap-3">
                         <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -933,7 +933,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                 </h4>
                 <div className="rounded-lg border bg-card p-3 space-y-3">
                     {npk ? (
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                             <div className="rounded-md bg-surface-2 p-2 text-center">
                                 <div className="text-[10px] text-muted-foreground">{t("npkN")} · {t("npkTN")}</div>
                                 <div className="text-lg font-semibold tabular-nums">
@@ -1003,7 +1003,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                 <div className="rounded-lg border bg-card p-3 space-y-3">
                     {siteAdmission ? (
                         <div className="space-y-2">
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                                 <div className="rounded-md bg-surface-2 p-2 text-center">
                                     <div className="text-[10px] text-muted-foreground">{t("siteAdmissionScore")}</div>
                                     <div className="text-lg font-semibold tabular-nums">

@@ -186,7 +186,7 @@ export default function HarvestTab({ landId, fieldGeom, onMapOverlayChange, embe
                         </button>
                     ))}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
                         <input
                             type="checkbox"
@@ -247,7 +247,7 @@ export default function HarvestTab({ landId, fieldGeom, onMapOverlayChange, embe
                 </div>
             ) : (
                 <>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         <div className="rounded-lg border bg-card p-2.5">
                             <p className="text-[11px] text-muted-foreground">{t("latestPct")}</p>
                             <p className="mt-0.5 text-lg font-bold text-primary tabular-nums">{fmtPct(latest?.harvested_pct)}</p>

@@ -27,9 +27,13 @@ export function TopNav() {
     const tCommon = useTranslations("common");
     const { data: summary } = useAlertSummary();
     const unreadAlertCount = summary?.unread_total ?? 0;
+    const onFieldDetail = pathname.includes("/farms/fields/detail");
 
     return (
-        <header className="sticky top-0 z-40 shrink-0 border-b border-border/80 bg-background/95 backdrop-blur-md">
+        <header className={cn(
+            "sticky top-0 z-40 shrink-0 border-b border-border/80 bg-background/95 backdrop-blur-md",
+            onFieldDetail && "max-md:hidden",
+        )}>
             <div className="grid grid-cols-2 items-center gap-2 px-3 py-2 md:h-14 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-5 md:py-0">
                 <Link href="/" className="order-1 flex min-w-0 items-center gap-2">
                     <Image
