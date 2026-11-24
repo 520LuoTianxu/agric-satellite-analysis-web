@@ -11,7 +11,7 @@ export function IndexExplainer({ index }: { index: string }) {
     const label = t(`indexLabels.${key}`);
 
     return (
-        <section data-tour="growth-index" aria-label={t("indexGuideAria", { index: label })} className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs leading-relaxed">
+        <section data-tour="growth-index" aria-label={t("indexGuideAria", { index: label })} className="hidden space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs leading-relaxed md:block">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-semibold text-foreground">{label}</h3>
                 <AgriIndexGlossary initialKey={key} />

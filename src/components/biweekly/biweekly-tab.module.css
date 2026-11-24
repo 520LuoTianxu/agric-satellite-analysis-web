@@ -17,6 +17,13 @@
 }
 
 .triggerRow{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+@media (max-width: 767px) {
+  .seasonFill,
+  .periodFill,
+  .triggerRow {
+    display: none;
+  }
+}
 .downloadProgress{display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:8.5rem;max-width:16rem;font-size:11px;line-height:1.4;color:hsl(var(--muted-foreground))}
 .downloadTrack{display:block;height:4px;border-radius:999px;background:hsl(var(--muted));overflow:hidden}
 .downloadFill{display:block;height:100%;width:0;border-radius:inherit;background:var(--bw-active,hsl(var(--primary)))}
