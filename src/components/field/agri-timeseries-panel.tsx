@@ -62,21 +62,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Eye, EyeOff, RefreshCw, History, MoreHorizontal, Check, Plus, Trash2, AlertTriangle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Loader2, Eye, EyeOff, RefreshCw, History, Check, Plus, Trash2, AlertTriangle, ChevronDown, Leaf, Sun, Waves, Droplets, Sprout, Radio, Radar, Activity, CloudRain } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { reverseDescScenesPage } from "@/lib/agri-scenes-page";
 import { IndexExplainer } from "@/components/field/index-explainer";
 import { toast } from "sonner";
@@ -378,9 +371,74 @@ function sceneSeriesAvg(scene: AgriSceneProduct, key: SeriesKey): number | null 
     return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-const RECENT_DATE_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
-const RECENT_DATE_CHIP_CAP = 14;
-const PRIMARY_SERIES_KEYS: SeriesKey[] = ["ndvi", "drought", "flood"];
+const SERIES_ICONS: Partial<Record<SeriesKey, LucideIcon>> = {
+    ndvi: Leaf,
+    drought: Sun,
+    flood: Waves,
+    evi: Sprout,
+    ndmi: Droplets,
+    ndre: Activity,
+    mndwi: Waves,
+    cire: CloudRain,
+    vv: Radio,
+    vh: Radar,
+};
+
+function SeriesSwitcher({
+    series,
+    keys,
+    onChange,
+}: {
+    series: SeriesKey;
+    keys: SeriesKey[];
+    onChange: (key: SeriesKey) => void;
+}) {
+    const t = useTranslations("agriPanel");
+    const Icon = SERIES_ICONS[series] ?? Leaf;
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-9 shrink-0 rounded-full px-3 text-sm font-medium"
+                    aria-label={t("switchIndex")}
+                >
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    <span className="max-w-[7.5rem] truncate">{t(`indexLabels.${series}`)}</span>
+                    <ChevronDown className="h-4 w-4 opacity-70" aria-hidden="true" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+                align="end"
+                className="max-h-[min(70vh,28rem)] w-[min(22rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl p-1.5"
+            >
+                {keys.map((key) => {
+                    const RowIcon = SERIES_ICONS[key] ?? Leaf;
+                    const active = series === key;
+                    return (
+                        <DropdownMenuItem
+                            key={key}
+                            onSelect={() => onChange(key)}
+                            className="items-start gap-2.5 rounded-xl px-2 py-2"
+                        >
+                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-foreground">
+                                {active ? <Check className="h-4 w-4" aria-hidden="true" /> : null}
+                            </span>
+                            <RowIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-sm font-medium leading-tight">{t(`indexLabels.${key}`)}</span>
+                                <span className="mt-0.5 line-clamp-2 block text-xs leading-snug text-muted-foreground">
+                                    {t(`indexHints.${key}`)}
+                                </span>
+                            </span>
+                        </DropdownMenuItem>
+                    );
+                })}
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+}
 
 function compareAgriScenesChronologically(a: AgriSceneProduct, b: AgriSceneProduct): number {
     return a.date.localeCompare(b.date)
@@ -593,6 +651,8 @@ export default function AgriTimeseriesPanel({
         [onModeChange],
     );
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    const selectedDateRef = useRef<string | null>(null);
+    selectedDateRef.current = selectedDate;
     const [heatmapVisible, setHeatmapVisible] = useState(true);
     const [heatmapLoading, setHeatmapLoading] = useState(false);
     const [heatmapError, setHeatmapError] = useState<"failed" | "tooLarge" | null>(null);
@@ -1380,6 +1440,7 @@ export default function AgriTimeseriesPanel({
 
     const selectDateExplicit = useCallback(
         (date: string) => {
+            if (selectedDateRef.current === date) return;
             setSelectedDate(date);
             const sensor = sensorForIndex(series);
             const scene = scenes.find((s) => s.sensor === sensor && s.date === date);
@@ -1446,39 +1507,6 @@ export default function AgriTimeseriesPanel({
         () => BUTTON_ORDER.filter((key) => seriesIsAvailable(key, scenes)),
         [scenes],
     );
-    const primaryKeys = useMemo(() => {
-        const preferred = PRIMARY_SERIES_KEYS.filter((k) => availableKeys.includes(k));
-        return preferred.length ? preferred : availableKeys.slice(0, 4);
-    }, [availableKeys]);
-    const overflowKeys = useMemo(
-        () => availableKeys.filter((k) => !primaryKeys.includes(k)),
-        [availableKeys, primaryKeys],
-    );
-    const seriesInOverflow = overflowKeys.includes(series);
-
-    const allDates = useMemo(
-        () => [...new Set(stats.map((s) => s.date))].sort((a, b) => b.localeCompare(a)),
-        [stats],
-    );
-    const recentDates = useMemo(() => {
-        if (!allDates.length) return [] as string[];
-        const latest = allDates[0]!; // already desc
-        const latestMs = Date.parse(`${latest}T00:00:00Z`);
-        if (!Number.isFinite(latestMs)) return allDates.slice(0, RECENT_DATE_CHIP_CAP);
-        const cutoff = latestMs - RECENT_DATE_WINDOW_MS;
-        const inWindow = allDates.filter((d) => {
-            const ms = Date.parse(`${d}T00:00:00Z`);
-            return Number.isFinite(ms) && ms >= cutoff;
-        });
-        return inWindow.slice(0, RECENT_DATE_CHIP_CAP);
-    }, [allDates]);
-    const chipDates = useMemo(() => {
-        const set = new Set(recentDates);
-        if (selectedDate && !set.has(selectedDate) && allDates.includes(selectedDate)) {
-            return [selectedDate, ...recentDates];
-        }
-        return recentDates;
-    }, [recentDates, selectedDate, allDates]);
 
     const droughtByDate = useMemo(() => {
         const s2 = scenes.filter((s) => s.sensor === "S2");
@@ -1574,27 +1602,6 @@ export default function AgriTimeseriesPanel({
         return dates.size;
     }, [scenes]);
 
-    const cloudByDate = useMemo(() => {
-        const sensor = sensorForIndex(series);
-        const out: Record<string, { pct: number | null; source: "parcel" | "stac" | null }> = {};
-        for (const d of allDates) {
-            const group = scenes.filter((s) => s.sensor === sensor && s.date === d);
-            const picked =
-                sensor === "S2"
-                    ? series === "drought"
-                        ? pickOfficialOptical(group, { neighbors: scenes })
-                        : pickOpticalForNdvi(group, { neighbors: scenes })
-                    : group[0];
-            out[d] = sceneCloudDisplay(picked ?? null);
-        }
-        return out;
-    }, [allDates, scenes, series]);
-    const cloudPctByDate = useMemo(() => {
-        const out: Record<string, number | null> = {};
-        for (const [d, v] of Object.entries(cloudByDate)) out[d] = v.pct;
-        return out;
-    }, [cloudByDate]);
-
     const selectedBare = useMemo(() => {
         if (!selectedDate || (series !== "ndvi" && series !== "drought" && series !== "evi")) return false;
         const st = stats.find((s) => s.date === selectedDate);
@@ -1668,12 +1675,6 @@ export default function AgriTimeseriesPanel({
         return sceneCloudDisplay(selectedScene);
     }, [selectedScene, series]);
     const cloudCoverPct = selectedCloud.pct;
-
-    const cloudCoverOver30 = useMemo(() => {
-        if (!selectedScene) return false;
-        if (cloudCoverPct != null) return cloudCoverPct > DROUGHT_CLOUD_MAX_PCT;
-        return selectedScene.cloud_cover_over_30 === true;
-    }, [selectedScene, cloudCoverPct]);
 
     const selectedDecloudAlt = useMemo(() => {
         if (!selectedDate) return null;
@@ -1793,7 +1794,6 @@ export default function AgriTimeseriesPanel({
         flood: "VV",
     };
     const chartIndexType: IndexType = CHART_INDEX_TYPE[series] ?? "NDVI";
-    const selectedMean = stats.find((point) => point.date === selectedDate)?.mean;
 
     return (
         <Card data-tour="timeseries" className="overflow-hidden border-border/60 bg-card shadow-sm">
@@ -2077,84 +2077,6 @@ export default function AgriTimeseriesPanel({
                 )}
                 {!loading && total > 0 && (
                     <>
-                        <div className="flex flex-wrap gap-1.5 items-center rounded-xl bg-muted/40 p-2">
-                            {primaryKeys.map((key) => {
-                                return (
-                                    <Button
-                                        key={key}
-                                        type="button"
-                                        size="sm"
-                                        variant={series === key ? "default" : "outline"}
-                                        className={cn(
-                                            "h-7 text-xs px-2.5 shrink-0",
-                                            (key === "drought" || key === "flood") &&
-                                                series !== key &&
-                                                "border-primary/40",
-                                        )}
-                                        onClick={() => setSeries(key)}
-                                        aria-pressed={series === key}
-                                        title={t(`indexHints.${key}`)}
-                                    >
-                                        {t(`indexLabels.${key}`)}
-                                    </Button>
-                                );
-                            })}
-                            {overflowKeys.length > 0 && (
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant={seriesInOverflow ? "secondary" : "outline"}
-                                            className="h-7 w-7 p-0 shrink-0"
-                                            title={t("moreIndices")}
-                                            aria-label={t("moreIndices")}
-                                        >
-                                            <MoreHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-                                            <span className="sr-only">{t("moreIndices")}</span>
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="start" className="min-w-[10rem]">
-                                        {overflowKeys.map((key) => {
-                                            const active = series === key;
-                                            return (
-                                                <DropdownMenuItem
-                                                    key={key}
-                                                    onSelect={() => setSeries(key)}
-                                                    className="text-xs gap-2"
-                                                >
-                                                    <span className="flex-1">{t(`indexLabels.${key}`)}</span>
-                                                    {active ? (
-                                                        <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                                                    ) : null}
-                                                </DropdownMenuItem>
-                                            );
-                                        })}
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            )}
-                            <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 w-7 p-0 shrink-0 ml-auto"
-                                title={heatmapVisible ? t("hideHeatmap") : t("showHeatmap")}
-                                aria-label={heatmapVisible ? t("hideHeatmap") : t("showHeatmap")}
-                                onClick={() => {
-                                    setHeatmapVisible((v) => {
-                                        const next = !v;
-                                        if (!next) onHeatmapChange?.(null);
-                                        return next;
-                                    });
-                                }}
-                            >
-                                {heatmapVisible ? (
-                                    <Eye className="h-3.5 w-3.5" aria-hidden="true" />
-                                ) : (
-                                    <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
-                                )}
-                            </Button>
-                        </div>
                         {(series === "drought" || series === "flood") && (
                             <p className="text-[11px] text-muted-foreground leading-snug">
                                 {t(`indexHints.${series}`)}
@@ -2171,45 +2093,61 @@ export default function AgriTimeseriesPanel({
                             </p>
                         )}
                         <div className="rounded-lg bg-background p-2.5">
-                            {/* 收获日识别属于历史曲线操作，和当前指标、日期放在同一行，避免单独占一块空间。 */}
-                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                                <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                                    <span>{t(`indexLabels.${series}`)}</span>
-                                    <span className="tabular-nums">{selectedDate ?? "—"} · {selectedMean != null ? selectedMean.toFixed(2) : "—"}</span>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 shrink-0 text-[11px]"
-                                        disabled={!landId || harvestLoading || !seasonWindows.length}
-                                        title={t("harvestDetectHint")}
-                                        onClick={() => void runHarvestDetect()}
-                                    >
-                                        {harvestLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
-                                        {t("harvestDetect")}
-                                    </Button>
-                                    {harvestResult?.status === "detected" && harvestResult.harvest_date ? (
-                                        <Badge variant="secondary" className="text-[11px] tabular-nums">
-                                            {harvestResult.harvest_date} · {t(harvestResult.confidence === "high" ? "confidenceHigh" : harvestResult.confidence === "medium" ? "confidenceMedium" : harvestResult.confidence === "low" ? "confidenceLow" : "confidenceUnknown")}
-                                        </Badge>
-                                    ) : harvestResult ? (
-                                        <Badge variant="secondary" className="text-[11px]">
-                                            {t(harvestResult.status === "no_growth" ? "harvestNoGrowthShort" : "harvestUncertainShort")}
-                                        </Badge>
-                                    ) : null}
-                                </div>
-                            </div>
                             {harvestError && <p role="alert" className="mb-2 text-[11px] text-destructive">{t("harvestFailed")}</p>}
-                            {stats.length > 0 ? (
-                                <NdviChart
-                                    stats={stats}
-                                    decloudAltStats={decloudAltStats}
-                                    selectedDate={selectedDate}
-                                    onDateSelect={(d) => selectDateExplicit(d)}
-                                    height={280}
-                                    indexType={chartIndexType}
+                            <NdviChart
+                                stats={stats}
+                                decloudAltStats={decloudAltStats}
+                                selectedDate={selectedDate}
+                                onDateSelect={(d) => selectDateExplicit(d)}
+                                height={280}
+                                indexType={chartIndexType}
+                                headerExtra={(
+                                    <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5">
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 shrink-0 rounded-full text-[11px]"
+                                            disabled={!landId || harvestLoading || !seasonWindows.length}
+                                            title={t("harvestDetectHint")}
+                                            onClick={() => void runHarvestDetect()}
+                                        >
+                                            {harvestLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                                            {t("harvestDetect")}
+                                        </Button>
+                                        {harvestResult?.status === "detected" && harvestResult.harvest_date ? (
+                                            <Badge variant="secondary" className="text-[11px] tabular-nums">
+                                                {harvestResult.harvest_date} · {t(harvestResult.confidence === "high" ? "confidenceHigh" : harvestResult.confidence === "medium" ? "confidenceMedium" : harvestResult.confidence === "low" ? "confidenceLow" : "confidenceUnknown")}
+                                            </Badge>
+                                        ) : harvestResult ? (
+                                            <Badge variant="secondary" className="text-[11px]">
+                                                {t(harvestResult.status === "no_growth" ? "harvestNoGrowthShort" : "harvestUncertainShort")}
+                                            </Badge>
+                                        ) : null}
+                                        <SeriesSwitcher series={series} keys={availableKeys} onChange={setSeries} />
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-9 w-9 shrink-0 rounded-full p-0"
+                                            title={heatmapVisible ? t("hideHeatmap") : t("showHeatmap")}
+                                            aria-label={heatmapVisible ? t("hideHeatmap") : t("showHeatmap")}
+                                            onClick={() => {
+                                                setHeatmapVisible((v) => {
+                                                    const next = !v;
+                                                    if (!next) onHeatmapChange?.(null);
+                                                    return next;
+                                                });
+                                            }}
+                                        >
+                                            {heatmapVisible ? (
+                                                <Eye className="h-4 w-4" aria-hidden="true" />
+                                            ) : (
+                                                <EyeOff className="h-4 w-4" aria-hidden="true" />
+                                            )}
+                                        </Button>
+                                    </div>
+                                )}
                                     seasonMonths={
                                         series === "ndvi" ||
                                         series === "evi" ||
@@ -2233,9 +2171,6 @@ export default function AgriTimeseriesPanel({
                                     onlyRealistic={onlyRealistic}
                                     onOnlyRealisticChange={setOnlyRealistic}
                                 />
-                            ) : (
-                                <p className="text-xs text-muted-foreground py-2">{t("noMeanPoints")}</p>
-                            )}
                         </div>
                         {(series === "ndvi" || series === "evi" || series === "drought") && (
                             <>
@@ -2393,153 +2328,6 @@ export default function AgriTimeseriesPanel({
                                             <p>{t("radiometricCalibrationUnknown")}</p>
                                         )}
                                 </details>
-                            )}
-                            {selectedDate && (
-                                <div className="space-y-2">
-                                    <div className="flex max-h-36 flex-wrap gap-2 items-center overflow-y-auto">
-                                        {chipDates.map((date) => {
-                                            const active = selectedDate === date;
-                                            const chipCloud = active ? cloudCoverPct : cloudPctByDate[date];
-                                            const chipOver30 =
-                                                typeof chipCloud === "number" &&
-                                                chipCloud > DROUGHT_CLOUD_MAX_PCT;
-                                            const droughtCls = droughtByDate[date];
-                                            const floodCls = floodByDate.get(date);
-                                            return (
-                                                <Button
-                                                    key={date}
-                                                    type="button"
-                                                    size="sm"
-                                                    variant={active ? "default" : "outline"}
-                                                    className={cn(
-                                                        "h-7 rounded-lg text-[11px] px-2 tabular-nums shrink-0 gap-1.5",
-                                                        active && cloudCoverOver30 && "ring-1 ring-warning/50",
-                                                    )}
-                                                    onClick={() => selectDateExplicit(date)}
-                                                    aria-pressed={active}
-                                                >
-                                                    {date.slice(5)}
-                                                    {droughtCls && (
-                                                        <span
-                                                            className={cn(
-                                                                "rounded px-0.5 text-[9px] font-medium",
-                                                                droughtCls === "severe" &&
-                                                                    "bg-danger-subtle text-sev-high",
-                                                                droughtCls === "moderate" &&
-                                                                    "bg-warning-subtle text-warning",
-                                                                droughtCls === "mild" &&
-                                                                    "bg-caution-subtle text-caution",
-                                                            )}
-                                                        >
-                                                            {droughtCls === "severe"
-                                                                ? t("droughtChip_severe")
-                                                                : droughtCls === "moderate"
-                                                                  ? t("droughtChip_moderate")
-                                                                  : t("droughtChip_mild")}
-                                                        </span>
-                                                    )}
-                                                    {floodCls && (isFloodDayClass(floodCls) || isFloodWatchClass(floodCls)) && (
-                                                        <span
-                                                            className={cn(
-                                                                "rounded px-0.5 text-[9px] font-medium",
-                                                                floodCls === "flood_severe" &&
-                                                                    "bg-danger-subtle text-sev-high",
-                                                                floodCls === "flood_moderate" &&
-                                                                    "bg-info-subtle text-info",
-                                                                floodCls === "watch" &&
-                                                                    "bg-caution-subtle text-caution",
-                                                            )}
-                                                        >
-                                                            {floodCls === "watch"
-                                                                ? t("floodChip_watch")
-                                                                : floodCls === "flood_severe"
-                                                                  ? t("floodChip_severe")
-                                                                  : t("floodChip_moderate")}
-                                                        </span>
-                                                    )}
-                                                    {series === "flood" && floodUnclassifiedDates.has(date) && (
-                                                        <span className="rounded px-0.5 text-[9px] font-medium bg-muted text-muted-foreground">
-                                                            {t("floodChip_unknown")}
-                                                        </span>
-                                                    )}
-                                                    {active && chipCloud != null && (
-                                                        <span
-                                                            className={cn(
-                                                                "rounded px-0.5 text-[9px] font-normal tabular-nums",
-                                                                chipOver30
-                                                                    ? "bg-warning-subtle text-warning"
-                                                                    : "bg-primary-foreground/15 text-primary-foreground",
-                                                            )}
-                                                        >
-                                                            {Math.round(chipCloud)}%
-                                                        </span>
-                                                    )}
-                                                </Button>
-                                            );
-                                        })}
-                                    </div>
-                                    {allDates.length > 0 && (
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <span className="text-[10px] text-muted-foreground shrink-0">
-                                                {t("yearDates")}
-                                            </span>
-                                            <Select
-                                                value={selectedDate}
-                                                onValueChange={(v) => selectDateExplicit(v)}
-                                            >
-                                                <SelectTrigger className="h-7 text-[11px] w-full max-w-[14rem]">
-                                                    <SelectValue placeholder={t("selectDate")} />
-                                                </SelectTrigger>
-                                                <SelectContent className="max-h-72">
-                                                    {allDates.map((date) => {
-                                                        const cloud = cloudByDate[date];
-                                                        const pct = cloud?.pct ?? null;
-                                                        const droughtCls = droughtByDate[date];
-                                                        const floodCls = floodByDate.get(date);
-                                                        const droughtBit = droughtCls
-                                                            ? ` · ${
-                                                                  droughtCls === "severe"
-                                                                      ? t("droughtChip_severe")
-                                                                      : droughtCls === "moderate"
-                                                                        ? t("droughtChip_moderate")
-                                                                        : t("droughtChip_mild")
-                                                              }`
-                                                            : "";
-                                                        const floodBit =
-                                                            floodCls &&
-                                                            (isFloodDayClass(floodCls) || isFloodWatchClass(floodCls))
-                                                                ? ` · ${
-                                                                      floodCls === "watch"
-                                                                          ? t("floodChip_watch")
-                                                                          : floodCls === "flood_severe"
-                                                                            ? t("floodChip_severe")
-                                                                            : t("floodChip_moderate")
-                                                                  }`
-                                                                : "";
-                                                        const floodUnknownBit =
-                                                            series === "flood" && floodUnclassifiedDates.has(date)
-                                                                ? ` · ${t("floodChip_unknown")}`
-                                                                : "";
-                                                        const cloudBit =
-                                                            pct != null
-                                                                ? ` · ${formatCloudCoverLabel(pct, cloud?.source, t)}`
-                                                                : "";
-                                                        const label = `${date}${cloudBit}${droughtBit}${floodBit}${floodUnknownBit}`;
-                                                        return (
-                                                            <SelectItem
-                                                                key={date}
-                                                                value={date}
-                                                                className="text-xs tabular-nums [content-visibility:auto] [contain-intrinsic-size:2rem]"
-                                                            >
-                                                                {label}
-                                                            </SelectItem>
-                                                        );
-                                                    })}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    )}
-                                </div>
                             )}
                         </div>
                     </>

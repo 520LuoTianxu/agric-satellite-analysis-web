@@ -196,6 +196,12 @@ export function bindSheetGesture(options: {
 
     const onMove = (event: TouchEvent) => {
         if (!active) return;
+        // 长按折线图后的横向滑动只切换日期，不再带动抽屉。
+        if (event.target instanceof Element && event.target.closest("[data-chart-scrubbing]")) {
+            active.mode = "ignore";
+            active.owned = false;
+            return;
+        }
         const touch = findTouch(event.touches, active.id);
         if (!touch) return;
         const now = performance.now();
