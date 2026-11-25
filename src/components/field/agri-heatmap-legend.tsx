@@ -13,6 +13,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { MobilePhotoViewer } from "@/components/field/mobile-photo-viewer";
 
 interface AgriHeatmapLegendProps {
     heatmap: AgriHeatmapImage;
@@ -433,7 +434,7 @@ function satellitePreviewCandidates(heatmap: AgriHeatmapImage): { src: string; c
     return candidates;
 }
 
-/** 手机端左上角固定一张小卫星图，点开后再放大查看。 */
+/** 手机端左上角固定一张小卫星图，点开后全屏查看，可以双指缩放、单指拖动。 */
 function MobileSatelliteThumb({ heatmap }: { heatmap: AgriHeatmapImage }) {
     const [open, setOpen] = useState(false);
     const [index, setIndex] = useState(0);
@@ -466,18 +467,13 @@ function MobileSatelliteThumb({ heatmap }: { heatmap: AgriHeatmapImage }) {
                     onError={() => setIndex((current) => current + 1)}
                 />
             </button>
-            <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="flex h-[min(85vh,56rem)] w-[min(94vw,80rem)] max-w-[94vw] flex-col gap-3 overflow-hidden overscroll-contain p-3">
-                    <DialogHeader className="space-y-1 pr-8">
-                        <DialogTitle className="text-sm font-medium">{t(preview.captionKey)}</DialogTitle>
-                    </DialogHeader>
-                    <ZoomableScene
-                        src={preview.src}
-                        alt={t("trueColorPreview")}
-                        active={open}
-                    />
-                </DialogContent>
-            </Dialog>
+            {open ? (
+                <MobilePhotoViewer
+                    src={preview.src}
+                    alt={t(preview.captionKey)}
+                    onClose={() => setOpen(false)}
+                />
+            ) : null}
         </>
     );
 }

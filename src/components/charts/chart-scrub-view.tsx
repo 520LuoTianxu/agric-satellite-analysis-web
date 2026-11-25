@@ -175,7 +175,7 @@ export function ChartScrubReadout({
     lines?: string[];
 }) {
     return (
-        <div className="flex min-h-11 min-w-0 flex-1 flex-col justify-end">
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
             {active && title ? (
                 <>
                     <p className="text-sm font-semibold leading-tight tabular-nums text-foreground">{title}</p>
