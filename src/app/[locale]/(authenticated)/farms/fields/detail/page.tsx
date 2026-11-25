@@ -1319,27 +1319,51 @@ function FieldDetailPageContent() {
 
     const clearMapToolsStyle = () => {
         const tools = mapToolsRef.current;
-        if (!tools) return;
-        tools.style.transition = "";
-        tools.style.top = "";
-        tools.style.opacity = "";
-        tools.style.pointerEvents = "";
+        if (tools) {
+            tools.style.transition = "";
+            tools.style.top = "";
+            tools.style.opacity = "";
+            tools.style.pointerEvents = "";
+        }
+        const attribution = stageRef.current?.querySelector<HTMLElement>(".maplibregl-ctrl-bottom-right");
+        if (!attribution) return;
+        attribution.style.transition = "";
+        attribution.style.bottom = "";
+        attribution.style.left = "";
+        attribution.style.right = "";
+        attribution.style.opacity = "";
+        attribution.style.pointerEvents = "";
     };
 
     const placeMapTools = (sheetTop: number, transition: string) => {
+        if (window.matchMedia("(min-width: 768px)").matches) return;
         const tools = mapToolsRef.current;
-        if (!tools || window.matchMedia("(min-width: 768px)").matches) return;
-        const next = sheetTop - (tools.offsetHeight || 96) - 12;
-        tools.style.transition = transition;
-        if (next < 12) {
-            tools.style.top = "12px";
-            tools.style.opacity = "0";
-            tools.style.pointerEvents = "none";
-            return;
+        if (tools) {
+            const next = sheetTop - (tools.offsetHeight || 96) - 12;
+            tools.style.transition = transition;
+            if (next < 12) {
+                tools.style.top = "12px";
+                tools.style.opacity = "0";
+                tools.style.pointerEvents = "none";
+            } else {
+                tools.style.top = `${next}px`;
+                tools.style.opacity = "1";
+                tools.style.pointerEvents = "";
+            }
         }
-        tools.style.top = `${next}px`;
-        tools.style.opacity = "1";
-        tools.style.pointerEvents = "";
+        const stage = stageRef.current;
+        const attribution = stage?.querySelector<HTMLElement>(".maplibregl-ctrl-bottom-right");
+        if (!stage || !attribution) return;
+        const gap = 10;
+        const covered = sheetTop < 120;
+        attribution.style.transition = transition === "none"
+            ? "none"
+            : "bottom 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease";
+        attribution.style.left = "8px";
+        attribution.style.right = "auto";
+        attribution.style.bottom = `${Math.max(gap, stage.clientHeight - sheetTop + gap)}px`;
+        attribution.style.opacity = covered ? "0" : "1";
+        attribution.style.pointerEvents = covered ? "none" : "";
     };
 
     useLayoutEffect(() => {
@@ -2243,7 +2267,7 @@ function FieldDetailPageContent() {
                                     <TabsContent
                                         value="ndvi"
                                         forceMount
-                                        className="mt-0 p-3 data-[state=inactive]:hidden data-[state=inactive]:!hidden"
+                                        className="mt-0 p-3 max-md:px-3 max-md:pb-2 max-md:pt-1 data-[state=inactive]:hidden data-[state=inactive]:!hidden"
                                     >
                                         <NdviTab
                                             landId={landId}

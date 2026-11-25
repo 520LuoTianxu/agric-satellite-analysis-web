@@ -349,7 +349,7 @@ export default function NdviChart({
             ...(hasWeather ? ["Precip (mm)", "ET₀ (mm)"] : []),
         ];
         return {
-            grid: { top: showLegend ? 36 : 12, right: hasWeather ? 46 : 12, bottom: 12, left: 40 },
+            grid: { top: showLegend ? 28 : 8, right: hasWeather ? 46 : 8, bottom: 4, left: 40 },
             legend: showLegend
                 ? {
                     data: legendData,
@@ -506,13 +506,13 @@ export default function NdviChart({
     }
 
     return (
-        <div className="w-full space-y-1.5">
+        <div className="w-full space-y-1">
             <ObservationDateRail
                 dates={axisDates}
                 activeDate={scrub.activeDate ?? selectedDate ?? null}
                 label={t("observationDates")}
             />
-            <div className="flex flex-wrap items-end justify-between gap-2">
+            <div className="flex items-center justify-between gap-2">
                 <ChartScrubReadout
                     active={scrub.scrubbing}
                     hint={t("scrubHint")}
@@ -536,7 +536,7 @@ export default function NdviChart({
                     lazyUpdate
                 />
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
                 <label className="inline-flex cursor-pointer items-center gap-1.5">
                     <input type="checkbox" className="accent-primary" checked={showObservations} onChange={(e) => setShowObservations(e.target.checked)} />
                     {t("showObservations")}

@@ -1125,6 +1125,7 @@
     "zoomControls": "Controles de zoom de imagen",
     "imagePanArea": "Área de imagen; al ampliar, usa las flechas para mover y Home para restablecer",
     "zoomInstructions": "Usa los botones o Ctrl / ⌘ + rueda. Enfoca la imagen y usa las flechas para mover o Home para restablecer; también puedes arrastrar.",
+    "pinchHint": "Pellizca para ampliar y arrastra para mover",
     "refreshProgressLabel": "Progreso de actualización de imágenes satelitales",
     "openPreview": "Ampliar {caption}",
     "enlarge": "Ampliar",
@@ -1207,6 +1208,18 @@
       "ndwi": "Resalta posibles aguas superficiales; no mide la humedad del suelo.",
       "sentinel2": "Las imágenes ópticas permiten calcular índices como NDVI, pero las nubes pueden ocultar el terreno.",
       "sentinel1": "El radar observa a través de las nubes y mide la retrodispersión VV/VH, no los colores de una foto."
+    },
+    "indexMenuHints": {
+      "ndvi": "Verdor del campo. Puede bajar por madurez o nubes.",
+      "evi": "Para cobertura densa. La escala no es la de NDVI.",
+      "ndmi": "Humedad del cultivo, no del suelo.",
+      "ndre": "Cambio de clorofila. Un bajo puede ser amarilleo.",
+      "mndwi": "Resalta el agua, incluidos estanques y riego.",
+      "cire": "Clorofila relativa, no un valor de laboratorio.",
+      "vv": "Intensidad del radar, no una nota de crecimiento.",
+      "vh": "Radar de polarización cruzada. Compáralo con VV.",
+      "drought": "Posible falta de agua. Contrasta con la lluvia.",
+      "flood": "Posible agua estancada. Pocas escenas no confirman."
     },
     "indexGuideNames": {
       "ndvi": "Índice de Vegetación de Diferencia Normalizada",

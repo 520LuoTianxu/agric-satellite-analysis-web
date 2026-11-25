@@ -39,7 +39,7 @@ export function ObservationDateRail({
             ref={railRef}
             role="list"
             aria-label={label}
-            className="flex gap-0.5 overflow-x-auto pb-1 [scrollbar-width:none] touch-pan-x"
+            className="flex gap-0.5 overflow-x-auto [scrollbar-width:none] touch-pan-x"
         >
             {dates.map((date, index) => {
                 const prev = dates[index - 1];
@@ -63,12 +63,12 @@ export function ObservationDateRail({
                         aria-current={active ? "date" : undefined}
                         className="flex w-11 shrink-0 flex-col items-center"
                     >
-                        <span className="flex h-4 items-end text-[9px] leading-none text-muted-foreground">
+                        <span className="flex h-4 items-end text-[11px] font-medium leading-none text-muted-foreground">
                             {caption}
                         </span>
                         <span
                             className={cn(
-                                "mt-0.5 flex h-8 w-8 items-center justify-center rounded-full text-xs tabular-nums",
+                                "mt-0.5 flex h-8 w-8 items-center justify-center rounded-full text-sm tabular-nums",
                                 active
                                     ? "bg-foreground font-semibold text-background"
                                     : "text-foreground",

@@ -13,7 +13,6 @@ import {
     type CropOption,
     type LandStat,
     type GrowingSeasonWindow,
-    type HarvestDetectResult,
     type IndexType,
 } from "@/lib/api";
 import { useLocale, useTranslations } from "next-intl";
@@ -411,7 +410,9 @@ function SeriesSwitcher({
             </DropdownMenuTrigger>
             <DropdownMenuContent
                 align="end"
-                className="max-h-[min(70vh,28rem)] w-[min(22rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl p-1.5"
+                sideOffset={6}
+                collisionPadding={12}
+                className="max-h-[min(70vh,24rem)] w-[min(16.75rem,calc(100vw-5rem))] overflow-y-auto rounded-2xl p-1"
             >
                 {keys.map((key) => {
                     const RowIcon = SERIES_ICONS[key] ?? Leaf;
@@ -420,16 +421,16 @@ function SeriesSwitcher({
                         <DropdownMenuItem
                             key={key}
                             onSelect={() => onChange(key)}
-                            className="items-start gap-2.5 rounded-xl px-2 py-2"
+                            className="items-start gap-2 rounded-xl px-2 py-2"
                         >
                             <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-foreground">
                                 {active ? <Check className="h-4 w-4" aria-hidden="true" /> : null}
                             </span>
-                            <RowIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            <RowIcon className="mt-0.5 h-[18px] w-[18px] shrink-0 text-muted-foreground" aria-hidden="true" />
                             <span className="min-w-0 flex-1">
-                                <span className="block text-sm font-medium leading-tight">{t(`indexLabels.${key}`)}</span>
-                                <span className="mt-0.5 line-clamp-2 block text-xs leading-snug text-muted-foreground">
-                                    {t(`indexHints.${key}`)}
+                                <span className="block text-base font-medium leading-5">{t(`indexLabels.${key}`)}</span>
+                                <span className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+                                    {t(`indexMenuHints.${key}`)}
                                 </span>
                             </span>
                         </DropdownMenuItem>
@@ -621,9 +622,6 @@ export default function AgriTimeseriesPanel({
     ), [seasonWindows]);
     const seasonMonths = useMemo(() => monthsInWindows(seasonWindows), [seasonWindows]);
     const peakMonths = useMemo(() => Array.from(new Set((inferredPhenology?.windows ?? []).map(window => Number(window.peak_date?.slice(5, 7))).filter(Boolean))), [inferredPhenology]);
-    const [harvestResult, setHarvestResult] = useState<HarvestDetectResult | null>(null);
-    const [harvestLoading, setHarvestLoading] = useState(false);
-    const [harvestError, setHarvestError] = useState(false);
     const [backfillProgress, setBackfillProgress] = useState<BackfillStatusResponse | null>(null);
     const [reloadKey, setReloadKey] = useState(0);
     const backfillPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -995,37 +993,6 @@ export default function AgriTimeseriesPanel({
 
     const removeSeasonWindow = (id: string) => {
         setSeasonWindows((prev) => prev.filter((w) => w.id !== id));
-    };
-
-    const runHarvestDetect = async () => {
-        if (!landId) return;
-        setHarvestLoading(true);
-        setHarvestError(false);
-        try {
-            const w = seasonWindows[seasonWindows.length - 1];
-            const res = await agriApi.harvestDetect(landId, {
-                start_date: w?.start_date,
-                end_date: w?.end_date,
-                crops: w?.crops,
-                label: w?.label || undefined,
-            });
-            setHarvestResult(res);
-            if (res.status === "detected" && res.harvest_date) {
-                setSelectedDate(res.harvest_date);
-                toast.success(t("harvestDetected"));
-            } else if (res.status === "no_growth") {
-                toast(t("harvestNoGrowth"));
-            } else {
-                toast(t("harvestUncertain"));
-            }
-        } catch {
-            // 请求失败与遥感证据不足是不同状态，避免将网络异常展示为检测结论。
-            setHarvestResult(null);
-            setHarvestError(true);
-            toast.error(t("harvestFailed"));
-        } finally {
-            setHarvestLoading(false);
-        }
     };
 
     const handleRefreshRs = async () => {
@@ -1571,23 +1538,7 @@ export default function AgriTimeseriesPanel({
         [floodByDate, t],
     );
 
-    const harvestEventMarks = useMemo(() => {
-        if (harvestResult?.status === "detected" && harvestResult.harvest_date) {
-            return [
-                {
-                    date: harvestResult.harvest_date,
-                    label: t("harvestLabel"),
-                    level: "high" as const,
-                },
-            ];
-        }
-        return [];
-    }, [harvestResult, t]);
-
-    const ndviEventMarks = useMemo(
-        () => [...droughtEventMarks, ...harvestEventMarks],
-        [droughtEventMarks, harvestEventMarks],
-    );
+    const ndviEventMarks = droughtEventMarks;
 
     const droughtDayCount = droughtEventMarks.length;
     const floodDayCount = [...floodByDate.values()].filter(isFloodDayClass).length;
@@ -1796,8 +1747,8 @@ export default function AgriTimeseriesPanel({
     const chartIndexType: IndexType = CHART_INDEX_TYPE[series] ?? "NDVI";
 
     return (
-        <Card data-tour="timeseries" className="overflow-hidden border-border/60 bg-card shadow-sm">
-            <CardHeader className="border-b border-border/50 bg-muted/20 px-3 py-2.5 max-md:border-0 max-md:bg-transparent max-md:px-0 max-md:py-0">
+        <Card data-tour="timeseries" className="overflow-hidden border-border/60 bg-card shadow-sm max-md:border-0 max-md:bg-transparent max-md:shadow-none">
+            <CardHeader className="border-b border-border/50 bg-muted/20 px-3 py-2.5 max-md:hidden">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
                         <CardTitle className="flex flex-wrap items-center gap-1.5 text-xs font-semibold tracking-tight max-md:hidden">
@@ -1882,7 +1833,7 @@ export default function AgriTimeseriesPanel({
                     </div>
                 </div>
             </CardHeader>
-            <CardContent className="p-3 space-y-3">
+            <CardContent className="space-y-3 p-3 max-md:space-y-2 max-md:p-0">
                 <div className="max-md:hidden">
                 <PhenologyPicker landId={landId}
                     onLoaded={data => {
@@ -2092,8 +2043,7 @@ export default function AgriTimeseriesPanel({
                                     : ""}
                             </p>
                         )}
-                        <div className="rounded-lg bg-background p-2.5">
-                            {harvestError && <p role="alert" className="mb-2 text-[11px] text-destructive">{t("harvestFailed")}</p>}
+                        <div className="rounded-lg bg-background p-2.5 max-md:bg-transparent max-md:p-0">
                             <NdviChart
                                 stats={stats}
                                 decloudAltStats={decloudAltStats}
@@ -2102,28 +2052,7 @@ export default function AgriTimeseriesPanel({
                                 height={280}
                                 indexType={chartIndexType}
                                 headerExtra={(
-                                    <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5">
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-8 shrink-0 rounded-full text-[11px]"
-                                            disabled={!landId || harvestLoading || !seasonWindows.length}
-                                            title={t("harvestDetectHint")}
-                                            onClick={() => void runHarvestDetect()}
-                                        >
-                                            {harvestLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
-                                            {t("harvestDetect")}
-                                        </Button>
-                                        {harvestResult?.status === "detected" && harvestResult.harvest_date ? (
-                                            <Badge variant="secondary" className="text-[11px] tabular-nums">
-                                                {harvestResult.harvest_date} · {t(harvestResult.confidence === "high" ? "confidenceHigh" : harvestResult.confidence === "medium" ? "confidenceMedium" : harvestResult.confidence === "low" ? "confidenceLow" : "confidenceUnknown")}
-                                            </Badge>
-                                        ) : harvestResult ? (
-                                            <Badge variant="secondary" className="text-[11px]">
-                                                {t(harvestResult.status === "no_growth" ? "harvestNoGrowthShort" : "harvestUncertainShort")}
-                                            </Badge>
-                                        ) : null}
+                                    <div className="flex shrink-0 items-center justify-end gap-1">
                                         <SeriesSwitcher series={series} keys={availableKeys} onChange={setSeries} />
                                         <Button
                                             type="button"
@@ -2174,9 +2103,9 @@ export default function AgriTimeseriesPanel({
                         </div>
                         {(series === "ndvi" || series === "evi" || series === "drought") && (
                             <>
-                                <div className="rounded-lg bg-background p-2.5 space-y-3">
+                                <div className="space-y-2 rounded-xl bg-muted/30 p-2.5">
                                     <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className="text-[11px] font-medium text-foreground">{t("dayGrowthGrade")}</span>
+                                        <span className="text-xs font-medium text-foreground">{t("dayGrowthGrade")}</span>
                                         <Badge variant="secondary" className="text-[10px]">
                                             {locale === "zh"
                                                 ? cropOption?.season_label_zh || cropOption?.name_zh || t("cropSeason")
@@ -2190,7 +2119,7 @@ export default function AgriTimeseriesPanel({
                                             </Badge>
                                         )}
                                     </div>
-                                    <p className="text-[10px] text-muted-foreground leading-snug">
+                                    <p className="text-xs text-muted-foreground leading-snug">
                                         {t("gradeShareExplanation", { rule: t("gradeShareRule") })}
                                     </p>
                                     <NdviGradeSharesChart
@@ -2201,8 +2130,8 @@ export default function AgriTimeseriesPanel({
                                         height={200}
                                     />
                                 </div>
-                                <div className="rounded-lg bg-background p-2.5 space-y-3">
-                                    <span className="text-[11px] font-medium text-foreground">{t("growthShareTrend")}</span>
+                                <div className="space-y-2 rounded-xl bg-muted/30 p-2.5">
+                                    <span className="text-xs font-medium text-foreground">{t("growthShareTrend")}</span>
                                     <NdviGradeSharesChart
                                         variant="stacked"
                                         historyByDate={stackedHistoryByDate}
@@ -2212,8 +2141,8 @@ export default function AgriTimeseriesPanel({
                                 </div>
                             </>
                         )}
-                        <div data-tour="select-date" className="space-y-3 rounded-lg bg-muted/20 p-2.5">
-                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        <div data-tour="select-date" className="space-y-2 rounded-xl bg-muted/30 p-2.5">
+                            <p className="text-xs text-muted-foreground leading-snug">
                                 {selectedDate
                                     ? t("heatmapDate", { date: selectedDate, mode: t(`indexLabels.${series}`) })
                                     : t("pickDate")}

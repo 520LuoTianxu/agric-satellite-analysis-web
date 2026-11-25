@@ -321,16 +321,12 @@
         display: none !important;
     }
 
-    .field-stage[data-sheet="half"] .maplibregl-ctrl-bottom-right {
-        bottom: 68%;
+    /* 署名贴着抽屉上沿。拖动时由页面写入 bottom，松手后回到这个位置。 */
+    .field-stage .maplibregl-ctrl-bottom-right {
         left: 8px;
         right: auto;
-    }
-
-    .field-stage[data-sheet="peek"] .maplibregl-ctrl-bottom-right {
-        bottom: 60px;
-        left: 8px;
-        right: auto;
+        bottom: calc(100% - var(--sheet-top, 42%) + 10px);
+        transition: bottom 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease;
     }
 
     .field-sheet[data-dragging="true"] {
