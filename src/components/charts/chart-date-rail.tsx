@@ -1,12 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useMemo } from "react";
 import { useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 
-/**
- * 有观测的日期。点一下就选中这一天，并更新下面的指标。
- */
+/** 有观测的日期。只展示选中日期附近的一周，避免观测历史过长时挤满面板。 */
 export function ObservationDateRail({
     dates,
     activeDate,
@@ -19,71 +17,56 @@ export function ObservationDateRail({
     onSelect?: (date: string) => void;
 }) {
     const locale = useLocale();
-    const railRef = useRef<HTMLDivElement>(null);
-    const monthFormat = useMemo(
-        () => new Intl.DateTimeFormat(locale, { month: "short" }),
+    const weekdayFormat = useMemo(
+        () => new Intl.DateTimeFormat(locale, { weekday: "narrow", timeZone: "UTC" }),
         [locale],
     );
-
-    useEffect(() => {
-        const rail = railRef.current;
-        if (!rail || !activeDate) return;
-        const item = rail.querySelector<HTMLElement>(`[data-obs-date="${activeDate}"]`);
-        if (!item) return;
-        const left = item.offsetLeft - rail.clientWidth / 2 + item.clientWidth / 2;
-        rail.scrollTo({ left: Math.max(0, left), behavior: "auto" });
+    const visibleDates = useMemo(() => {
+        const selectedIndex = activeDate ? dates.indexOf(activeDate) : -1;
+        const centerIndex = selectedIndex >= 0 ? selectedIndex : dates.length - 1;
+        const start = Math.max(0, Math.min(centerIndex - 3, dates.length - 7));
+        return dates.slice(start, start + 7);
     }, [activeDate, dates]);
 
     if (dates.length === 0) return null;
 
     return (
-        <div
-            ref={railRef}
-            role="list"
-            aria-label={label}
-            className="flex overflow-x-auto [scrollbar-width:none] touch-pan-x"
-        >
-            {dates.map((date, index) => {
-                const prev = dates[index - 1];
-                const year = date.slice(0, 4);
-                const month = date.slice(5, 7);
-                const day = Number(date.slice(8, 10));
-                const showYear = !prev || prev.slice(0, 4) !== year;
-                const showMonth = showYear || !prev || prev.slice(5, 7) !== month;
-                const monthDate = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
-                const caption = showYear
-                    ? year
-                    : showMonth && Number.isFinite(monthDate.getTime())
-                        ? monthFormat.format(monthDate)
-                        : "";
-                const active = date === activeDate;
-                return (
-                    <div key={date} role="listitem" className="flex w-10 shrink-0 justify-center">
+        <div role="group" aria-label={label} className="mx-auto w-full max-w-[336px]">
+            <div className="grid grid-cols-7 gap-1">
+                {visibleDates.map((date) => {
+                    const parsed = new Date(`${date}T00:00:00Z`);
+                    return (
+                        <span key={`${date}-weekday`} className="text-center text-[10px] font-medium leading-4 text-muted-foreground">
+                            {weekdayFormat.format(parsed)}
+                        </span>
+                    );
+                })}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+                {visibleDates.map((date) => {
+                    const day = Number(date.slice(8, 10));
+                    const active = date === activeDate;
+                    return (
                         <button
+                            key={date}
                             type="button"
                             data-obs-date={date}
+                            aria-label={date}
                             aria-current={active ? "date" : undefined}
                             aria-pressed={active}
                             onClick={() => onSelect?.(date)}
-                            className="flex w-full flex-col items-center bg-transparent p-0"
+                            className={cn(
+                                "mx-auto flex h-8 w-8 items-center justify-center rounded-full text-[13px] tabular-nums transition-colors",
+                                active
+                                    ? "bg-primary font-semibold text-primary-foreground shadow-sm"
+                                    : "text-foreground hover:bg-muted",
+                            )}
                         >
-                            <span className="flex h-3.5 items-end text-[11px] font-medium leading-none text-muted-foreground">
-                                {caption}
-                            </span>
-                            <span
-                                className={cn(
-                                    "mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm tabular-nums",
-                                    active
-                                        ? "bg-primary font-semibold text-primary-foreground"
-                                        : "text-foreground",
-                                )}
-                            >
-                                {Number.isFinite(day) ? day : date.slice(8)}
-                            </span>
+                            {Number.isFinite(day) ? day : date.slice(8)}
                         </button>
-                    </div>
-                );
-            })}
+                    );
+                })}
+            </div>
         </div>
     );
 }

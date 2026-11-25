@@ -19,7 +19,7 @@ import type {
 } from "@/lib/api";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
-import { Loader2, RefreshCw, Info, Layers, Check, Leaf, Droplets, AlertTriangle, Sprout, MapPin } from "lucide-react";
+import { Loader2, RefreshCw, Layers, Check, Leaf, Droplets, AlertTriangle, Sprout, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { tokenColor } from "@/lib/design-tokens";
@@ -36,7 +36,6 @@ import {
 function depthLabel(top: number, bottom: number): string {
     return `${top}–${bottom} cm`;
 }
-
 function phColor(ph: number): string {
     if (ph < 5.5) return "text-danger";
     if (ph < 6.5) return "text-warning";
@@ -51,35 +50,31 @@ function phBg(ph: number): string {
     return "bg-warning-subtle";
 }
 
-function riskColor(score: number): string {
-    if (score < 0.3) return "bg-success";
-    if (score < 0.6) return "bg-warning";
-    return "bg-danger";
-}
+type SoilRadarDimension = {
+    label: string;
+    score: number | null;
+    value: string;
+    status: string;
+    statusColor: string;
+};
 
-function riskTextColor(score: number): string {
-    if (score < 0.3) return "text-success";
-    if (score < 0.6) return "text-warning";
-    return "text-danger";
+function soilRiskDimension(label: string, risk: number | null, t: (key: string) => string): SoilRadarDimension {
+    if (risk == null) return { label, score: null, value: "—", status: "", statusColor: "--muted-foreground" };
+    const levelKey = risk < 0.3 ? "riskLow" : risk < 0.6 ? "riskModerate" : "riskHigh";
+    // 雷达图越向外表示状态越好，因此将“风险越低越好”的原始分数反向映射。
+    return {
+        label,
+        score: 1 - risk,
+        value: `${Math.round(risk * 100)}%`,
+        status: t(levelKey),
+        statusColor: risk < 0.3 ? "--success" : risk < 0.6 ? "--warning" : "--danger",
+    };
 }
 
 function bdColor(bd: number): string {
     if (bd < 1.4) return "text-success";
     if (bd <= 1.6) return "text-warning";
     return "text-danger";
-}
-
-function awcLevel(mm: number): "low" | "moderate" | "good" {
-    if (mm < 100) return "low";
-    if (mm < 175) return "moderate";
-    return "good";
-}
-
-function awcColor(mm: number): string {
-    const level = awcLevel(mm);
-    if (level === "low") return "bg-danger";
-    if (level === "moderate") return "bg-warning";
-    return "bg-success";
 }
 
 function qualityLabel(score: number | null, t: (key: string) => string): string {
@@ -652,40 +647,6 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                     <span>{t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) })}</span>
                 </div>
             )}
-            {/* Disclaimer banner */}
-            <div className="flex items-start gap-2 rounded-lg border bg-info-subtle p-2.5 text-xs text-info">
-                <Info className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>{t("disclaimer")}</span>
-            </div>
-
-            {/* Depth profile: sand/silt/clay stacked bars */}
-            <section>
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-xs font-semibold">{t("depthProfile")}</h3>
-                    <div className="flex items-center gap-3">
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-soil-sand" />
-                            {t("sand")}
-                        </span>
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-soil-silt" />
-                            {t("silt")}
-                        </span>
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-soil-clay" />
-                            {t("clay")}
-                        </span>
-                    </div>
-                </div>
-                <div className="space-y-1.5">
-                    <TooltipProvider delayDuration={200}>
-                        {layers.map((layer) => (
-                            <DepthBar key={layer.depth_top_cm} layer={layer} t={t} />
-                        ))}
-                    </TooltipProvider>
-                </div>
-            </section>
-
             {/* Property cards */}
             <section>
                 <h3 className="text-xs font-semibold mb-2">{t("properties")}</h3>
@@ -701,69 +662,42 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
             {summary && (
                 <section>
                     <h3 className="text-xs font-semibold mb-2">{t("summary")}</h3>
-                    <div className="space-y-2">
-                        {/* Summary badges */}
-                        <div className="flex flex-wrap gap-1.5">
-                            {summary.dominant_texture && (
-                                <Badge label={t("textureClass")} value={summary.dominant_texture} />
-                            )}
-                            {summary.drainage_class && (
-                                <DrainageBadge drainageClass={summary.drainage_class} t={t} />
-                            )}
-                            <Badge
-                                label={t("dataQuality")}
-                                value={qualityLabel(summary.data_quality_score, t)}
-                            />
-                        </div>
-
-                        {/* AWC bar */}
-                        {summary.rootzone_awc_mm != null && (
-                            <AwcBar awc={summary.rootzone_awc_mm} t={t} />
-                        )}
-
-                        {/* SOC stock card */}
-                        {summary.total_soc_stock_t_ha != null && (
-                            <SocStockCard
-                                total={summary.total_soc_stock_t_ha}
-                                topsoil={summary.topsoil_soc_stock_t_ha}
-                                t={t}
-                            />
-                        )}
-
-                        {/* Risk indicators */}
-                        <div>
-                            <h4 className="text-[11px] font-medium text-muted-foreground mb-1.5">
-                                {t("risks")}
-                            </h4>
-                            <div className="grid grid-cols-2 gap-1.5">
-                                <RiskBadge
-                                    label={t("acidification")}
-                                    score={summary.acidification_risk}
-                                    t={t}
-                                />
-                                <RiskBadge
-                                    label={t("compaction")}
-                                    score={summary.compaction_risk}
-                                    t={t}
-                                />
-                                <RiskBadge
-                                    label={t("leaching")}
-                                    score={summary.leaching_risk}
-                                    t={t}
-                                />
-                                <RiskBadge
-                                    label={t("rootingConstraint")}
-                                    score={summary.rooting_constraint}
-                                    t={t}
-                                />
-                                <RiskBadge
-                                    label={t("waterlogging")}
-                                    score={summary.waterlogging_risk}
-                                    t={t}
-                                />
-                            </div>
-                        </div>
-                    </div>
+                    <SoilRiskRadar
+                        dimensions={[
+                            soilRiskDimension(t("acidification"), summary.acidification_risk, t),
+                            soilRiskDimension(t("compaction"), summary.compaction_risk, t),
+                            soilRiskDimension(t("leaching"), summary.leaching_risk, t),
+                            soilRiskDimension(t("rootingConstraint"), summary.rooting_constraint, t),
+                            soilRiskDimension(t("waterlogging"), summary.waterlogging_risk, t),
+                            {
+                                label: t("rootzoneAwc"),
+                                score: summary.rootzone_awc_mm == null ? null : Math.min(summary.rootzone_awc_mm / 250, 1),
+                                value: summary.rootzone_awc_mm == null ? "—" : `${summary.rootzone_awc_mm.toFixed(0)} ${t("awcUnit")}`,
+                                status: summary.rootzone_awc_mm == null ? "" : t(summary.rootzone_awc_mm < 100 ? "awcLow" : summary.rootzone_awc_mm < 175 ? "awcModerate" : "awcGood"),
+                                statusColor: summary.rootzone_awc_mm == null ? "--muted-foreground" : summary.rootzone_awc_mm < 100 ? "--danger" : summary.rootzone_awc_mm < 175 ? "--warning" : "--success",
+                            },
+                            {
+                                label: t("socStock"),
+                                score: summary.total_soc_stock_t_ha == null ? null : Math.min(summary.total_soc_stock_t_ha / 150, 1),
+                                value: summary.total_soc_stock_t_ha == null ? "—" : `${summary.total_soc_stock_t_ha.toFixed(1)} ${t("socStockUnit")}`,
+                                status: summary.total_soc_stock_t_ha == null ? "" : t(summary.total_soc_stock_t_ha < 40 ? "qualityLow" : summary.total_soc_stock_t_ha < 80 ? "qualityMedium" : "qualityHigh"),
+                                statusColor: summary.total_soc_stock_t_ha == null ? "--muted-foreground" : summary.total_soc_stock_t_ha < 40 ? "--danger" : summary.total_soc_stock_t_ha < 80 ? "--warning" : "--success",
+                            },
+                            {
+                                label: t("dataQuality"),
+                                score: summary.data_quality_score,
+                                value: summary.data_quality_score == null ? "—" : `${Math.round(summary.data_quality_score * 100)}%`,
+                                status: qualityLabel(summary.data_quality_score, t),
+                                statusColor: summary.data_quality_score == null ? "--muted-foreground" : summary.data_quality_score >= 0.7 ? "--success" : summary.data_quality_score >= 0.4 ? "--warning" : "--danger",
+                            },
+                        ]}
+                        details={[
+                            summary.dominant_texture ? { label: t("textureClass"), value: summary.dominant_texture } : null,
+                            summary.drainage_class ? { label: t("drainageClass"), value: summary.drainage_class } : null,
+                            summary.topsoil_soc_stock_t_ha == null ? null : { label: t("topsoil"), value: `${summary.topsoil_soc_stock_t_ha.toFixed(1)} ${t("socStockUnit")}` },
+                        ].filter((detail): detail is { label: string; value: string } => detail != null)}
+                        scaleHint={t("radarScaleHint")}
+                    />
                 </section>
             )}
 
@@ -820,6 +754,33 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                     </div>
                 </section>
             )}
+
+            <section>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-xs font-semibold">{t("depthProfile")}</h3>
+                    <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-soil-sand" />
+                            {t("sand")}
+                        </span>
+                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-soil-silt" />
+                            {t("silt")}
+                        </span>
+                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-soil-clay" />
+                            {t("clay")}
+                        </span>
+                    </div>
+                </div>
+                <div className="space-y-1.5">
+                    <TooltipProvider delayDuration={200}>
+                        {layers.map((layer) => (
+                            <DepthBar key={layer.depth_top_cm} layer={layer} t={t} />
+                        ))}
+                    </TooltipProvider>
+                </div>
+            </section>
 
             {/* Crop Suitability */}
             {cropSuitability && !cropSuitability.weather_available && (
@@ -926,7 +887,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
 
 
             {/* Vendor NPK (cdfinance) */}
-            <section className="space-y-2">
+            <section className="hidden space-y-2 sm:block">
                 <h4 className="text-xs font-semibold flex items-center gap-1.5">
                     <Sprout className="h-4 w-4" />
                     {t("npkTitle")}
@@ -995,7 +956,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
 
 
             {/* Site admission questionnaire (cdfinance) */}
-            <section className="space-y-2">
+            <section className="hidden space-y-2 sm:block">
                 <h4 className="text-xs font-semibold flex items-center gap-1.5">
                     <MapPin className="h-4 w-4" />
                     {t("siteAdmissionTitle")}
@@ -1450,135 +1411,94 @@ function BdCard({
     );
 }
 
-function AwcBar({
-    awc,
-    t,
+function SoilRiskRadar({
+    dimensions,
+    details,
+    scaleHint,
 }: {
-    awc: number;
-    t: (key: string) => string;
+    dimensions: SoilRadarDimension[];
+    details: { label: string; value: string }[];
+    scaleHint: string;
 }) {
-    const level = awcLevel(awc);
-    const pct = Math.min((awc / 250) * 100, 100);
-    const labelKey = level === "low" ? "awcLow" : level === "moderate" ? "awcModerate" : "awcGood";
-    return (
-        <div className="rounded-lg border bg-card p-2.5">
-            <div className="flex items-baseline justify-between mb-1">
-                <p className="text-[10px] text-muted-foreground">{t("rootzoneAwc")}</p>
-                <span className="text-xs font-semibold tabular-nums">
-                    {awc.toFixed(0)} {t("awcUnit")}
-                </span>
-            </div>
-            <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                <div
-                    className={cn("h-full rounded-full transition-[width,background-color]", awcColor(awc))}
-                    style={{ width: `${pct}%` }}
-                />
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1">{t(labelKey)}</p>
-        </div>
-    );
-}
-
-function RiskBadge({
-    label,
-    score,
-    t,
-}: {
-    label: string;
-    score: number | null;
-    t: (key: string) => string;
-}) {
-    if (score == null) return null;
-    const labelKey = score < 0.3 ? "riskLow" : score < 0.6 ? "riskModerate" : "riskHigh";
-    return (
-        <div className="flex items-center gap-1.5 rounded-md border bg-card px-2 py-1.5">
-            <span className={cn("h-2 w-2 rounded-full shrink-0", riskColor(score))} />
-            <div className="min-w-0">
-                <p className="text-[10px] text-muted-foreground truncate">{label}</p>
-                <p className={cn("text-[11px] font-medium", riskTextColor(score))}>
-                    {t(labelKey)}
-                </p>
-            </div>
-        </div>
-    );
-}
-
-function DrainageBadge({
-    drainageClass,
-    t,
-}: {
-    drainageClass: string;
-    t: (key: string) => string;
-}) {
-    const colorMap: Record<string, string> = {
-        "very poorly drained": "bg-sig-water",
-        "poorly drained": "bg-sig-water",
-        "somewhat poorly drained": "bg-info",
-        "moderately well drained": "bg-success",
-        "well drained": "bg-success",
-        "somewhat excessively drained": "bg-caution",
-        "excessively drained": "bg-warning",
+    const available = dimensions.filter((item): item is SoilRadarDimension & { score: number } => item.score != null);
+    const centerX = 200;
+    const centerY = 160;
+    const radius = 72;
+    const angleAt = (index: number) => -Math.PI / 2 + (2 * Math.PI * index) / available.length;
+    const pointAt = (index: number, scale: number) => {
+        const angle = angleAt(index);
+        return [centerX + Math.cos(angle) * radius * scale, centerY + Math.sin(angle) * radius * scale] as const;
     };
-    const dot = colorMap[drainageClass] ?? "bg-muted-foreground";
-    return (
-        <span className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2 py-1 text-[11px]">
-            <span className={cn("h-2 w-2 rounded-full shrink-0", dot)} />
-            <span className="text-muted-foreground">{t("drainageClass")}:</span>
-            <span className="font-medium capitalize">{drainageClass}</span>
-        </span>
-    );
-}
+    const points = (valueAt: (dimension: SoilRadarDimension & { score: number }) => number) => available
+        .map((item, index) => pointAt(index, valueAt(item)).map((value) => value.toFixed(1)).join(","))
+        .join(" ");
 
-function SocStockCard({
-    total,
-    topsoil,
-    t,
-}: {
-    total: number;
-    topsoil: number | null;
-    t: (key: string) => string;
-}) {
-    const level = total < 40 ? "socStockLow" : total < 80 ? "socStockMedium" : "socStockHigh";
-    const color =
-        total < 40
-            ? "text-danger"
-            : total < 80
-                ? "text-warning"
-                : "text-success";
-    const pct = Math.min((total / 150) * 100, 100);
-    const barColor =
-        total < 40 ? "bg-danger" : total < 80 ? "bg-warning" : "bg-success";
     return (
-        <div className="rounded-lg border bg-card p-2.5">
-            <div className="flex items-baseline justify-between mb-1">
-                <p className="text-[10px] text-muted-foreground">{t("socStock")}</p>
-                <span className={cn("text-xs font-semibold tabular-nums", color)}>
-                    {total.toFixed(1)} {t("socStockUnit")}
-                </span>
-            </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                    className={cn("h-full rounded-full transition-[width,background-color]", barColor)}
-                    style={{ width: `${pct}%` }}
-                />
-            </div>
-            <div className="flex items-center justify-between mt-1">
-                <p className="text-[10px] text-muted-foreground">{t(level)}</p>
-                {topsoil != null && (
-                    <p className="text-[10px] text-muted-foreground">
-                        {t("topsoil")}: {topsoil.toFixed(1)} {t("socStockUnit")}
-                    </p>
-                )}
-            </div>
+        <div className="space-y-1">
+            {available.length >= 3 ? (
+                <svg
+                    viewBox="0 0 400 330"
+                    className="mx-auto block h-[300px] w-full max-w-[400px]"
+                    role="img"
+                    aria-label={scaleHint}
+                >
+                    {[0.25, 0.5, 0.75, 1].map((scale) => (
+                        <polygon
+                            key={scale}
+                            points={points(() => scale)}
+                            fill={scale === 1 ? "none" : tokenColor("--muted-foreground", 0.035)}
+                            stroke={tokenColor("--border")}
+                            strokeWidth="1"
+                        />
+                    ))}
+                    {available.map((item, index) => {
+                        const [x, y] = pointAt(index, 1);
+                        return (
+                            <line key={item.label} x1={centerX} y1={centerY} x2={x} y2={y} stroke={tokenColor("--border")} />
+                        );
+                    })}
+                    <polygon
+                        points={points((item) => item.score)}
+                        fill={tokenColor("--primary", 0.24)}
+                        stroke={tokenColor("--primary")}
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                    />
+                    {available.map((item, index) => {
+                        const angle = angleAt(index);
+                        const labelRadius = 114;
+                        const x = centerX + Math.cos(angle) * labelRadius;
+                        const y = centerY + Math.sin(angle) * labelRadius;
+                        const anchor = Math.abs(Math.cos(angle)) < 0.25
+                            ? "middle"
+                            : Math.cos(angle) < 0 ? "end" : "start";
+                        return (
+                            <text key={item.label} x={x} y={y} textAnchor={anchor} className="fill-muted-foreground text-[12px]">
+                                <tspan x={x} fontWeight="600">{item.label}</tspan>
+                                <tspan x={x} dy="15" className="fill-foreground" fontWeight="600">{item.value}</tspan>
+                                {item.status && <tspan x={x} dy="15" fill={tokenColor(item.statusColor)}>{item.status}</tspan>}
+                            </text>
+                        );
+                    })}
+                </svg>
+            ) : (
+                <div className="space-y-2 px-2 py-3">
+                    {dimensions.map((item) => (
+                        <div key={item.label} className="flex items-baseline justify-between gap-3 text-sm">
+                            <span className="text-muted-foreground">{item.label}</span>
+                            <span className="font-medium tabular-nums">{item.value} {item.status}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+            {details.length > 0 && (
+                <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+                    {details.map((item) => (
+                        <span key={item.label}><span>{item.label}：</span><span className="font-medium text-foreground">{item.value}</span></span>
+                    ))}
+                </div>
+            )}
+            <p className="text-center text-xs text-muted-foreground">{scaleHint}</p>
         </div>
-    );
-}
-
-function Badge({ label, value }: { label: string; value: string }) {
-    return (
-        <span className="inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-[11px]">
-            <span className="text-muted-foreground">{label}:</span>
-            <span className="font-medium capitalize">{value}</span>
-        </span>
     );
 }

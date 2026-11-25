@@ -76,7 +76,6 @@ import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land
 import type { DayGradeShare } from "@/components/charts/ndvi-grade-shares-chart";
 import { computePixelNdviGradeShares } from "@/components/charts/ndvi-grade-shares-chart";
 import { filterRealisticNdviStats } from "@/lib/ndvi-realistic-filter";
-import { companionLines } from "@/components/charts/index-readout";
 
 const NdviChart = dynamic(() => import("@/components/charts/ndvi-chart"), {
     ssr: false,
@@ -371,7 +370,6 @@ function sceneSeriesAvg(scene: AgriSceneProduct, key: SeriesKey): number | null 
     return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-const COMPANION_KEYS: SeriesKey[] = ["ndvi", "evi", "ndmi", "ndre", "mndwi", "cire", "vv", "vh"];
 const SHORT_INDEX_LABEL: Record<string, string> = {
     ndvi: "NDVI",
     evi: "EVI",
@@ -387,28 +385,6 @@ function mainReadingKey(series: SeriesKey): SeriesKey {
     if (series === "drought") return "ndvi";
     if (series === "flood") return "vv";
     return series;
-}
-
-function sceneForReading(scenes: AgriSceneProduct[], date: string, series: SeriesKey): AgriSceneProduct | null {
-    const meta = SERIES_META[series];
-    const group = scenes.filter((scene) => scene.sensor === meta.sensor && scene.date === date);
-    if (!group.length) return null;
-    if (meta.sensor === "S2") {
-        return series === "drought"
-            ? pickOfficialOptical(group, { neighbors: scenes })
-            : pickOpticalForNdvi(group, { neighbors: scenes });
-    }
-    return group[0] ?? null;
-}
-
-function readingsBesideMain(scenes: AgriSceneProduct[], date: string, series: SeriesKey) {
-    const scene = sceneForReading(scenes, date, series);
-    if (!scene) return [];
-    const sensor = SERIES_META[series].sensor;
-    const readings = COMPANION_KEYS
-        .filter((key) => SERIES_META[key].sensor === sensor)
-        .map((key) => ({ key, value: sceneSeriesAvg(scene, key) }));
-    return companionLines(readings, mainReadingKey(series), sensor === "S1" ? 1 : 2, (key) => SHORT_INDEX_LABEL[key] ?? key.toUpperCase());
 }
 
 const SERIES_ICONS: Partial<Record<SeriesKey, LucideIcon>> = {
@@ -1602,11 +1578,6 @@ export default function AgriTimeseriesPanel({
         if (!selectedDate) return null;
         return dayGradeByDate[selectedDate] ?? null;
     }, [selectedDate, dayGradeByDate]);
-    const companionReadingsForChart = useMemo(
-        () => (selectedDate ? readingsBesideMain(scenes, selectedDate, series) : []),
-        [scenes, selectedDate, series],
-    );
-
     /** Selected scene for current series sensor + date (cloud cover, etc.). */
     const selectedScene = useMemo(() => {
         if (!selectedDate) return null;
@@ -2086,7 +2057,6 @@ export default function AgriTimeseriesPanel({
                                 onDateSelect={(d) => selectDateExplicit(d)}
                                 height={280}
                                 indexType={chartIndexType}
-                                companions={companionReadingsForChart}
                                 heroLabel={SHORT_INDEX_LABEL[mainReadingKey(series)] ?? "NDVI"}
                                 headerExtra={(
                                     <SeriesSwitcher series={series} keys={availableKeys} onChange={setSeries} />

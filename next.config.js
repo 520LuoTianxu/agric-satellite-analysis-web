@@ -14,35 +14,27 @@ const BASE_PATH_NAME = (configuredBasePath ?? ciDefaultBasePath)
     .replace(/^\/+|\/+$/g, "");
 const BASE_PATH = BASE_PATH_NAME ? `/${BASE_PATH_NAME}` : "";
 
-const TEST_API_ORIGIN = "https://joint-venture-test.cdfinance.com.cn";
-
-// 本地代理和静态构建的前端网关都限定到测试域名，配置漂移时直接失败，避免误调生产接口。
-function getTestApiOrigin(name) {
-    const origin = (process.env[name] || TEST_API_ORIGIN).trim().replace(/\/+$/, "");
-    if (origin !== TEST_API_ORIGIN) {
-        throw new Error(`${name} 必须配置为测试 API 域名 ${TEST_API_ORIGIN}`);
-    }
-    return origin;
-}
-
-const JOINT_VENTURE_PROXY = getTestApiOrigin("JOINT_VENTURE_PROXY");
-const SATELLITE_API_PROXY = getTestApiOrigin("SATELLITE_API_PROXY");
-const NEXT_PUBLIC_JOINT_VENTURE_PROXY = getTestApiOrigin("NEXT_PUBLIC_JOINT_VENTURE_PROXY");
-const NEXT_PUBLIC_SATELLITE_API_PROXY = getTestApiOrigin("NEXT_PUBLIC_SATELLITE_API_PROXY");
+const { getApiEnvironment, getApiOrigin } = require("./scripts/api-origin-config");
+const API_ENV = getApiEnvironment();
+const JOINT_VENTURE_PROXY = getApiOrigin("JOINT_VENTURE_PROXY");
+const SATELLITE_API_PROXY = getApiOrigin("SATELLITE_API_PROXY");
+const NEXT_PUBLIC_JOINT_VENTURE_PROXY = getApiOrigin("NEXT_PUBLIC_JOINT_VENTURE_PROXY");
+const NEXT_PUBLIC_SATELLITE_API_PROXY = getApiOrigin("NEXT_PUBLIC_SATELLITE_API_PROXY");
 const DIRECT_API_PROXY =
     process.env.NEXT_PUBLIC_DIRECT_API_PROXY ??
     (process.env.NODE_ENV === "development" ? "false" : "true");
 const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || "/satellite-api";
 
 if (process.env.NODE_ENV === "production" && DIRECT_API_PROXY !== "true") {
-    throw new Error("静态构建必须启用 API 直连，确保所有前端 API 请求使用测试网关。");
+    const label = API_ENV === "production" ? "正式" : "测试";
+    throw new Error("静态构建必须启用 API 直连，确保所有前端 API 请求使用" + label + "网关。");
 }
 
 if (
     process.env.NODE_ENV === "production" &&
     (!NEXT_PUBLIC_API_URL.startsWith("/") || NEXT_PUBLIC_API_URL.startsWith("//"))
 ) {
-    throw new Error("静态构建的 NEXT_PUBLIC_API_URL 必须使用路径，API 域名由测试网关统一注入。");
+    throw new Error("静态构建的 NEXT_PUBLIC_API_URL 必须使用路径，网关域名由 API_ENV 对应的环境配置注入。");
 }
 
 /** @type {import('next').NextConfig} */
@@ -62,7 +54,7 @@ const nextConfig = {
 if (process.env.NODE_ENV === "production") {
     nextConfig.output = "export";
 } else {
-    // 静态导出没有 rewrite；本地登录、农业业务和卫星分析统一使用测试网关。
+    // 本地开发默认 API_ENV=test，通过同源 rewrite 访问测试网关；静态构建按 API_ENV 直连对应环境。
     nextConfig.rewrites = async () => [
         // 卫星 OSS 未允许 localhost 跨域；开发环境同源代理，生产静态站点直连业务域名白名单图源。
         {
