@@ -43,7 +43,7 @@ interface LandReportTabProps {
     cropType?: string | null;
     onCropBound?: (cropKey: string) => void;
     onReportReady?: () => void;
-    /** 嵌在地块分析分区时隐藏页内大标题，避免和分区标题重复。 */
+    /** 嵌在选地报告页时隐藏页内大标题，避免和分区标题重复。 */
     embedded?: boolean;
     onSummaryChange?: (summary: string | null) => void;
 }

@@ -75,7 +75,10 @@ describe("applyFieldDetailTabParams", () => {
 
 it("keeps planting biweekly as a peer of parcel analysis without changing default", async () => {
     const { FIELD_DETAIL_VISIBLE_TABS } = await import("./field-detail-tabs.ts");
-    assert.ok((FIELD_DETAIL_VISIBLE_TABS as readonly string[]).includes("biweekly"));
+    assert.deepEqual(
+        [...FIELD_DETAIL_VISIBLE_TABS],
+        ["ndvi", "weather", "soil", "alerts", "biweekly", "parcel-analysis"],
+    );
     assert.equal(resolveFieldDetailTab("biweekly"), "biweekly");
     assert.equal(FIELD_DETAIL_DEFAULT_TAB, "ndvi");
     const params = new URLSearchParams("fieldId=9&section=harvest");
