@@ -158,7 +158,7 @@ const SoilTab = dynamic(() => import("@/components/field/soil-tab"), {
 // 种植双周报：走现有登录态与 /satellite-api，与其他地块接口同一套网关。
 const BiweeklyTab = dynamic(() => import("@/components/biweekly/biweekly-tab"));
 
-// 选地报告、生育期长势、收获合并为地块分析，首次进入该页签再加载。
+// 选地报告、生育期长势、收获放在「选地报告」页签，首次进入再加载。
 const ParcelAnalysisTab = dynamic(() => import("@/components/field/parcel-analysis-tab"), {
     ssr: false,
     loading: () => (
@@ -1319,27 +1319,51 @@ function FieldDetailPageContent() {
 
     const clearMapToolsStyle = () => {
         const tools = mapToolsRef.current;
-        if (!tools) return;
-        tools.style.transition = "";
-        tools.style.top = "";
-        tools.style.opacity = "";
-        tools.style.pointerEvents = "";
+        if (tools) {
+            tools.style.transition = "";
+            tools.style.top = "";
+            tools.style.opacity = "";
+            tools.style.pointerEvents = "";
+        }
+        const attribution = stageRef.current?.querySelector<HTMLElement>(".maplibregl-ctrl-bottom-right");
+        if (!attribution) return;
+        attribution.style.transition = "";
+        attribution.style.bottom = "";
+        attribution.style.left = "";
+        attribution.style.right = "";
+        attribution.style.opacity = "";
+        attribution.style.pointerEvents = "";
     };
 
     const placeMapTools = (sheetTop: number, transition: string) => {
+        if (window.matchMedia("(min-width: 768px)").matches) return;
         const tools = mapToolsRef.current;
-        if (!tools || window.matchMedia("(min-width: 768px)").matches) return;
-        const next = sheetTop - (tools.offsetHeight || 96) - 12;
-        tools.style.transition = transition;
-        if (next < 12) {
-            tools.style.top = "12px";
-            tools.style.opacity = "0";
-            tools.style.pointerEvents = "none";
-            return;
+        if (tools) {
+            const next = sheetTop - (tools.offsetHeight || 96) - 12;
+            tools.style.transition = transition;
+            if (next < 12) {
+                tools.style.top = "12px";
+                tools.style.opacity = "0";
+                tools.style.pointerEvents = "none";
+            } else {
+                tools.style.top = `${next}px`;
+                tools.style.opacity = "1";
+                tools.style.pointerEvents = "";
+            }
         }
-        tools.style.top = `${next}px`;
-        tools.style.opacity = "1";
-        tools.style.pointerEvents = "";
+        const stage = stageRef.current;
+        const attribution = stage?.querySelector<HTMLElement>(".maplibregl-ctrl-bottom-right");
+        if (!stage || !attribution) return;
+        const gap = 10;
+        const covered = sheetTop < 120;
+        attribution.style.transition = transition === "none"
+            ? "none"
+            : "bottom 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease";
+        attribution.style.left = "8px";
+        attribution.style.right = "auto";
+        attribution.style.bottom = `${Math.max(gap, stage.clientHeight - sheetTop + gap)}px`;
+        attribution.style.opacity = covered ? "0" : "1";
+        attribution.style.pointerEvents = covered ? "none" : "";
     };
 
     useLayoutEffect(() => {
@@ -2101,6 +2125,9 @@ function FieldDetailPageContent() {
                                     )}
                                 </span>
                             </TabsTrigger>
+                            <TabsTrigger value="biweekly" variant="underline" className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary">
+                                {t("tabBiweekly")}
+                            </TabsTrigger>
                             <TabsTrigger
                                 value="parcel-analysis"
                                 variant="underline"
@@ -2108,9 +2135,6 @@ function FieldDetailPageContent() {
                                 data-tour="tab-report"
                             >
                                 {t("tabParcelAnalysis")}
-                            </TabsTrigger>
-                            <TabsTrigger value="biweekly" variant="underline" className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary">
-                                {t("tabBiweekly")}
                             </TabsTrigger>
                             </TabsList>
                             {/* 编辑收纳到页签栏右上角，避免操作按钮挤占报告内容区域。 */}
@@ -2239,11 +2263,11 @@ function FieldDetailPageContent() {
                                 </div>
                             ) : (
                                 <>
-                                    {/* 默认打开长势分析；选地报告、生育期长势和收获并入地块分析。 */}
+                                    {/* 默认打开长势分析；选地条件、生育期长势和收获放在「选地报告」。 */}
                                     <TabsContent
                                         value="ndvi"
                                         forceMount
-                                        className="mt-0 p-3 data-[state=inactive]:hidden data-[state=inactive]:!hidden"
+                                        className="mt-0 p-3 max-md:px-3 max-md:pb-2 max-md:pt-1 data-[state=inactive]:hidden data-[state=inactive]:!hidden"
                                     >
                                         <NdviTab
                                             landId={landId}

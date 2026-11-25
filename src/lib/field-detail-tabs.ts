@@ -1,4 +1,4 @@
-/** 地块详情侧栏页签：默认长势分析，选地/生育期/收获并入「地块分析」。 */
+/** 地块详情侧栏页签：默认长势分析，选地/生育期/收获放在「选地报告」，排在种植双周报后面。 */
 
 export const FIELD_DETAIL_DEFAULT_TAB = "ndvi";
 export const PARCEL_ANALYSIS_TAB = "parcel-analysis";
@@ -8,8 +8,8 @@ export const FIELD_DETAIL_VISIBLE_TABS = [
     "weather",
     "soil",
     "alerts",
-    PARCEL_ANALYSIS_TAB,
     "biweekly",
+    PARCEL_ANALYSIS_TAB,
 ] as const;
 
 export const FIELD_DETAIL_HIDDEN_TABS = ["share", "scouting"] as const;
@@ -39,7 +39,7 @@ export function resolveFieldDetailTab(raw?: string | null): FieldDetailTab {
     return FIELD_DETAIL_DEFAULT_TAB;
 }
 
-/** 旧的独立页签或 ?section= 会落到地块分析里的对应分区。 */
+/** 旧的独立页签或 ?section= 会落到「选地报告」里的对应分区。 */
 export function resolveParcelAnalysisSection(
     tabRaw?: string | null,
     sectionRaw?: string | null,

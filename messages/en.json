@@ -425,7 +425,7 @@
     "tabWeather": "Weather",
     "tabSoil": "Soil",
     "tabBiweekly": "Planting biweekly",
-    "tabParcelAnalysis": "Parcel analysis",
+    "tabParcelAnalysis": "Site selection report",
     "tabSeasonGrowth": "Season growth",
     "tabHarvest": "Harvest",
     "hidePanel": "Collapse analysis sidebar",
@@ -1125,6 +1125,7 @@
     "zoomControls": "Image zoom controls",
     "imagePanArea": "Image area; when zoomed, use arrow keys to pan and Home to reset",
     "zoomInstructions": "Use the zoom buttons or Ctrl / ⌘ + scroll. Focus the image and use arrow keys to pan or Home to reset; dragging also pans.",
+    "pinchHint": "Pinch to zoom, drag to move",
     "refreshProgressLabel": "Remote-sensing imagery update progress",
     "openPreview": "Enlarge {caption}",
     "enlarge": "Enlarge",
@@ -1207,6 +1208,18 @@
       "ndwi": "Highlights possible surface water; it does not measure soil moisture.",
       "sentinel2": "Optical satellite imagery supports indices such as NDVI, but clouds can obscure the ground.",
       "sentinel1": "All-weather radar observes through clouds and measures VV/VH backscatter, not photo color."
+    },
+    "indexMenuHints": {
+      "ndvi": "Field greenness. A drop can be maturity or cloud.",
+      "evi": "For dense cover. Scale differs from NDVI.",
+      "ndmi": "Crop moisture, not soil moisture.",
+      "ndre": "Chlorophyll change. Lows may mean yellowing.",
+      "mndwi": "Highlights water, including ponds and irrigation.",
+      "cire": "Relative chlorophyll, not a lab value.",
+      "vv": "Radar strength, not a growth score.",
+      "vh": "Cross-pol radar. Compare it with VV.",
+      "drought": "Possible water stress. Check recent rain.",
+      "flood": "Possible standing water. Few scenes stay open."
     },
     "indexGuideNames": {
       "ndvi": "Normalized Difference Vegetation Index",

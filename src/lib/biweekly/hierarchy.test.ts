@@ -24,7 +24,7 @@ test("normal field workflow renders a peer tab, not a parcel entry or report mod
  const parcel=readFileSync("src/components/field/parcel-analysis-tab.tsx","utf8");
  const report=readFileSync("src/components/biweekly/mock-report.tsx","utf8");
  const list=page.match(/<TabsList\b[^>]*>([\s\S]*?)<\/TabsList>/)?.[1] ?? "";
- assert.deepEqual([...list.matchAll(/<TabsTrigger\s+value="([^"]+)"/g)].map(m=>m[1]),["ndvi","weather","soil","alerts","parcel-analysis","biweekly"]);
+ assert.deepEqual([...list.matchAll(/<TabsTrigger\s+value="([^"]+)"/g)].map(m=>m[1]),["ndvi","weather","soil","alerts","biweekly","parcel-analysis"]);
  assert.match(page,/<TabsContent value="biweekly"/);
  assert.doesNotMatch(parcel,/MockReportSummary/);
  assert.doesNotMatch(report,/Dialog|Portal|role="dialog"/);
