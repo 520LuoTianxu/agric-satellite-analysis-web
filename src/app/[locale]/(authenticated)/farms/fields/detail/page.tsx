@@ -158,7 +158,7 @@ const SoilTab = dynamic(() => import("@/components/field/soil-tab"), {
 // 种植双周报：走现有登录态与 /satellite-api，与其他地块接口同一套网关。
 const BiweeklyTab = dynamic(() => import("@/components/biweekly/biweekly-tab"));
 
-// 选地报告、生育期长势、收获合并为地块分析，首次进入该页签再加载。
+// 选地报告、生育期长势、收获放在「选地报告」页签，首次进入再加载。
 const ParcelAnalysisTab = dynamic(() => import("@/components/field/parcel-analysis-tab"), {
     ssr: false,
     loading: () => (
@@ -2101,6 +2101,9 @@ function FieldDetailPageContent() {
                                     )}
                                 </span>
                             </TabsTrigger>
+                            <TabsTrigger value="biweekly" variant="underline" className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary">
+                                {t("tabBiweekly")}
+                            </TabsTrigger>
                             <TabsTrigger
                                 value="parcel-analysis"
                                 variant="underline"
@@ -2108,9 +2111,6 @@ function FieldDetailPageContent() {
                                 data-tour="tab-report"
                             >
                                 {t("tabParcelAnalysis")}
-                            </TabsTrigger>
-                            <TabsTrigger value="biweekly" variant="underline" className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary">
-                                {t("tabBiweekly")}
                             </TabsTrigger>
                             </TabsList>
                             {/* 编辑收纳到页签栏右上角，避免操作按钮挤占报告内容区域。 */}
@@ -2239,7 +2239,7 @@ function FieldDetailPageContent() {
                                 </div>
                             ) : (
                                 <>
-                                    {/* 默认打开长势分析；选地报告、生育期长势和收获并入地块分析。 */}
+                                    {/* 默认打开长势分析；选地条件、生育期长势和收获放在「选地报告」。 */}
                                     <TabsContent
                                         value="ndvi"
                                         forceMount
