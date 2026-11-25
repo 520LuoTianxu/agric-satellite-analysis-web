@@ -1683,7 +1683,7 @@ function FieldDetailPageContent() {
             <div
                 ref={mapToolsRef}
                 className={cn(
-                    "field-map-tools absolute right-3 z-30 flex w-11 flex-col gap-2 transition-[top,opacity] duration-300 ease-out md:hidden",
+                    "field-map-tools absolute right-3 z-20 flex w-11 flex-col gap-2 transition-[top,opacity] duration-300 ease-out md:hidden",
                     sheetSnap === "full" && "pointer-events-none opacity-0",
                 )}
             >
@@ -2020,7 +2020,7 @@ function FieldDetailPageContent() {
                 inert={!sidebarOpen ? true : undefined}
                 className={cn(
                     "field-sheet absolute z-20 flex flex-col overflow-hidden bg-background",
-                    "max-md:inset-x-0 max-md:bottom-0 max-md:w-full max-md:rounded-t-[20px] max-md:shadow-[0_-8px_24px_rgba(0,0,0,0.18)]",
+                    "max-md:inset-x-0 max-md:bottom-0 max-md:w-full max-md:rounded-t-[24px] max-md:shadow-[0_-4px_18px_rgba(15,23,42,0.12)]",
                     sheetSnap === "half" && "max-md:top-[42%]",
                     sheetSnap === "full" && "max-md:top-0",
                     sheetSnap === "peek" && "max-md:top-auto max-md:h-6",
@@ -2031,14 +2031,14 @@ function FieldDetailPageContent() {
             >
                 <button
                     type="button"
-                    className="flex h-6 w-full shrink-0 touch-none items-center justify-center md:hidden"
+                    className="group/handle flex h-6 w-full shrink-0 touch-none items-center justify-center bg-transparent md:hidden"
                     aria-label={t("sheetHandle")}
                     onPointerDown={onSheetPointerDown}
                     onPointerMove={onSheetPointerMove}
                     onPointerUp={finishSheetDrag}
                     onPointerCancel={finishSheetDrag}
                 >
-                    <span className="h-1 w-8 rounded-full bg-muted-foreground/50" />
+                    <span className="h-1 w-10 rounded-full bg-muted-foreground/30 transition-colors group-hover/handle:bg-muted-foreground/45" />
                 </button>
                 {/* Left-edge drag handle — always-visible short gray grip (centered) */}
                 <div
@@ -2068,7 +2068,7 @@ function FieldDetailPageContent() {
                 <span id="field-detail-panel-resize-hint" className="sr-only">
                     {t("resizePanelHint")}
                 </span>
-                <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden md:rounded-xl", MAP_CHROME)}>
+                <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden md:rounded-xl max-md:border-0", MAP_CHROME)}>
                     <Tabs defaultValue={FIELD_DETAIL_DEFAULT_TAB} value={activeTab} onValueChange={handleActiveTabChange} className="flex flex-col flex-1 overflow-hidden">
                         {/* 页签保持紧凑单行，窄侧栏允许横向滚动，不挤占内容高度。 */}
                         <div
@@ -2091,7 +2091,7 @@ function FieldDetailPageContent() {
                             onPointerCancel={finishSheetDrag}
                             onClickCapture={onSheetBarClickCapture}
                         >
-                            <TabsList variant="underline" className="h-auto min-w-0 !w-auto flex-1 flex-nowrap items-end gap-4 overflow-x-auto !border-b-0 px-3 pb-0.5 [scrollbar-width:none]">
+                            <TabsList variant="underline" className="h-auto min-w-0 !w-auto flex-1 flex-nowrap items-end gap-2 overflow-x-auto !border-b-0 px-3 pb-0.5 [scrollbar-width:none]">
                             <TabsTrigger
                                 value="ndvi"
                                 variant="underline"

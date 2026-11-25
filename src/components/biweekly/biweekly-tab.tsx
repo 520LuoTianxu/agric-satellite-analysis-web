@@ -443,7 +443,6 @@ export default function BiweeklyTab({landId,cropType,allowLocalFixture}:{landId?
     <Button type="button" variant="outline" size="sm" className={s.seasonFill} disabled={busy||!season.periods.length} onClick={()=>run("backfill-season")}>一键补齐全部双周报</Button>
    </div>:null}
   </header>
-  <p className={s.disclaimer}>地块 {resolvedLand||"—"} {season?.land_name||""} · {season?.note||"走现有登录态与 /satellite-api 网关。"} 默认不出报，需显式触发补数或生成。未调用AI。</p>
   {season&&season.periods.length>0&&<div className={s.reportToolbar}>
    <div className={s.reportRow} role="group" aria-label="种植季周期">
    <Select value={period?.period_id} onValueChange={id=>{const item=season.periods.find(row=>row.period_id===id);if(item)choosePeriod(item);}}>

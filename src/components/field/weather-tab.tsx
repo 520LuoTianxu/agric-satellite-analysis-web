@@ -211,6 +211,7 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                                 aria-pressed={active}
                                 className={cn(
                                     "shrink-0 rounded-full px-3.5 text-sm font-medium transition-colors h-8 max-md:h-9",
+                                    opt.value === "custom" && "max-md:hidden",
                                     active
                                         ? "bg-foreground text-background"
                                         : "bg-muted text-foreground",
@@ -221,11 +222,12 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                         );
                     })}
                 </div>
-                <div className="flex min-w-0 items-end gap-2 max-md:w-full">
+                <div className="flex min-w-0 items-end gap-2 max-md:hidden">
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <Label htmlFor="weather-start-date" className="text-[11px] text-muted-foreground whitespace-nowrap">
                             {t("startDate")}
                         </Label>
+                        <p className="text-[10px] text-muted-foreground">{t("startDateHint")}</p>
                         <DatePicker
                             id="weather-start-date"
                             value={customStartDate}
@@ -261,74 +263,53 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                 <>
             {/* Unified weather stats grid */}
             {summary && (() => {
-                const latest = data.length > 0 ? data[data.length - 1] : null;
-                const vpd = latest?.vapor_pressure_deficit;
-                const vpdZone = vpd != null ? (vpd < 0.4 ? "low" : vpd < 0.8 ? "ideal" : vpd < 1.2 ? "moderate" : "high") : null;
-                const vpdColor = vpdZone ? {
-                    low: "text-info",
-                    ideal: "text-success",
-                    moderate: "text-caution",
-                    high: "text-danger",
-                }[vpdZone] : "";
-
                 return (
-                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                        {/* 手机端每个指标占一格，避免一行一个把面板拉得很长。 */}
-                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:col-span-2 md:p-2.5">
-                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("avgTemp")}</p>
-                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-sig-temp md:text-lg">
-                                {summary.avg_temperature != null ? `${summary.avg_temperature.toFixed(1)}°C` : "-"}
-                            </p>
-                            {summary.min_temperature != null && summary.max_temperature != null && (
-                                <p className="text-[10px] text-muted-foreground mt-0.5">{summary.min_temperature.toFixed(1)}° – {summary.max_temperature.toFixed(1)}°</p>
-                            )}
-                        </div>
-                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:col-span-2 md:p-2.5">
-                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("totalPrecip")}</p>
-                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-sig-precip md:text-lg">
-                                {summary.total_precipitation != null ? `${summary.total_precipitation.toFixed(1)} mm` : "-"}
-                            </p>
-                        </div>
-
-                        {/* Row 2: Water Deficit + GDD + Soil Moisture + Frost/Heat */}
-                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:col-span-2 md:p-2.5">
-                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("waterDeficit")}</p>
-                            <p className={`mt-0.5 text-base font-bold leading-tight tabular-nums md:text-lg ${summary.water_deficit_mm != null && summary.water_deficit_mm < 0 ? "text-danger" : "text-success"}`}>
-                                {summary.water_deficit_mm != null ? `${summary.water_deficit_mm.toFixed(1)} mm` : "-"}
-                            </p>
-                        </div>
-                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:p-2.5">
-                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("gddCumulative")}</p>
-                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-sig-temp md:text-lg">
-                                {summary.gdd_cumulative != null ? `${summary.gdd_cumulative.toFixed(0)}` : "-"}
-                            </p>
-                        </div>
-                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:p-2.5">
-                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("soilMoisture")}</p>
-                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-sig-water md:text-lg">
-                                {summary.avg_soil_moisture_top != null ? `${(summary.avg_soil_moisture_top * 100).toFixed(0)}%` : "-"}
-                            </p>
-                        </div>
-
-                        {/* Row 3: VPD (3 cols) + Frost + Heat */}
-                        {vpd != null && vpdZone && (
-                            <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:col-span-2 md:p-2.5">
-                                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">VPD</p>
-                                <p className={`mt-0.5 text-base font-bold leading-tight md:text-lg ${vpdColor}`}>{vpd.toFixed(2)} kPa</p>
-                                <p className="text-[10px] text-muted-foreground mt-0.5">{t(`vpd${vpdZone.charAt(0).toUpperCase() + vpdZone.slice(1)}`)}</p>
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="min-w-0 text-center">
+                                <p className="text-[11px] font-medium text-muted-foreground">{t("avgTemp")}</p>
+                                <p className="mt-1 text-xl font-bold leading-tight tabular-nums text-sig-temp">
+                                    {summary.avg_temperature != null ? `${summary.avg_temperature.toFixed(1)}°C` : "-"}
+                                </p>
+                                {summary.min_temperature != null && summary.max_temperature != null && (
+                                    <p className="mt-1 text-[10px] text-muted-foreground">{summary.min_temperature.toFixed(1)}° – {summary.max_temperature.toFixed(1)}°</p>
+                                )}
                             </div>
-                        )}
-                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:p-2.5">
-                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("frostDays")}</p>
-                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-info md:text-lg">
-                                {summary.frost_days}
-                            </p>
+                            <div className="min-w-0 text-center">
+                                <p className="text-[11px] font-medium text-muted-foreground">{t("totalPrecip")}</p>
+                                <p className="mt-1 text-xl font-bold leading-tight tabular-nums text-sig-precip">
+                                    {summary.total_precipitation != null ? `${summary.total_precipitation.toFixed(1)} mm` : "-"}
+                                </p>
+                            </div>
+                            <div className="min-w-0 text-center">
+                                <p className="text-[11px] font-medium text-muted-foreground">{t("gddCumulative")}</p>
+                                <p className="mt-1 text-xl font-bold leading-tight tabular-nums text-sig-temp">
+                                    {summary.gdd_cumulative != null ? summary.gdd_cumulative.toFixed(0) : "-"}
+                                </p>
+                            </div>
                         </div>
-                        <div className="col-span-1 rounded-lg border bg-card p-2 shadow-sm md:p-2.5">
-                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("heatStressDays")}</p>
-                            <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-danger md:text-lg">
-                                {summary.heat_stress_days}
-                            </p>
+
+                        <div className="grid grid-cols-4 gap-2">
+                            <div className="min-w-0 text-center">
+                                <p className="whitespace-nowrap text-[9px] leading-tight text-muted-foreground">{t("waterDeficit")}</p>
+                                <p className={`mt-1 whitespace-nowrap text-[11px] font-semibold leading-tight tabular-nums ${summary.water_deficit_mm != null && summary.water_deficit_mm < 0 ? "text-danger" : "text-success"}`}>
+                                    {summary.water_deficit_mm != null ? `${summary.water_deficit_mm.toFixed(1)} mm` : "-"}
+                                </p>
+                            </div>
+                            <div className="min-w-0 text-center">
+                                <p className="whitespace-nowrap text-[9px] leading-tight text-muted-foreground">{t("soilMoisture")}</p>
+                                <p className="mt-1 whitespace-nowrap text-[11px] font-semibold leading-tight tabular-nums text-sig-water">
+                                    {summary.avg_soil_moisture_top != null ? `${(summary.avg_soil_moisture_top * 100).toFixed(0)}%` : "-"}
+                                </p>
+                            </div>
+                            <div className="min-w-0 text-center">
+                                <p className="whitespace-nowrap text-[9px] leading-tight text-muted-foreground">{t("frostDays")}</p>
+                                <p className="mt-1 whitespace-nowrap text-[11px] font-semibold leading-tight tabular-nums text-info">{summary.frost_days}</p>
+                            </div>
+                            <div className="min-w-0 text-center">
+                                <p className="whitespace-nowrap text-[9px] leading-tight text-muted-foreground">{t("heatStressDays")}</p>
+                                <p className="mt-1 whitespace-nowrap text-[11px] font-semibold leading-tight tabular-nums text-danger">{summary.heat_stress_days}</p>
+                            </div>
                         </div>
                     </div>
                 );

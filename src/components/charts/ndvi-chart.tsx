@@ -100,8 +100,6 @@ interface NdviChartProps {
     onOnlyRealisticChange?: (value: boolean) => void;
     /** 曲线上方右侧的操作，例如切换指标。 */
     headerExtra?: React.ReactNode;
-    /** 同一天的其他遥感指标，用小字排在主指标旁边。 */
-    companions?: { label: string; value: string }[];
     /** 主指标的短名称，例如 NDVI。不放在切换按钮上。 */
     heroLabel?: string;
 }
@@ -123,13 +121,12 @@ export default function NdviChart({
     onlyRealistic: onlyRealisticProp,
     onOnlyRealisticChange,
     headerExtra,
-    companions = [],
     heroLabel,
 }: NdviChartProps) {
     const t = useTranslations("ndviChart");
     const locale = useLocale();
-    const [stageNode, setStageNode] = useState<HTMLDivElement | null>(null);
-    const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+    const readoutRowRef = useRef<HTMLDivElement>(null);
+    const [readoutRowWidth, setReadoutRowWidth] = useState(0);
     const [showObservations, setShowObservations] = useState(false);
     const [showEvents, setShowEvents] = useState(false);
     /** Checked = hide unrealistic / cloud-hole points (default). Uncontrolled unless parent passes props. */
@@ -157,13 +154,14 @@ export default function NdviChart({
         (date) => onDateSelectRef.current?.(date),
     );
     useEffect(() => {
-        if (!stageNode) return;
-        const measure = () => setStageSize({ width: stageNode.clientWidth, height: stageNode.clientHeight });
+        const row = readoutRowRef.current;
+        if (!row) return;
+        const measure = () => setReadoutRowWidth(row.clientWidth);
         measure();
         const observer = new ResizeObserver(measure);
-        observer.observe(stageNode);
+        observer.observe(row);
         return () => observer.disconnect();
-    }, [stageNode]);
+    }, [stats.length]);
     const config = INDEX_CONFIG[indexType];
     const seriesName = config.label;
     const isSar = indexType === "VV" || indexType === "VH";
@@ -511,40 +509,55 @@ export default function NdviChart({
         ? focusPoint.mean
         : null;
     const focusText = focusMean == null ? "—" : formatIndexValue(focusMean, isSar);
+    const focusCloudText = typeof focusPoint?.cloud_cover === "number" && Number.isFinite(focusPoint.cloud_cover)
+        ? t("cloud", { percent: Math.round(focusPoint.cloud_cover) })
+        : t("cloudNA");
     const focusDateLabel = focusDate ? formatObservationDate(focusDate, locale) : t("scrubHint");
 
     return (
         <div className="w-full">
-            <div ref={setStageNode} className="relative">
-                <div className={cn(scrub.scrubbing && "invisible")} aria-hidden={scrub.scrubbing || undefined}>
-                    <ObservationDateRail
-                        dates={axisDates}
-                        activeDate={focusDate}
-                        label={t("observationDates")}
-                        onSelect={onDateSelect}
-                    />
-                    <p className="mt-1 text-sm leading-none text-muted-foreground">{focusDateLabel}</p>
-                    <p className="mt-1 flex min-h-4 gap-x-2.5 overflow-x-auto text-xs leading-none text-muted-foreground [scrollbar-width:none]">
-                        {companions.map((item) => (
-                            <span key={item.label} className="shrink-0 tabular-nums">
-                                {item.label} {item.value}
-                            </span>
-                        ))}
-                    </p>
-                    <div className="mt-1 flex h-12 items-center">
-                        <HeroValue text={focusText} suffix={heroLabel} />
-                        {headerExtra ? <div className="ml-auto self-center">{headerExtra}</div> : null}
+            <div className="relative">
+                <div>
+                    <div className="flex flex-col gap-2">
+                        <div className={cn(scrub.scrubbing && "invisible")} aria-hidden={scrub.scrubbing || undefined}>
+                            <ObservationDateRail
+                                dates={axisDates}
+                                activeDate={focusDate}
+                                label={t("observationDates")}
+                                onSelect={onDateSelect}
+                            />
+                        </div>
+                        <p className={cn(
+                            "text-center text-sm leading-none text-muted-foreground",
+                            scrub.scrubbing && "font-medium text-foreground",
+                        )}>
+                            {focusDateLabel}
+                        </p>
+                    </div>
+                    <div ref={readoutRowRef} className="relative mt-2 h-[54px]">
+                        {scrub.scrubbing ? (
+                            <div
+                                className="absolute top-0 z-20 -translate-x-1/2 text-center"
+                                style={{ left: clampScrubLabelX(scrub.cursorX ?? 0, readoutRowWidth, 60) }}
+                            >
+                                <HeroValue text={focusText} suffix={heroLabel} />
+                                <p className="mt-0.5 text-xs leading-none text-muted-foreground">
+                                    {focusCloudText}
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="flex h-full items-center">
+                                <div className="pl-3">
+                                    <HeroValue text={focusText} suffix={heroLabel} />
+                                    <p className="mt-0.5 text-xs leading-none text-muted-foreground">
+                                        {focusCloudText}
+                                    </p>
+                                </div>
+                                {headerExtra ? <div className="ml-auto self-center">{headerExtra}</div> : null}
+                            </div>
+                        )}
                     </div>
                 </div>
-                {scrub.scrubbing && scrub.cursorX != null ? (
-                    <p
-                        className="pointer-events-none absolute top-0 z-20 -translate-x-1/2 whitespace-nowrap"
-                        style={{ left: clampScrubLabelX(scrub.cursorX, stageSize.width, 56) }}
-                        aria-live="polite"
-                    >
-                        <HeroValue text={focusText} />
-                    </p>
-                ) : null}
             </div>
             <div
                 className="relative select-none"
@@ -552,10 +565,7 @@ export default function NdviChart({
                 aria-label={t("scrubHint")}
                 onContextMenu={(event) => event.preventDefault()}
             >
-                <ChartScrubCursor
-                    x={scrub.cursorX}
-                    reach={scrub.scrubbing ? Math.max(0, stageSize.height - 44) : 0}
-                />
+                <ChartScrubCursor x={scrub.cursorX} />
                 <ReactEChartsCore
                     echarts={echarts}
                     option={option}
