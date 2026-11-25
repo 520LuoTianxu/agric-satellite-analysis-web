@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import * as echarts from "echarts/core";
 import { LineChart, BarChart, ScatterChart } from "echarts/charts";
@@ -11,7 +11,6 @@ import {
     MarkLineComponent,
     MarkPointComponent,
     MarkAreaComponent,
-    DataZoomComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import type { LandStat, IndexType, WeatherDaily } from "@/lib/api";
@@ -21,16 +20,18 @@ import { useTranslations } from "next-intl";
 import { DECLOUD_SOURCE, isGoodDecloudQuality } from "@/lib/agri-classify";
 import {
     axisLabel,
-    baseTooltip,
     indexBandColor,
     indexLineColor,
     legendStyle,
     secondaryValueAxis,
     sig,
+    ROUNDED_LINE,
     thresholdMarkLine,
     valueAxis,
 } from "./chart-base";
-import { attachNearestDateClick, type AxisClickChart } from "./chart-date-click";
+import { ObservationDateRail } from "./chart-date-rail";
+import { snapCategoryBand, uniqueSortedDates } from "./chart-scrub";
+import { ChartScrubCursor, ChartScrubReadout, useChartScrub } from "./chart-scrub-view";
 import { filterRealisticNdviStats } from "@/lib/ndvi-realistic-filter";
 
 // Register only the modules we need (tree-shake friendly)
@@ -44,7 +45,6 @@ echarts.use([
     MarkLineComponent,
     MarkPointComponent,
     MarkAreaComponent,
-    DataZoomComponent,
     CanvasRenderer,
 ]);
 
@@ -96,6 +96,8 @@ interface NdviChartProps {
     /** Controlled "only valid observations" filter (default true when uncontrolled). */
     onlyRealistic?: boolean;
     onOnlyRealisticChange?: (value: boolean) => void;
+    /** 曲线上方右侧的操作，例如切换指标。 */
+    headerExtra?: React.ReactNode;
 }
 
 export default function NdviChart({
@@ -114,6 +116,7 @@ export default function NdviChart({
     eventMarks,
     onlyRealistic: onlyRealisticProp,
     onOnlyRealisticChange,
+    headerExtra,
 }: NdviChartProps) {
     const t = useTranslations("ndviChart");
     const [showObservations, setShowObservations] = useState(false);
@@ -129,13 +132,19 @@ export default function NdviChart({
         () => (onlyRealistic ? filterRealisticNdviStats(stats, { seasonMonths, peakMonths }) : stats),
         [onlyRealistic, stats, seasonMonths, peakMonths],
     );
-    // 选择日期只更新高亮，不重置用户已经选择的时间窗口；数据范围改变时重新适配。
-    const viewKey = `${indexType}:${displayStats[0]?.date ?? ""}:${displayStats[displayStats.length - 1]?.date ?? ""}:r${onlyRealistic ? 1 : 0}`;
-    const zoomRef = useRef<{ key: string; start: number; end: number } | null>(null);
+    const axisDates = useMemo(
+        () => uniqueSortedDates([
+            ...displayStats.map((point) => point.date),
+            ...(showObservations ? (decloudAltStats ?? []).map((point) => point.date) : []),
+        ]),
+        [displayStats, decloudAltStats, showObservations],
+    );
     const onDateSelectRef = useRef(onDateSelect);
-    const selectableDatesRef = useRef<string[]>([]);
-    const detachDateClickRef = useRef<(() => void) | null>(null);
     onDateSelectRef.current = onDateSelect;
+    const scrub = useChartScrub(
+        () => axisDates,
+        (date) => onDateSelectRef.current?.(date),
+    );
     const config = INDEX_CONFIG[indexType];
     const seriesName = config.label;
     const isSar = indexType === "VV" || indexType === "VH";
@@ -229,13 +238,18 @@ export default function NdviChart({
             };
         });
 
-        // Weather overlay: daily precip bars and ET₀ line on their actual dates
+        // 气象叠加只画在已有遥感观测的日期上，避免把没有影像的日历日铺进时间轴。
         const hasWeather = !!weatherSorted && weatherSorted.length > 0;
+        const axisDateSet = new Set(axisDates);
         const precipData = weatherSorted
-            ? weatherSorted.map((w) => [w.date, w.precipitation_sum ?? 0] as [string, number])
+            ? weatherSorted
+                .filter((w) => axisDateSet.has(w.date))
+                .map((w) => [w.date, w.precipitation_sum ?? 0] as [string, number])
             : [];
         const et0Data = weatherSorted
-            ? weatherSorted.map((w) => [w.date, w.et0_fao_mm ?? 0] as [string, number])
+            ? weatherSorted
+                .filter((w) => axisDateSet.has(w.date))
+                .map((w) => [w.date, w.et0_fao_mm ?? 0] as [string, number])
             : [];
 
         const years = Array.from(
@@ -286,8 +300,16 @@ export default function NdviChart({
                 }
             });
         }
-        const markAreaOption = markAreaData.length
-            ? { silent: true, label: { show: true, position: "insideTop", fontSize: 10, color: tokenColor("--muted-foreground") }, data: markAreaData }
+        const snappedMarkArea = markAreaData.flatMap((pair) => {
+            const start = pair[0]?.xAxis;
+            const end = pair[1]?.xAxis;
+            if (typeof start !== "string" || typeof end !== "string") return [];
+            const band = snapCategoryBand(axisDates, start, end);
+            if (!band) return [];
+            return [[{ ...pair[0], xAxis: band[0] }, { ...pair[1], xAxis: band[1] }]];
+        });
+        const markAreaOption = snappedMarkArea.length
+            ? { silent: true, label: { show: true, position: "insideTop", fontSize: 10, color: tokenColor("--muted-foreground") }, data: snappedMarkArea }
             : undefined;
 
         const valueByDate = new Map(displayStats.map((s) => [s.date, s.mean]));
@@ -327,7 +349,7 @@ export default function NdviChart({
             ...(hasWeather ? ["Precip (mm)", "ET₀ (mm)"] : []),
         ];
         return {
-            grid: { top: showLegend ? 42 : 22, right: hasWeather ? 46 : 20, bottom: 64, left: 42 },
+            grid: { top: showLegend ? 36 : 12, right: hasWeather ? 46 : 12, bottom: 12, left: 40 },
             legend: showLegend
                 ? {
                     data: legendData,
@@ -338,79 +360,15 @@ export default function NdviChart({
                     ...legendStyle(),
                 }
                 : undefined,
-            tooltip: {
-                ...baseTooltip(),
-                trigger: "axis" as const,
-                axisPointer: { type: "cross" as const },
-                formatter: (params: any) => {
-                    if (!Array.isArray(params) || params.length === 0) return "";
-                    // ECharts HTML tooltip 通过 innerHTML 渲染，日期和外部场景原因必须按文本转义。
-                    const date = escapeTooltipHtml(params[0]?.axisValueLabel || params[0]?.value?.[0] || "");
-                    const lines = [`<b>${date}</b>`];
-                    let extras: {
-                        cloudCover?: number | null;
-                        qualityScore?: number | null;
-                        qualityScoreMethod?: string | null;
-                        decloudQuality?: string | null;
-                        decloudReasons?: string[];
-                        productSource?: string | null;
-                        sceneId?: string | null;
-                    } | null = null;
-                    const extraLines: string[] = [];
-                    for (const p of params) {
-                        if (p.seriesName === "p10" || p.seriesName === "p90") continue;
-                        const val = Array.isArray(p.value) ? p.value[1] : p.value;
-                        if (val == null) continue;
-                        const isIndex = p.seriesName === seriesName || p.seriesName === altName;
-                        const unit = isIndex ? (isSar ? " dB" : "") : " mm";
-                        const digits = isIndex ? (isSar ? 2 : 3) : 1;
-                        lines.push(`${p.marker} ${p.seriesName}: ${Number(val).toFixed(digits)}${unit}`);
-                        if (isIndex && p.data && typeof p.data === "object") {
-                            if (p.seriesName === seriesName) extras = p.data;
-                            extraLines.push(
-                                formatDecloudLine(
-                                    {
-                                        quality: p.data.decloudQuality,
-                                        reasons: p.data.decloudReasons,
-                                        source: p.data.productSource,
-                                        sceneId: p.data.sceneId,
-                                        cloudCover: p.data.cloudCover,
-                                    },
-                                    t,
-                                ),
-                            );
-                        }
-                    }
-                    if (!isSar && (hasOpticalTooltip(extras) || extraLines.length)) {
-                        lines.push(formatCloudLine(extras?.cloudCover, t));
-                        // Prefer real decloud status over "无（多云原始）" when an alt
-                        // (fair/bad) product is also on this axis date.
-                        const unique = [...new Set(extraLines.filter(Boolean))];
-                        const hasRealDecloud = unique.some(
-                            (line) => line !== t("decloudNone") && line !== t("decloudClear") && line !== t("decloudNA"),
-                        );
-                        for (const line of unique) {
-                            if (hasRealDecloud && line === t("decloudNone")) continue;
-                            lines.push(line);
-                        }
-                    }
-                    if (
-                        extras?.qualityScoreMethod === "parcel_mask_valid_fraction_v1" &&
-                        typeof extras.qualityScore === "number" &&
-                        Number.isFinite(extras.qualityScore)
-                    ) {
-                        lines.push(t("validPixelCoverage", { percent: Math.round(extras.qualityScore * 100) }));
-                    } else if (extras?.qualityScoreMethod === "unknown") {
-                        lines.push(t("coverageUnavailable"));
-                    }
-                    return lines.join("<br/>");
-                },
-            },
+            tooltip: { show: false },
+            axisPointer: { show: false },
             xAxis: {
-                type: "time" as const,
-                axisLabel: { ...axisLabel(), hideOverlap: true },
-                splitNumber: 4,
-                axisTick: { alignWithLabel: true },
+                type: "category" as const,
+                data: axisDates,
+                boundaryGap: true,
+                axisLine: { show: false },
+                axisTick: { show: false },
+                axisLabel: { show: false },
             },
             yAxis: hasWeather
                 ? [
@@ -418,58 +376,6 @@ export default function NdviChart({
                     secondaryValueAxis({ name: "mm", nameTextStyle: axisLabel() }),
                 ]
                 : valueAxis({ min: yMin, max: yMax }),
-            dataZoom: (() => {
-                // Default window: last 24 months ending at tMax (end=100% = latest).
-                // Keep inside + slider in sync so the slider thumb matches the visible window.
-                // No LTTB — full series stays in option data so recent dates (e.g. 2026) render.
-                let start = 0;
-                let end = 100;
-                if (displayStats.length >= 2) {
-                    const times = displayStats
-                        .map((s) => Date.parse(s.date))
-                        .filter((t) => Number.isFinite(t));
-                    if (times.length >= 2) {
-                        const tMin = Math.min(...times);
-                        const tMax = Math.max(...times);
-                        const span = tMax - tMin;
-                        const MONTHS_24_MS = 2 * 365 * 24 * 60 * 60 * 1000;
-                        if (span > MONTHS_24_MS) {
-                            const viewStart = tMax - MONTHS_24_MS;
-                            start = ((viewStart - tMin) / span) * 100;
-                        }
-                        // selectedDate near max is always inside: end stays 100%.
-                    }
-                }
-                if (zoomRef.current?.key === viewKey) {
-                    start = zoomRef.current.start;
-                    end = zoomRef.current.end;
-                }
-                return [
-                    {
-                        type: "inside" as const,
-                        start,
-                        end,
-                        zoomOnMouseWheel: false,
-                        moveOnMouseWheel: false,
-                    },
-                    {
-                        type: "slider" as const,
-                        start,
-                        end,
-                        bottom: 8,
-                        height: 18,
-                        borderColor: "transparent",
-                        backgroundColor: "rgba(22,163,74,0.04)",
-                        fillerColor: "rgba(22,163,74,0.12)",
-                        dataBackground: { lineStyle: { color: indexLineColor(indexType), opacity: 0.4 }, areaStyle: { color: "rgba(22,163,74,0.06)" } },
-                        showDetail: false,
-                        // 与多日长势占比趋势保持一致：允许拖动两端手柄或直接拖动选中范围。
-                        brushSelect: true,
-                        moveHandleSize: 8,
-                        moveHandleStyle: { color: indexLineColor(indexType), opacity: 0.55 },
-                    },
-                ];
-            })(),
             series: [
                 // p10 band (invisible base)
                 {
@@ -477,6 +383,7 @@ export default function NdviChart({
                     type: "line",
                     data: bandLowData,
                     stack: "band",
+                    ...ROUNDED_LINE,
                     lineStyle: { opacity: 0 },
                     symbol: "none",
                     areaStyle: { opacity: 0 },
@@ -488,6 +395,7 @@ export default function NdviChart({
                     type: "line",
                     data: bandHighData,
                     stack: "band",
+                    ...ROUNDED_LINE,
                     lineStyle: { opacity: 0 },
                     symbol: "none",
                     areaStyle: {
@@ -500,11 +408,10 @@ export default function NdviChart({
                     name: seriesName,
                     type: "line",
                     data: ndviData,
-                    // 遥感观测使用真实折线，避免平滑插值制造不存在的峰谷。
-                    smooth: false,
+                    ...ROUNDED_LINE,
                     connectNulls: false,
                     itemStyle: { color: indexLineColor(indexType) },
-                    lineStyle: { color: indexLineColor(indexType), width: 1.8 },
+                    lineStyle: { color: indexLineColor(indexType), width: 2.8, cap: "round" as const, join: "round" as const },
                     showSymbol: showObservations || displayStats.length <= 3,
                     // Do not LTTB-sample agri timeseries: downsampling on a time axis can
                     // drop/misrender the recent tail (e.g. hide 2026 points).
@@ -546,66 +453,27 @@ export default function NdviChart({
                             type: "line",
                             yAxisIndex: 1,
                             data: et0Data,
-                            smooth: true,
+                            ...ROUNDED_LINE,
                             symbol: "none",
-                            lineStyle: { color: sig("et0"), width: 1.5, type: "dashed" as const },
+                            lineStyle: { color: sig("et0"), width: 2.2, type: "dashed" as const, cap: "round" as const },
                             itemStyle: { color: sig("et0") },
                         },
                     ]
                     : []),
             ],
         };
-    }, [displayStats, decloudAltStats, selectedDate, config, seriesName, weatherSorted, indexType, yMin, yMax, isSar, seasonMonths, peakMonths, stageBands, bareThreshold, eventMarks, viewKey, showObservations, showEvents, t]);
-
-    const selectableDates = useMemo(() => {
-        const dates: string[] = [];
-        const seen = new Set<string>();
-        const add = (date: string, value: number | null | undefined) => {
-            if (!date || value == null || !Number.isFinite(value) || seen.has(date)) return;
-            seen.add(date);
-            dates.push(date);
-        };
-        for (const s of displayStats) add(s.date, s.mean);
-        if (showObservations) {
-            for (const s of decloudAltStats ?? []) add(s.date, s.mean);
-        }
-        return dates;
-    }, [displayStats, decloudAltStats, showObservations]);
-    selectableDatesRef.current = selectableDates;
-
-    const onChartReady = useCallback((chart: AxisClickChart) => {
-        detachDateClickRef.current?.();
-        detachDateClickRef.current = attachNearestDateClick(
-            chart,
-            () => selectableDatesRef.current,
-            (date) => onDateSelectRef.current?.(date),
-        );
-    }, []);
-
-    useEffect(() => () => {
-        detachDateClickRef.current?.();
-        detachDateClickRef.current = null;
-    }, []);
-
-    const onEvents = useMemo(
-        () => ({
-            datazoom: (event: { start?: number; end?: number; batch?: { start?: number; end?: number }[] }) => {
-                const value = event.batch?.[0] ?? event;
-                if (typeof value.start === "number" && typeof value.end === "number") {
-                    zoomRef.current = { key: viewKey, start: value.start, end: value.end };
-                }
-            },
-        }),
-        [viewKey],
-    );
+    }, [axisDates, displayStats, decloudAltStats, selectedDate, config, seriesName, weatherSorted, indexType, yMin, yMax, isSar, seasonMonths, peakMonths, stageBands, bareThreshold, eventMarks, showObservations, showEvents, t]);
 
     if (stats.length === 0) {
         return (
-            <div
-                className="flex items-center justify-center text-xs text-muted-foreground"
-                style={{ height }}
-            >
-                {t("empty", { index: config.label })}
+            <div className="w-full space-y-2">
+                {headerExtra ? <div className="flex justify-end">{headerExtra}</div> : null}
+                <div
+                    className="flex items-center justify-center text-xs text-muted-foreground"
+                    style={{ height }}
+                >
+                    {t("empty", { index: config.label })}
+                </div>
             </div>
         );
     }
@@ -615,17 +483,59 @@ export default function NdviChart({
     const yellowColor = tokenColor("--warning");
     const redColor = tokenColor("--danger");
 
+    const scrubPoint = scrub.activeDate
+        ? displayStats.find((point) => point.date === scrub.activeDate)
+            ?? (showObservations ? decloudAltStats?.find((point) => point.date === scrub.activeDate) : undefined)
+        : undefined;
+    const scrubLines: string[] = [];
+    if (scrubPoint) {
+        const value = scrubPoint.mean;
+        if (typeof value === "number" && Number.isFinite(value)) {
+            scrubLines.push(`${seriesName}: ${value.toFixed(isSar ? 2 : 3)}${isSar ? " dB" : ""}`);
+        }
+        if (!isSar) {
+            scrubLines.push(formatCloudLine(scrubPoint.cloud_cover, t));
+            scrubLines.push(formatDecloudLine({
+                quality: scrubPoint.decloud_quality,
+                reasons: scrubPoint.decloud_reasons,
+                source: scrubPoint.product_source,
+                sceneId: scrubPoint.scene_id,
+                cloudCover: scrubPoint.cloud_cover,
+            }, t));
+        }
+    }
+
     return (
         <div className="w-full space-y-1.5">
-            <ReactEChartsCore
-                echarts={echarts}
-                option={option}
-                style={{ height, width: "100%" }}
-                onEvents={onEvents}
-                onChartReady={onChartReady}
-                notMerge
-                lazyUpdate
+            <ObservationDateRail
+                dates={axisDates}
+                activeDate={scrub.activeDate ?? selectedDate ?? null}
+                label={t("observationDates")}
             />
+            <div className="flex flex-wrap items-end justify-between gap-2">
+                <ChartScrubReadout
+                    active={scrub.scrubbing}
+                    hint={t("scrubHint")}
+                    title={scrub.activeDate}
+                    lines={scrubLines}
+                />
+                {headerExtra}
+            </div>
+            <div
+                className="relative select-none"
+                style={{ WebkitTouchCallout: "none" }}
+                onContextMenu={(event) => event.preventDefault()}
+            >
+                <ChartScrubCursor x={scrub.cursorX} />
+                <ReactEChartsCore
+                    echarts={echarts}
+                    option={option}
+                    style={{ height, width: "100%", touchAction: "pan-y" }}
+                    onChartReady={scrub.onChartReady}
+                    notMerge
+                    lazyUpdate
+                />
+            </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-[11px] text-muted-foreground">
                 <label className="inline-flex cursor-pointer items-center gap-1.5">
                     <input type="checkbox" className="accent-primary" checked={showObservations} onChange={(e) => setShowObservations(e.target.checked)} />
@@ -683,17 +593,6 @@ export default function NdviChart({
             ) : null}
         </div>
     );
-}
-
-function hasOpticalTooltip(extras: {
-    cloudCover?: number | null;
-    decloudQuality?: string | null;
-    productSource?: string | null;
-    sceneId?: string | null;
-} | null): boolean {
-    if (!extras) return false;
-    if (typeof extras.cloudCover === "number" && Number.isFinite(extras.cloudCover)) return true;
-    return Boolean(extras.decloudQuality || extras.productSource || extras.sceneId);
 }
 
 const DECLOUD_REASON_KEYS = new Set([

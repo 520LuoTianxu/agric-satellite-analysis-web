@@ -771,6 +771,7 @@
     "waterBalanceTitle": "ET₀ 与水分平衡",
     "deficit": "亏缺",
     "tempAndPrecip": "气温与降水",
+    "scrubHint": "长按后左右滑动查看当天",
     "forecast7d": "7 日预报",
     "range30d": "30 天",
     "range90d": "90 天",
@@ -1097,7 +1098,9 @@
     "empty": "暂无 {index} 数据",
     "showObservations": "观测点与去云对照",
     "showEvents": "风险标记",
-    "onlyRealistic": "仅显示有效观测"
+    "onlyRealistic": "仅显示有效观测",
+    "scrubHint": "长按后左右滑动，查看并切换日期",
+    "observationDates": "有遥感影像的日期"
   },
   "agriPanel": {
     "title": "长势分析",
@@ -1114,6 +1117,8 @@
     "hideHeatmap": "隐藏色斑图",
     "showHeatmap": "显示色斑图",
     "moreIndices": "更多指数",
+    "switchIndex": "切换指标",
+    "scrubHint": "长按后左右滑动查看当天",
     "zoomIn": "放大",
     "zoomOut": "缩小",
     "resetZoom": "重置缩放",
