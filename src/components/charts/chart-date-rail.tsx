@@ -5,16 +5,18 @@ import { useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 
 /**
- * 只列出有观测的日期。它是时间刻度，不是选择器：点按不会切换日期。
+ * 有观测的日期。点一下就选中这一天，并更新下面的指标。
  */
 export function ObservationDateRail({
     dates,
     activeDate,
     label,
+    onSelect,
 }: {
     dates: string[];
     activeDate: string | null;
     label: string;
+    onSelect?: (date: string) => void;
 }) {
     const locale = useLocale();
     const railRef = useRef<HTMLDivElement>(null);
@@ -39,7 +41,7 @@ export function ObservationDateRail({
             ref={railRef}
             role="list"
             aria-label={label}
-            className="flex gap-0.5 overflow-x-auto [scrollbar-width:none] touch-pan-x"
+            className="flex overflow-x-auto [scrollbar-width:none] touch-pan-x"
         >
             {dates.map((date, index) => {
                 const prev = dates[index - 1];
@@ -56,26 +58,29 @@ export function ObservationDateRail({
                         : "";
                 const active = date === activeDate;
                 return (
-                    <div
-                        key={date}
-                        role="listitem"
-                        data-obs-date={date}
-                        aria-current={active ? "date" : undefined}
-                        className="flex w-11 shrink-0 flex-col items-center"
-                    >
-                        <span className="flex h-4 items-end text-[11px] font-medium leading-none text-muted-foreground">
-                            {caption}
-                        </span>
-                        <span
-                            className={cn(
-                                "mt-0.5 flex h-8 w-8 items-center justify-center rounded-full text-sm tabular-nums",
-                                active
-                                    ? "bg-foreground font-semibold text-background"
-                                    : "text-foreground",
-                            )}
+                    <div key={date} role="listitem" className="flex w-10 shrink-0 justify-center">
+                        <button
+                            type="button"
+                            data-obs-date={date}
+                            aria-current={active ? "date" : undefined}
+                            aria-pressed={active}
+                            onClick={() => onSelect?.(date)}
+                            className="flex w-full flex-col items-center bg-transparent p-0"
                         >
-                            {Number.isFinite(day) ? day : date.slice(8)}
-                        </span>
+                            <span className="flex h-3.5 items-end text-[11px] font-medium leading-none text-muted-foreground">
+                                {caption}
+                            </span>
+                            <span
+                                className={cn(
+                                    "mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm tabular-nums",
+                                    active
+                                        ? "bg-primary font-semibold text-primary-foreground"
+                                        : "text-foreground",
+                                )}
+                            >
+                                {Number.isFinite(day) ? day : date.slice(8)}
+                            </span>
+                        </button>
                     </div>
                 );
             })}

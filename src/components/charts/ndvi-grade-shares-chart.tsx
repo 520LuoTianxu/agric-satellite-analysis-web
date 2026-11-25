@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { formatObservationDay } from "./index-readout";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import * as echarts from "echarts/core";
 import { PieChart, BarChart, LineChart } from "echarts/charts";
@@ -110,6 +111,8 @@ export default function NdviGradeSharesChart({
     height,
 }: NdviGradeSharesChartProps) {
     const t = useTranslations("agriPanel");
+    const locale = useLocale();
+    const selectedDateLabel = selectedDate ? formatObservationDay(selectedDate, locale) : t("gradeToday");
     const gradeLabels = useMemo<Record<NdviDayGrade, string>>(() => ({
         红: t("gradeRed"),
         橙: t("gradeOrange"),
@@ -353,8 +356,8 @@ export default function NdviGradeSharesChart({
                     className="flex flex-col"
                     style={{ height: h }}
                 >
-                    <div className="shrink-0 px-1 text-[11px] font-medium text-foreground/80 tabular-nums leading-5">
-                        {selectedDate ?? t("gradeToday")}
+                    <div className="shrink-0 px-1 text-xs font-medium text-foreground tabular-nums leading-5">
+                        {selectedDateLabel}
                     </div>
                     <div className="flex flex-1 items-center justify-center text-[11px] text-muted-foreground px-1">
                         {t("gradeNoPixelsToday")}
@@ -364,8 +367,8 @@ export default function NdviGradeSharesChart({
         }
         return (
             <div className="flex w-full flex-col" style={{ height: h }}>
-                <div className="shrink-0 px-1 text-[11px] font-medium text-foreground/80 tabular-nums leading-5">
-                    {selectedDate ?? t("gradeToday")}
+                <div className="shrink-0 px-1 text-xs font-medium text-foreground tabular-nums leading-5">
+                    {selectedDateLabel}
                 </div>
                 <ReactEChartsCore
                     echarts={echarts}

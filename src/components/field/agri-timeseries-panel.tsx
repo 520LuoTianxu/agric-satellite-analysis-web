@@ -67,7 +67,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Eye, EyeOff, RefreshCw, History, Check, Plus, Trash2, AlertTriangle, ChevronDown, Leaf, Sun, Waves, Droplets, Sprout, Radio, Radar, Activity, CloudRain } from "lucide-react";
+import { Loader2, RefreshCw, History, Check, Plus, Trash2, AlertTriangle, ChevronDown, Leaf, Sun, Waves, Droplets, Sprout, Radio, Radar, Activity, CloudRain } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { reverseDescScenesPage } from "@/lib/agri-scenes-page";
 import { IndexExplainer } from "@/components/field/index-explainer";
@@ -76,6 +76,7 @@ import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land
 import type { DayGradeShare } from "@/components/charts/ndvi-grade-shares-chart";
 import { computePixelNdviGradeShares } from "@/components/charts/ndvi-grade-shares-chart";
 import { filterRealisticNdviStats } from "@/lib/ndvi-realistic-filter";
+import { companionLines } from "@/components/charts/index-readout";
 
 const NdviChart = dynamic(() => import("@/components/charts/ndvi-chart"), {
     ssr: false,
@@ -370,6 +371,46 @@ function sceneSeriesAvg(scene: AgriSceneProduct, key: SeriesKey): number | null 
     return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+const COMPANION_KEYS: SeriesKey[] = ["ndvi", "evi", "ndmi", "ndre", "mndwi", "cire", "vv", "vh"];
+const SHORT_INDEX_LABEL: Record<string, string> = {
+    ndvi: "NDVI",
+    evi: "EVI",
+    ndmi: "NDMI",
+    ndre: "NDRE",
+    mndwi: "MNDWI",
+    cire: "CIRE",
+    vv: "VV",
+    vh: "VH",
+};
+
+function mainReadingKey(series: SeriesKey): SeriesKey {
+    if (series === "drought") return "ndvi";
+    if (series === "flood") return "vv";
+    return series;
+}
+
+function sceneForReading(scenes: AgriSceneProduct[], date: string, series: SeriesKey): AgriSceneProduct | null {
+    const meta = SERIES_META[series];
+    const group = scenes.filter((scene) => scene.sensor === meta.sensor && scene.date === date);
+    if (!group.length) return null;
+    if (meta.sensor === "S2") {
+        return series === "drought"
+            ? pickOfficialOptical(group, { neighbors: scenes })
+            : pickOpticalForNdvi(group, { neighbors: scenes });
+    }
+    return group[0] ?? null;
+}
+
+function readingsBesideMain(scenes: AgriSceneProduct[], date: string, series: SeriesKey) {
+    const scene = sceneForReading(scenes, date, series);
+    if (!scene) return [];
+    const sensor = SERIES_META[series].sensor;
+    const readings = COMPANION_KEYS
+        .filter((key) => SERIES_META[key].sensor === sensor)
+        .map((key) => ({ key, value: sceneSeriesAvg(scene, key) }));
+    return companionLines(readings, mainReadingKey(series), sensor === "S1" ? 1 : 2, (key) => SHORT_INDEX_LABEL[key] ?? key.toUpperCase());
+}
+
 const SERIES_ICONS: Partial<Record<SeriesKey, LucideIcon>> = {
     ndvi: Leaf,
     drought: Sun,
@@ -400,12 +441,11 @@ function SeriesSwitcher({
                 <Button
                     type="button"
                     variant="secondary"
-                    className="h-9 shrink-0 rounded-full px-3 text-sm font-medium"
-                    aria-label={t("switchIndex")}
+                    className="h-10 shrink-0 gap-0.5 rounded-full px-2.5"
+                    aria-label={`${t("switchIndex")} ${t(`indexLabels.${series}`)}`}
                 >
                     <Icon className="h-4 w-4" aria-hidden="true" />
-                    <span className="max-w-[7.5rem] truncate">{t(`indexLabels.${series}`)}</span>
-                    <ChevronDown className="h-4 w-4 opacity-70" aria-hidden="true" />
+                    <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -651,7 +691,6 @@ export default function AgriTimeseriesPanel({
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const selectedDateRef = useRef<string | null>(null);
     selectedDateRef.current = selectedDate;
-    const [heatmapVisible, setHeatmapVisible] = useState(true);
     const [heatmapLoading, setHeatmapLoading] = useState(false);
     const [heatmapError, setHeatmapError] = useState<"failed" | "tooLarge" | null>(null);
     const [heatmapMeta, setHeatmapMeta] = useState<HeatmapMeta | null>(null);
@@ -680,8 +719,6 @@ export default function AgriTimeseriesPanel({
     const loadHeatmapRef = useRef<(date: string, index: SeriesKey) => Promise<void>>(async () => {});
     const enabledRef = useRef(enabled);
     enabledRef.current = enabled;
-    const heatmapVisibleRef = useRef(heatmapVisible);
-    heatmapVisibleRef.current = heatmapVisible;
 
     useEffect(() => () => {
         // 离开地块页面后取消可能仍在传输的大体量像元响应，并阻止卸载后的旧结果生效。
@@ -1071,9 +1108,7 @@ export default function AgriTimeseriesPanel({
     const publishHeatmap = useCallback(
         (img: AgriHeatmapImage | null) => {
             if (!onHeatmapChange) return;
-            if (enabledRef.current && heatmapVisibleRef.current) {
-                onHeatmapChange(img);
-            }
+            if (enabledRef.current) onHeatmapChange(img);
         },
         [onHeatmapChange],
     );
@@ -1449,10 +1484,6 @@ export default function AgriTimeseriesPanel({
             onHeatmapChange?.(null);
             return;
         }
-        if (!heatmapVisible) {
-            onHeatmapChange?.(null);
-            return;
-        }
         const cache = cachedHeatmapRef.current;
         if (cache && cache.landId === landId && cache.date === selectedDate && cache.index === series) {
             setHeatmapError(null);
@@ -1462,7 +1493,7 @@ export default function AgriTimeseriesPanel({
         }
         // 当前日期尚无缓存时先清除旧日期色膜，等待唯一的预取请求完成。
         onHeatmapChange?.(null);
-    }, [enabled, heatmapVisible, landId, selectedDate, series, onHeatmapChange]);
+    }, [enabled, landId, selectedDate, series, onHeatmapChange]);
 
     const stats = useMemo(() => scenesToStats(scenes, series, landId), [scenes, series, landId]);
     const decloudAltStats = useMemo(
@@ -1571,6 +1602,10 @@ export default function AgriTimeseriesPanel({
         if (!selectedDate) return null;
         return dayGradeByDate[selectedDate] ?? null;
     }, [selectedDate, dayGradeByDate]);
+    const companionReadingsForChart = useMemo(
+        () => (selectedDate ? readingsBesideMain(scenes, selectedDate, series) : []),
+        [scenes, selectedDate, series],
+    );
 
     /** Selected scene for current series sensor + date (cloud cover, etc.). */
     const selectedScene = useMemo(() => {
@@ -2051,31 +2086,10 @@ export default function AgriTimeseriesPanel({
                                 onDateSelect={(d) => selectDateExplicit(d)}
                                 height={280}
                                 indexType={chartIndexType}
+                                companions={companionReadingsForChart}
+                                heroLabel={SHORT_INDEX_LABEL[mainReadingKey(series)] ?? "NDVI"}
                                 headerExtra={(
-                                    <div className="flex shrink-0 items-center justify-end gap-1">
-                                        <SeriesSwitcher series={series} keys={availableKeys} onChange={setSeries} />
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-9 w-9 shrink-0 rounded-full p-0"
-                                            title={heatmapVisible ? t("hideHeatmap") : t("showHeatmap")}
-                                            aria-label={heatmapVisible ? t("hideHeatmap") : t("showHeatmap")}
-                                            onClick={() => {
-                                                setHeatmapVisible((v) => {
-                                                    const next = !v;
-                                                    if (!next) onHeatmapChange?.(null);
-                                                    return next;
-                                                });
-                                            }}
-                                        >
-                                            {heatmapVisible ? (
-                                                <Eye className="h-4 w-4" aria-hidden="true" />
-                                            ) : (
-                                                <EyeOff className="h-4 w-4" aria-hidden="true" />
-                                            )}
-                                        </Button>
-                                    </div>
+                                    <SeriesSwitcher series={series} keys={availableKeys} onChange={setSeries} />
                                 )}
                                     seasonMonths={
                                         series === "ndvi" ||
