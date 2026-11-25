@@ -771,6 +771,7 @@
     "waterBalanceTitle": "ET₀ & water balance",
     "deficit": "Deficit",
     "tempAndPrecip": "Temperature & precipitation",
+    "scrubHint": "Press and hold, then slide to read a day",
     "forecast7d": "7-day forecast",
     "range30d": "30 days",
     "range90d": "90 days",
@@ -1097,7 +1098,9 @@
     "empty": "No {index} data yet",
     "showObservations": "Observations & cloud-free alternatives",
     "showEvents": "Risk markers",
-    "onlyRealistic": "Only valid observations"
+    "onlyRealistic": "Only valid observations",
+    "scrubHint": "Press and hold, then slide to switch the date",
+    "observationDates": "Dates with satellite imagery"
   },
   "agriPanel": {
     "title": "Growth analysis",
@@ -1114,6 +1117,8 @@
     "hideHeatmap": "Hide heatmap",
     "showHeatmap": "Show heatmap",
     "moreIndices": "More indices",
+    "switchIndex": "Switch metric",
+    "scrubHint": "Press and hold, then slide to read a day",
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
     "resetZoom": "Reset zoom",

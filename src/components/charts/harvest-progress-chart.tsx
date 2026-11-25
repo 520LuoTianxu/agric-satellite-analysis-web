@@ -8,7 +8,7 @@ import { GridComponent, LegendComponent, TooltipComponent } from "echarts/compon
 import { CanvasRenderer } from "echarts/renderers";
 import type { HarvestProgressItem } from "@/lib/api";
 import { tokenColor } from "@/lib/design-tokens";
-import { axisLabel, baseTooltip, legendStyle, valueAxis, viz } from "./chart-base";
+import { axisLabel, baseTooltip, legendStyle, ROUNDED_LINE, valueAxis, viz } from "./chart-base";
 
 echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
@@ -95,6 +95,7 @@ export default function HarvestProgressChart({ items, labels, height = 220 }: Ha
                           {
                               name: labels.suspected,
                               type: "line" as const,
+                              ...ROUNDED_LINE,
                               data: items.map(
                                   (it) =>
                                       it.harvested_or_suspected_pct ??
@@ -114,6 +115,7 @@ export default function HarvestProgressChart({ items, labels, height = 220 }: Ha
                           {
                               name: labels.interpolated,
                               type: "line" as const,
+                              ...ROUNDED_LINE,
                               data: items.map((it) => it.harvested_pct),
                               showSymbol: false,
                               lineStyle: { width: 1.5, type: "dashed" as const, color: tokenColor("--primary", 0.6) },
@@ -125,6 +127,7 @@ export default function HarvestProgressChart({ items, labels, height = 220 }: Ha
                 {
                     name: labels.harvested,
                     type: "line" as const,
+                    ...ROUNDED_LINE,
                     data: items.map((it) =>
                         it.interpolated
                             ? null

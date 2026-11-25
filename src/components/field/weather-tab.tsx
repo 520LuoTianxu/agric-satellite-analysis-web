@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land-schedule-filter";
+import { cn } from "@/lib/utils";
 import ForecastBar from "@/components/field/forecast-bar";
 import WeatherChart from "@/components/charts/weather-chart";
 import WaterBalanceChart from "@/components/charts/water-balance-chart";
@@ -199,20 +200,26 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
             )}
             {/* Range selector */}
             <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between">
-                <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border bg-surface-2 p-0.5 [scrollbar-width:none] max-md:w-full max-md:flex-nowrap">
-                    {rangeOptions.map((opt) => (
-                        <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => setRange(opt.value)}
-                            className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors max-md:h-9 max-md:px-3 max-md:text-sm ${range === opt.value
-                                ? "bg-background shadow-sm text-foreground"
-                                : "text-muted-foreground hover:text-foreground"
-                                }`}
-                        >
-                            {opt.label}
-                        </button>
-                    ))}
+                <div className="flex max-w-full gap-2 overflow-x-auto [scrollbar-width:none] max-md:w-full max-md:flex-nowrap">
+                    {rangeOptions.map((opt) => {
+                        const active = range === opt.value;
+                        return (
+                            <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => setRange(opt.value)}
+                                aria-pressed={active}
+                                className={cn(
+                                    "shrink-0 rounded-full px-3.5 text-sm font-medium transition-colors h-8 max-md:h-9",
+                                    active
+                                        ? "bg-foreground text-background"
+                                        : "bg-muted text-foreground",
+                                )}
+                            >
+                                {opt.label}
+                            </button>
+                        );
+                    })}
                 </div>
                 <div className="flex min-w-0 items-end gap-2 max-md:w-full">
                     <div className="flex min-w-0 flex-1 flex-col gap-1">

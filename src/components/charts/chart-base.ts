@@ -105,6 +105,15 @@ export function baseTooltip(extra: Record<string, unknown> = {}) {
     };
 }
 
+/**
+ * 统计折线用单调圆弧连接。拐角圆滑，曲线只沿时间向前，不会折返出尖角。
+ * 0.6 让相邻观测之间呈现可见弧度，同时避免平滑到完全脱离数据点。
+ */
+export const ROUNDED_LINE = {
+    smooth: 0.6,
+    smoothMonotone: "x" as const,
+};
+
 /** Legend: 11px muted, compact swatches. */
 export function legendStyle(extra: Record<string, unknown> = {}) {
     return {

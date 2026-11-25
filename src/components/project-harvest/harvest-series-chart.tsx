@@ -8,7 +8,7 @@ import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } f
 import { CanvasRenderer } from "echarts/renderers";
 import type { ProjectHarvestSeriesPoint } from "@/lib/api";
 import { tokenColor } from "@/lib/design-tokens";
-import { axisLabel, baseTooltip, legendStyle, valueAxis, viz } from "@/components/charts/chart-base";
+import { axisLabel, baseTooltip, legendStyle, ROUNDED_LINE, valueAxis, viz } from "@/components/charts/chart-base";
 import { attachNearestDateClick, type AxisClickChart } from "@/components/charts/chart-date-click";
 
 echarts.use([BarChart, LineChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer]);
@@ -30,6 +30,7 @@ export default function HarvestSeriesChart({ series, selectedDate, blockLabel, l
         const blockSeries = blocks.length > 1 ? blocks.map((b, i) => ({
             name: blockLabel(b),
             type: "line" as const,
+            ...ROUNDED_LINE,
             data: series.map((s) => s.blocks?.[b] ?? null),
             connectNulls: true,
             symbolSize: 4,
@@ -49,6 +50,7 @@ export default function HarvestSeriesChart({ series, selectedDate, blockLabel, l
                 {
                     name: labels.all,
                     type: "line" as const,
+                    ...ROUNDED_LINE,
                     data: series.map((s) => s.harvested_pct),
                     connectNulls: true,
                     label: { show: true, fontSize: 10, color: tokenColor("--muted-foreground"), formatter: (p: { value: number | null }) => (p.value == null ? "" : `${Math.round(p.value)}%`) },

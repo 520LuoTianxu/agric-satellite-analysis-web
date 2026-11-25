@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { agriApi, type OverviewHistoryItem, type OverviewLevel } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ROUNDED_LINE } from "@/components/charts/chart-base";
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
@@ -49,8 +50,8 @@ export function OverviewHistory({ level, code, name, to, selected, onSelect }: {
         yAxis: { type: "value", minInterval: 1, axisLabel: { fontSize: 9 } },
         // 未保存的日期保留断点；补零会错误表示该日没有灾情。
         series: [
-            { name: t("drought"), type: "line", connectNulls: false, data: dates.map((day) => byDate.get(day)?.drought_alert ?? null), itemStyle: { color: "#f97316" } },
-            { name: t("flood"), type: "line", connectNulls: false, data: dates.map((day) => byDate.get(day)?.flood_alert ?? null), itemStyle: { color: "#3b82f6" } },
+            { name: t("drought"), type: "line", ...ROUNDED_LINE, connectNulls: false, data: dates.map((day) => byDate.get(day)?.drought_alert ?? null), lineStyle: { width: 2.4, color: "#f97316", cap: "round", join: "round" }, itemStyle: { color: "#f97316" } },
+            { name: t("flood"), type: "line", ...ROUNDED_LINE, connectNulls: false, data: dates.map((day) => byDate.get(day)?.flood_alert ?? null), lineStyle: { width: 2.4, color: "#3b82f6", cap: "round", join: "round" }, itemStyle: { color: "#3b82f6" } },
         ],
     };
 

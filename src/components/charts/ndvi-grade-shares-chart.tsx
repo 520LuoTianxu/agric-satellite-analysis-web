@@ -14,7 +14,8 @@ import {
     GraphicComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
-import { axisLabel, baseTooltip, legendStyle, secondaryValueAxis, valueAxis } from "./chart-base";
+import { axisLabel, baseTooltip, legendStyle, ROUNDED_LINE, secondaryValueAxis, valueAxis } from "./chart-base";
+import { ChartScrubCursor, ChartScrubReadout, useChartScrub } from "./chart-scrub-view";
 
 echarts.use([
     PieChart,
@@ -126,6 +127,7 @@ export default function NdviGradeSharesChart({
         () => Object.keys(historyByDate).sort((a, b) => a.localeCompare(b)),
         [historyByDate],
     );
+    const scrub = useChartScrub(() => historyDates);
     const showStacked = historyDates.length >= 2;
 
     const donutOption = useMemo(() => {
@@ -271,6 +273,9 @@ export default function NdviGradeSharesChart({
                 start: zoomStart,
                 end: zoomEnd,
                 xAxisIndex: 0,
+                zoomOnMouseWheel: false,
+                moveOnMouseMove: false,
+                moveOnMouseWheel: false,
             },
             ...(needSlider
                 ? [
@@ -294,30 +299,18 @@ export default function NdviGradeSharesChart({
                 top: 0,
                 ...legendStyle(),
             },
-            tooltip: {
-                ...baseTooltip(),
-                trigger: "axis" as const,
-                axisPointer: { type: "shadow" as const },
-                formatter: (params: Array<{ seriesName?: string; value?: number; axisValue?: string; marker?: string }>) => {
-                    if (!params?.length) return "";
-                    const date = String(params[0]?.axisValue ?? "");
-                    const lines = [`<b>${date}</b>`];
-                    for (const p of params) {
-                        if (p.value == null) continue;
-                        const unit = p.seriesName === meanLabel ? "" : "%";
-                        lines.push(`${p.marker ?? ""}${p.seriesName}: ${p.value}${unit}`);
-                    }
-                    const nPts = historyByDate[date]?.n;
-                    if (nPts != null) lines.push(t("pixelSampleCount", { count: nPts }));
-                    return lines.join("<br/>");
-                },
-            },
+            tooltip: { show: false },
+            axisPointer: { show: false },
             dataZoom,
             xAxis: {
                 type: "category" as const,
-                data: dates.map((d) => d.slice(5)),
-                axisLabel: axisLabel({ rotate: dates.length > 6 ? 30 : 0 }),
-                axisTick: { alignWithLabel: true },
+                data: dates,
+                axisLine: { show: false },
+                axisTick: { show: false },
+                axisLabel: axisLabel({
+                    hideOverlap: true,
+                    formatter: (value: string) => value.slice(5),
+                }),
             },
             yAxis: [
                 valueAxis({
@@ -340,16 +333,16 @@ export default function NdviGradeSharesChart({
                     type: "line",
                     yAxisIndex: 1,
                     data: means,
-                    smooth: true,
+                    ...ROUNDED_LINE,
                     symbol: "circle",
                     symbolSize: 6,
-                    lineStyle: { width: 2, color: "#1e88e5" },
+                    lineStyle: { width: 2.8, color: "#1e88e5", cap: "round", join: "round" },
                     itemStyle: { color: "#1e88e5" },
                     z: 10,
                 },
             ],
         };
-    }, [historyDates, historyByDate, meanByDate, gradeLabels, meanLabel, t]);
+    }, [historyDates, historyByDate, meanByDate, gradeLabels, meanLabel]);
 
     if (variant === "donut") {
         const h = height ?? 200;
@@ -397,13 +390,38 @@ export default function NdviGradeSharesChart({
             </div>
         );
     }
+    const share = scrub.activeDate ? historyByDate[scrub.activeDate] : undefined;
+    const scrubLines = share
+        ? [
+            ...NDVI_DAY_GRADE_ORDER.map((grade) => `${gradeLabels[grade]} ${share.pct[grade] ?? 0}%`),
+            share.mean != null ? `${meanLabel} ${share.mean.toFixed(3)}` : "",
+            t("pixelSampleCount", { count: share.n }),
+        ].filter(Boolean)
+        : [];
+
     return (
-        <ReactEChartsCore
-            echarts={echarts}
-            option={stackedOption}
-            style={{ height: stackedHeight, width: "100%" }}
-            notMerge
-            lazyUpdate
-        />
+        <div className="w-full">
+            <ChartScrubReadout
+                active={scrub.scrubbing}
+                hint={t("scrubHint")}
+                title={scrub.activeDate}
+                lines={scrubLines}
+            />
+            <div
+                className="relative select-none"
+                style={{ WebkitTouchCallout: "none" }}
+                onContextMenu={(event) => event.preventDefault()}
+            >
+                <ChartScrubCursor x={scrub.cursorX} />
+                <ReactEChartsCore
+                    echarts={echarts}
+                    option={stackedOption}
+                    style={{ height: stackedHeight, width: "100%", touchAction: "pan-y" }}
+                    onChartReady={scrub.onChartReady}
+                    notMerge
+                    lazyUpdate
+                />
+            </div>
+        </div>
     );
 }

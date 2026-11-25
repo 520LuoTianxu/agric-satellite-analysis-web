@@ -771,6 +771,7 @@
     "waterBalanceTitle": "ET₀ y balance hídrico",
     "deficit": "Déficit",
     "tempAndPrecip": "Temperatura y precipitación",
+    "scrubHint": "Mantén pulsado y desliza para ver el día",
     "forecast7d": "Pronóstico 7 días",
     "range30d": "30 días",
     "range90d": "90 días",
@@ -1097,7 +1098,9 @@
     "empty": "Sin datos de {index}",
     "showObservations": "Observaciones y alternativas sin nubes",
     "showEvents": "Marcadores de riesgo",
-    "onlyRealistic": "Solo observaciones válidas"
+    "onlyRealistic": "Solo observaciones válidas",
+    "scrubHint": "Mantén pulsado y desliza para cambiar la fecha",
+    "observationDates": "Fechas con imagen de satélite"
   },
   "agriPanel": {
     "title": "Análisis del crecimiento",
@@ -1114,6 +1117,8 @@
     "hideHeatmap": "Ocultar mapa de calor",
     "showHeatmap": "Mostrar mapa de calor",
     "moreIndices": "Más índices",
+    "switchIndex": "Cambiar indicador",
+    "scrubHint": "Mantén pulsado y desliza para ver el día",
     "zoomIn": "Acercar",
     "zoomOut": "Alejar",
     "resetZoom": "Restablecer zoom",

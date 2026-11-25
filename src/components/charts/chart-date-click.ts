@@ -29,6 +29,28 @@ function pixelX(chart: AxisClickChart, date: string): number | null {
     }
 }
 
+/** Nearest plotted date by horizontal pixel, including points outside the current pointer row. */
+export function nearestDateByOffsetX(
+    chart: AxisClickChart,
+    offsetX: number,
+    dates: string[],
+): string | null {
+    if (!dates.length || !Number.isFinite(offsetX)) return null;
+    let best: string | null = null;
+    let bestDist = Infinity;
+    for (const date of dates) {
+        if (!date) continue;
+        const x = pixelX(chart, date);
+        if (x == null) continue;
+        const dist = Math.abs(x - offsetX);
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = date;
+        }
+    }
+    return best;
+}
+
 /** Nearest plotted date to a click, by x-pixel distance, if the click is in the grid. */
 export function nearestDateAtChartClick(
     chart: AxisClickChart,
