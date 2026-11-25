@@ -270,7 +270,9 @@ const PANEL_WIDTH_STORAGE_KEY = "openfarm.fieldPanelWidthPx";
 const PANEL_WIDTH_DEFAULT_PX = 400; // 为图表和双列信息保留阅读宽度
 const PANEL_WIDTH_MIN_PX = 288; // 18rem
 const PANEL_WIDTH_MAX_PX = 640; // 40rem
-const SHEET_PEEK_PX = 44;
+const SHEET_PEEK_PX = 24;
+const FIELD_TAB_TRIGGER =
+    "relative h-auto shrink-0 !border-b-0 px-0.5 pb-1.5 pt-0 text-sm font-normal leading-none text-muted-foreground data-[state=active]:!border-b-0 data-[state=active]:text-[17px] data-[state=active]:font-semibold data-[state=active]:text-foreground after:pointer-events-none after:absolute after:bottom-0 after:left-1/2 after:h-0.5 after:w-4 after:-translate-x-1/2 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary";
 const SHEET_FULL_TOP_PX = 0;
 const SHEET_FLICK_PX_PER_MS = 0.55;
 
@@ -2021,7 +2023,7 @@ function FieldDetailPageContent() {
                     "max-md:inset-x-0 max-md:bottom-0 max-md:w-full max-md:rounded-t-[20px] max-md:shadow-[0_-8px_24px_rgba(0,0,0,0.18)]",
                     sheetSnap === "half" && "max-md:top-[42%]",
                     sheetSnap === "full" && "max-md:top-0",
-                    sheetSnap === "peek" && "max-md:top-auto max-md:h-11",
+                    sheetSnap === "peek" && "max-md:top-auto max-md:h-6",
                     "md:bottom-4 md:right-4 md:top-4 md:h-auto md:w-[var(--panel-w)] md:max-w-[calc(100%-2rem)]",
                     !isResizingPanel && "transition-[top,height,transform] duration-300 ease-out",
                     !sidebarOpen && "md:translate-x-[calc(100%+1rem)]",
@@ -2029,7 +2031,7 @@ function FieldDetailPageContent() {
             >
                 <button
                     type="button"
-                    className="flex h-11 w-full shrink-0 touch-none items-center justify-center md:hidden"
+                    className="flex h-6 w-full shrink-0 touch-none items-center justify-center md:hidden"
                     aria-label={t("sheetHandle")}
                     onPointerDown={onSheetPointerDown}
                     onPointerMove={onSheetPointerMove}
@@ -2070,7 +2072,7 @@ function FieldDetailPageContent() {
                     <Tabs defaultValue={FIELD_DETAIL_DEFAULT_TAB} value={activeTab} onValueChange={handleActiveTabChange} className="flex flex-col flex-1 overflow-hidden">
                         {/* 页签保持紧凑单行，窄侧栏允许横向滚动，不挤占内容高度。 */}
                         <div
-                            className="flex min-w-0 shrink-0 touch-pan-x items-center border-b bg-background/95 md:touch-auto"
+                            className="flex min-w-0 shrink-0 touch-pan-x items-end bg-background/95 md:touch-auto"
                             onPointerDown={onSheetBarPointerDown}
                             onPointerMove={onSheetPointerMove}
                             onPointerUpCapture={(event) => {
@@ -2089,11 +2091,11 @@ function FieldDetailPageContent() {
                             onPointerCancel={finishSheetDrag}
                             onClickCapture={onSheetBarClickCapture}
                         >
-                            <TabsList variant="underline" className="h-11 min-w-0 !w-auto flex-1 flex-nowrap items-end gap-1 overflow-x-auto !border-b-0 px-2 [scrollbar-width:none]">
+                            <TabsList variant="underline" className="h-auto min-w-0 !w-auto flex-1 flex-nowrap items-end gap-4 overflow-x-auto !border-b-0 px-3 pb-0.5 [scrollbar-width:none]">
                             <TabsTrigger
                                 value="ndvi"
                                 variant="underline"
-                                className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary"
+                                className={FIELD_TAB_TRIGGER}
                                 data-tour="tab-ndvi"
                             >
                                 {t("tabNdvi")}
@@ -2101,7 +2103,7 @@ function FieldDetailPageContent() {
                             <TabsTrigger
                                 value="weather"
                                 variant="underline"
-                                className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary"
+                                className={FIELD_TAB_TRIGGER}
                                 data-tour="tab-weather"
                             >
                                 {t("tabWeather")}
@@ -2109,14 +2111,14 @@ function FieldDetailPageContent() {
                             <TabsTrigger
                                 value="soil"
                                 variant="underline"
-                                className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary"
+                                className={FIELD_TAB_TRIGGER}
                             >
                                 {t("tabSoil")}
                             </TabsTrigger>
                             <TabsTrigger
                                 value="alerts"
                                 variant="underline"
-                                className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary"
+                                className={FIELD_TAB_TRIGGER}
                             >
                                 <span className="relative">
                                     {t("tabAlerts")}
@@ -2125,13 +2127,13 @@ function FieldDetailPageContent() {
                                     )}
                                 </span>
                             </TabsTrigger>
-                            <TabsTrigger value="biweekly" variant="underline" className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary">
+                            <TabsTrigger value="biweekly" variant="underline" className={FIELD_TAB_TRIGGER}>
                                 {t("tabBiweekly")}
                             </TabsTrigger>
                             <TabsTrigger
                                 value="parcel-analysis"
                                 variant="underline"
-                                className="h-11 shrink-0 px-2.5 py-0 text-sm text-muted-foreground data-[state=active]:text-primary"
+                                className={FIELD_TAB_TRIGGER}
                                 data-tour="tab-report"
                             >
                                 {t("tabParcelAnalysis")}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import * as echarts from "echarts/core";
 import { LineChart, BarChart, ScatterChart } from "echarts/charts";
@@ -16,7 +16,8 @@ import { CanvasRenderer } from "echarts/renderers";
 import type { LandStat, IndexType, WeatherDaily } from "@/lib/api";
 import { INDEX_CONFIG } from "@/lib/api";
 import { tokenColor } from "@/lib/design-tokens";
-import { useTranslations } from "next-intl";
+import { cn } from "@/lib/utils";
+import { useLocale, useTranslations } from "next-intl";
 import { DECLOUD_SOURCE, isGoodDecloudQuality } from "@/lib/agri-classify";
 import {
     axisLabel,
@@ -31,7 +32,8 @@ import {
 } from "./chart-base";
 import { ObservationDateRail } from "./chart-date-rail";
 import { snapCategoryBand, uniqueSortedDates } from "./chart-scrub";
-import { ChartScrubCursor, ChartScrubReadout, useChartScrub } from "./chart-scrub-view";
+import { ChartScrubCursor, useChartScrub } from "./chart-scrub-view";
+import { clampScrubLabelX, formatIndexValue, formatObservationDate } from "./index-readout";
 import { filterRealisticNdviStats } from "@/lib/ndvi-realistic-filter";
 
 // Register only the modules we need (tree-shake friendly)
@@ -98,6 +100,10 @@ interface NdviChartProps {
     onOnlyRealisticChange?: (value: boolean) => void;
     /** 曲线上方右侧的操作，例如切换指标。 */
     headerExtra?: React.ReactNode;
+    /** 同一天的其他遥感指标，用小字排在主指标旁边。 */
+    companions?: { label: string; value: string }[];
+    /** 主指标的短名称，例如 NDVI。不放在切换按钮上。 */
+    heroLabel?: string;
 }
 
 export default function NdviChart({
@@ -117,8 +123,13 @@ export default function NdviChart({
     onlyRealistic: onlyRealisticProp,
     onOnlyRealisticChange,
     headerExtra,
+    companions = [],
+    heroLabel,
 }: NdviChartProps) {
     const t = useTranslations("ndviChart");
+    const locale = useLocale();
+    const [stageNode, setStageNode] = useState<HTMLDivElement | null>(null);
+    const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
     const [showObservations, setShowObservations] = useState(false);
     const [showEvents, setShowEvents] = useState(false);
     /** Checked = hide unrealistic / cloud-hole points (default). Uncontrolled unless parent passes props. */
@@ -145,6 +156,14 @@ export default function NdviChart({
         () => axisDates,
         (date) => onDateSelectRef.current?.(date),
     );
+    useEffect(() => {
+        if (!stageNode) return;
+        const measure = () => setStageSize({ width: stageNode.clientWidth, height: stageNode.clientHeight });
+        measure();
+        const observer = new ResizeObserver(measure);
+        observer.observe(stageNode);
+        return () => observer.disconnect();
+    }, [stageNode]);
     const config = INDEX_CONFIG[indexType];
     const seriesName = config.label;
     const isSar = indexType === "VV" || indexType === "VH";
@@ -483,50 +502,60 @@ export default function NdviChart({
     const yellowColor = tokenColor("--warning");
     const redColor = tokenColor("--danger");
 
-    const scrubPoint = scrub.activeDate
-        ? displayStats.find((point) => point.date === scrub.activeDate)
-            ?? (showObservations ? decloudAltStats?.find((point) => point.date === scrub.activeDate) : undefined)
+    const focusDate = scrub.activeDate ?? selectedDate ?? null;
+    const focusPoint = focusDate
+        ? displayStats.find((point) => point.date === focusDate)
+            ?? (showObservations ? decloudAltStats?.find((point) => point.date === focusDate) : undefined)
         : undefined;
-    const scrubLines: string[] = [];
-    if (scrubPoint) {
-        const value = scrubPoint.mean;
-        if (typeof value === "number" && Number.isFinite(value)) {
-            scrubLines.push(`${seriesName}: ${value.toFixed(isSar ? 2 : 3)}${isSar ? " dB" : ""}`);
-        }
-        if (!isSar) {
-            scrubLines.push(formatCloudLine(scrubPoint.cloud_cover, t));
-            scrubLines.push(formatDecloudLine({
-                quality: scrubPoint.decloud_quality,
-                reasons: scrubPoint.decloud_reasons,
-                source: scrubPoint.product_source,
-                sceneId: scrubPoint.scene_id,
-                cloudCover: scrubPoint.cloud_cover,
-            }, t));
-        }
-    }
+    const focusMean = focusPoint && typeof focusPoint.mean === "number" && Number.isFinite(focusPoint.mean)
+        ? focusPoint.mean
+        : null;
+    const focusText = focusMean == null ? "—" : formatIndexValue(focusMean, isSar);
+    const focusDateLabel = focusDate ? formatObservationDate(focusDate, locale) : t("scrubHint");
 
     return (
-        <div className="w-full space-y-1">
-            <ObservationDateRail
-                dates={axisDates}
-                activeDate={scrub.activeDate ?? selectedDate ?? null}
-                label={t("observationDates")}
-            />
-            <div className="flex items-center justify-between gap-2">
-                <ChartScrubReadout
-                    active={scrub.scrubbing}
-                    hint={t("scrubHint")}
-                    title={scrub.activeDate}
-                    lines={scrubLines}
-                />
-                {headerExtra}
+        <div className="w-full">
+            <div ref={setStageNode} className="relative">
+                <div className={cn(scrub.scrubbing && "invisible")} aria-hidden={scrub.scrubbing || undefined}>
+                    <ObservationDateRail
+                        dates={axisDates}
+                        activeDate={focusDate}
+                        label={t("observationDates")}
+                        onSelect={onDateSelect}
+                    />
+                    <p className="mt-1 text-sm leading-none text-muted-foreground">{focusDateLabel}</p>
+                    <p className="mt-1 flex min-h-4 gap-x-2.5 overflow-x-auto text-xs leading-none text-muted-foreground [scrollbar-width:none]">
+                        {companions.map((item) => (
+                            <span key={item.label} className="shrink-0 tabular-nums">
+                                {item.label} {item.value}
+                            </span>
+                        ))}
+                    </p>
+                    <div className="mt-1 flex h-12 items-center">
+                        <HeroValue text={focusText} suffix={heroLabel} />
+                        {headerExtra ? <div className="ml-auto self-center">{headerExtra}</div> : null}
+                    </div>
+                </div>
+                {scrub.scrubbing && scrub.cursorX != null ? (
+                    <p
+                        className="pointer-events-none absolute top-0 z-20 -translate-x-1/2 whitespace-nowrap"
+                        style={{ left: clampScrubLabelX(scrub.cursorX, stageSize.width, 56) }}
+                        aria-live="polite"
+                    >
+                        <HeroValue text={focusText} />
+                    </p>
+                ) : null}
             </div>
             <div
                 className="relative select-none"
                 style={{ WebkitTouchCallout: "none" }}
+                aria-label={t("scrubHint")}
                 onContextMenu={(event) => event.preventDefault()}
             >
-                <ChartScrubCursor x={scrub.cursorX} />
+                <ChartScrubCursor
+                    x={scrub.cursorX}
+                    reach={scrub.scrubbing ? Math.max(0, stageSize.height - 44) : 0}
+                />
                 <ReactEChartsCore
                     echarts={echarts}
                     option={option}
@@ -592,6 +621,15 @@ export default function NdviChart({
                 </details>
             ) : null}
         </div>
+    );
+}
+
+function HeroValue({ text, suffix }: { text: string; suffix?: string }) {
+    return (
+        <span className="inline-flex items-baseline text-foreground">
+            <span className="text-[2.5rem] font-semibold leading-none tabular-nums tracking-tight">{text}</span>
+            {suffix ? <span className="ml-1 text-sm font-medium text-muted-foreground">{suffix}</span> : null}
+        </span>
     );
 }
 

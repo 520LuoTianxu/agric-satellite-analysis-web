@@ -339,7 +339,7 @@
     }
 
     .field-page[data-sheet="peek"] {
-        --sheet-top: calc(100% - 44px);
+        --sheet-top: calc(100% - 24px);
     }
 
     .field-page[data-sheet="full"] {

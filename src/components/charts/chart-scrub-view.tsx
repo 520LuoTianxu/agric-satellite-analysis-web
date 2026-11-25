@@ -190,14 +190,17 @@ export function ChartScrubReadout({
     );
 }
 
-export function ChartScrubCursor({ x }: { x: number | null }) {
+export function ChartScrubCursor({ x, reach = 0 }: { x: number | null; reach?: number }) {
     if (x == null) return null;
     return (
         <div
-            className="pointer-events-none absolute inset-y-0 z-10 w-0.5 -translate-x-1/2 rounded-full bg-foreground/75"
-            style={{ left: x }}
+            className="pointer-events-none absolute bottom-0 z-10 w-0.5 -translate-x-1/2 rounded-full bg-foreground/75"
+            style={{ left: x, top: -reach }}
         >
-            <span className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 rounded-full bg-foreground" />
+            <span
+                className="absolute left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-foreground"
+                style={{ top: reach }}
+            />
         </div>
     );
 }
