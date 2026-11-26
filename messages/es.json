@@ -475,7 +475,10 @@
     "placeholderAgriLandId": "ej. 25107",
     "agriLandIdHint": "Se guarda como etiqueta agri:<id>; habilita relleno RS HTTP",
     "cdfinanceGroupId": "ID de grupo CDFinance (opcional)",
-    "placeholderCdfinanceGroupId": "ej. 7694"
+    "placeholderCdfinanceGroupId": "ej. 7694",
+    "emergenceChip": "Emergencia",
+    "emergenceChipTitle": "Subida respecto al suelo. 0.30 es una marca de referencia, no una línea de emergencia",
+    "emergenceCaption": "Emergencia · vs suelo · {pixels} px"
   },
   "alertsTab": {
     "noAlerts": "Sin alertas",
@@ -1193,7 +1196,8 @@
       "flood": "Inundación",
       "harvest": "Estado de cosecha",
       "sentinel2": "Sentinel-2 · Óptico",
-      "sentinel1": "Sentinel-1 · Radar"
+      "sentinel1": "Sentinel-1 · Radar",
+      "emergence": "Emergencia"
     },
     "indexHints": {
       "ndvi": "Muestra el verdor de la superficie para valorar la cobertura y el crecimiento; también puede bajar por madurez, cosecha o nubes.",
@@ -1209,7 +1213,8 @@
       "savi": "Índice de vegetación que reduce el efecto del suelo cuando las plantas son escasas o el suelo está expuesto.",
       "ndwi": "Resalta posibles aguas superficiales; no mide la humedad del suelo.",
       "sentinel2": "Las imágenes ópticas permiten calcular índices como NDVI, pero las nubes pueden ocultar el terreno.",
-      "sentinel1": "El radar observa a través de las nubes y mide la retrodispersión VV/VH, no los colores de una foto."
+      "sentinel1": "El radar observa a través de las nubes y mide la retrodispersión VV/VH, no los colores de una foto.",
+      "emergence": "Subida respecto al suelo base. No es la escala NDVI 0–1, y 0.30 no es la línea de emergencia."
     },
     "indexMenuHints": {
       "ndvi": "Verdor del campo. Puede bajar por madurez o nubes.",
@@ -1221,7 +1226,8 @@
       "vv": "Intensidad del radar, no una nota de crecimiento.",
       "vh": "Radar de polarización cruzada. Compáralo con VV.",
       "drought": "Posible falta de agua. Contrasta con la lluvia.",
-      "flood": "Posible agua estancada. Pocas escenas no confirman."
+      "flood": "Posible agua estancada. Pocas escenas no confirman.",
+      "emergence": "Subida respecto al suelo base. 0.30 es solo una marca de referencia."
     },
     "indexGuideNames": {
       "ndvi": "Índice de Vegetación de Diferencia Normalizada",
@@ -1272,12 +1278,30 @@
       "sentinel1": "Úsalo para revisar cambios de superficie y posible agua cuando las nubes persistentes impidan ver bien las imágenes ópticas."
     },
     "indexGuideTerms": {
-      "scene": { "label": "Escena / observación", "description": "Registro del terreno tomado por un satélite. La fecha es la de observación, no necesariamente la de hoy." },
-      "cloud": { "label": "Nubosidad / observación despejada", "description": "La nubosidad es la proporción cubierta; un valor menor suele permitir ver mejor. Una observación despejada tiene poca obstrucción." },
-      "decloud": { "label": "Eliminación de nubes", "description": "Se usan otras observaciones para estimar lo que ocultan las nubes. Es una referencia adicional, no una foto despejada tomada ese día." },
-      "heatmap": { "label": "Mapa de calor / píxel", "description": "Los colores representan un índice o una clase candidata. Un píxel es una celda pequeña; consulta la leyenda de cada índice." },
-      "mean": { "label": "Media / serie temporal", "description": "La media reúne las observaciones válidas del campo y puede ocultar variaciones locales. La serie conecta valores de distintas fechas." },
-      "season": { "label": "Temporada / ventana de cultivo", "description": "Periodo desde la siembra hasta el final del ciclo. Interpreta el crecimiento según la emergencia, el crecimiento vigoroso y la madurez." }
+      "scene": {
+        "label": "Escena / observación",
+        "description": "Registro del terreno tomado por un satélite. La fecha es la de observación, no necesariamente la de hoy."
+      },
+      "cloud": {
+        "label": "Nubosidad / observación despejada",
+        "description": "La nubosidad es la proporción cubierta; un valor menor suele permitir ver mejor. Una observación despejada tiene poca obstrucción."
+      },
+      "decloud": {
+        "label": "Eliminación de nubes",
+        "description": "Se usan otras observaciones para estimar lo que ocultan las nubes. Es una referencia adicional, no una foto despejada tomada ese día."
+      },
+      "heatmap": {
+        "label": "Mapa de calor / píxel",
+        "description": "Los colores representan un índice o una clase candidata. Un píxel es una celda pequeña; consulta la leyenda de cada índice."
+      },
+      "mean": {
+        "label": "Media / serie temporal",
+        "description": "La media reúne las observaciones válidas del campo y puede ocultar variaciones locales. La serie conecta valores de distintas fechas."
+      },
+      "season": {
+        "label": "Temporada / ventana de cultivo",
+        "description": "Periodo desde la siembra hasta el final del ciclo. Interpreta el crecimiento según la emergencia, el crecimiento vigoroso y la madurez."
+      }
     },
     "indexGuideButton": "Guía de índices",
     "indexGuideAria": "Guía de teledetección para {index}",
@@ -2303,5 +2327,54 @@
     "fallback": "fallback",
     "fallbackHint": "Latest date was cloudy/no data; an earlier clear date is used",
     "showMore": "Show more"
+  },
+  "emergence": {
+    "chip": "Emergencia",
+    "chipTitle": "Subida respecto al suelo, no la escala NDVI 0–1",
+    "statusBarLabel": "Estado de emergencia",
+    "status_not_emerged": "Sin emerger",
+    "status_emerging": "Emergiendo",
+    "status_emerged": "Emergida",
+    "status_uncertain": "Incierto",
+    "loading": "Cargando emergencia…",
+    "statusMeta": "Base {baseline} · última escena {asOf}{frozen}",
+    "baselineMissing": "—",
+    "sceneMissing": "—",
+    "frozen": " · congelado",
+    "viewIncrement": "Incremento",
+    "viewClass": "Clases",
+    "legendIncrement": "Incremento respecto al suelo",
+    "legendClass": "Clases de subida sostenida",
+    "legendNote": "Las clases son una ayuda de lectura, no un umbral de producto. El color usa incremento o clase, nunca 0.30.",
+    "class0": "No claramente sobre la plataforma",
+    "class1": "Subida leve sostenida",
+    "class2": "Subida moderada sostenida",
+    "class3": "Subida más fuerte sostenida",
+    "class4": "Subida más fuerte",
+    "pixelCount": "{count} px",
+    "chartNdvi": "NDVI",
+    "chartIncrement": "Incremento de NDVI respecto a la base",
+    "chartMedian": "Mediana",
+    "chartMean": "Media",
+    "chartBaseline": "Mediana de la base por píxel {value}",
+    "chartReference": "Marca de referencia 0.30 (no es línea de emergencia)",
+    "chartP05": "Percentil 5–95",
+    "chartP25": "Percentil 25–75",
+    "chartIncrementMedian": "Mediana del incremento",
+    "chartNoise": "Ruido de plataforma ±{value} (ensayo)",
+    "heatmapDate": "Capa de emergencia · {date}",
+    "emptyChart": "Aún no hay serie temporal de emergencia.",
+    "mapMissing": "No hay capa de emergencia para esta fecha.",
+    "mapFailed": "No se pudo cargar la capa de emergencia",
+    "referenceNote": "0.30 es solo una marca de referencia de NDVI, no un corte de emergencia.",
+    "cardTitle": "Emergencia",
+    "showOnMap": "Ver emergencia en el mapa",
+    "sentence_not_emerged": "Hasta {asOf}, el NDVI no ha subido de forma sostenida sobre el suelo. Ventana de base {baseline}.",
+    "sentence_emerging": "Hasta {asOf}, el NDVI sube sobre el suelo y la emergencia sigue en curso{increment}. Ventana de base {baseline}.",
+    "sentence_emerged": "Hasta {asOf}, la subida sobre el suelo se ha sostenido{increment}. Ventana de base {baseline}.",
+    "sentence_uncertain": "Faltan píxeles despejados o la base de suelo para juzgar la emergencia.",
+    "sentence_empty": "Aún no hay resultado de emergencia. Puede cambiar el mapa a la vista de emergencia.",
+    "incrementClause": " (mediana del incremento {value})",
+    "dateMissing": "último día despejado"
   }
 }

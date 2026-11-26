@@ -24,6 +24,8 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
+import EmergenceStatusBar from "@/components/field/emergence-status-bar";
+import { parseAgriLandId, type EmergenceMapView, type EmergenceSummary } from "@/lib/emergence";
 
 const NdviChart = dynamic(() => import("@/components/charts/ndvi-chart"), {
     ssr: false,
@@ -63,9 +65,11 @@ interface NdviTabProps {
     onAgriHeatModeChange?: (mode: import("@/lib/agri-heatmap").AgriHeatIndex) => void;
     /** When false (left 指数 tab), clear overlay; when true again, reload */
     agriHeatmapEnabled?: boolean;
+    emergenceView?: EmergenceMapView;
+    onEmergenceViewChange?: (view: EmergenceMapView) => void;
 }
 
-export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = null, onShowLayer, onActiveIndexChange, activeIndexOverride, onDataLoaded, onAgriHeatmapChange, agriHeatMode, onAgriHeatModeChange, agriHeatmapEnabled = true }: NdviTabProps) {
+export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = null, onShowLayer, onActiveIndexChange, activeIndexOverride, onDataLoaded, onAgriHeatmapChange, agriHeatMode, onAgriHeatModeChange, agriHeatmapEnabled = true, emergenceView = "increment", onEmergenceViewChange }: NdviTabProps) {
     const tMon = useTranslations("monitoring");
     // ── Index selector ───────────────────────────────
     const [activeIndex, setActiveIndex] = useState<IndexType>("NDVI");
@@ -76,6 +80,13 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
     const [stats, setStats] = useState<LandStat[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState(false);
+    const [emergenceSummary, setEmergenceSummary] = useState<EmergenceSummary | null>(null);
+    const [emergenceReady, setEmergenceReady] = useState(false);
+
+    useEffect(() => {
+        setEmergenceSummary(null);
+        setEmergenceReady(false);
+    }, [landId]);
 
     // ── Selected date ────────────────────────────────
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -226,6 +237,14 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
 
     return (
         <div className="space-y-4">
+            {agriHeatMode === "emergence" && parseAgriLandId(landId) && (
+                <EmergenceStatusBar
+                    summary={emergenceSummary}
+                    loading={!emergenceReady}
+                    view={emergenceView}
+                    onViewChange={onEmergenceViewChange}
+                />
+            )}
             {loadError && (
                 <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
                     <span>{tMon("dataLoadFailed")}</span>
@@ -246,6 +265,11 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
                 mode={agriHeatMode}
                 onModeChange={onAgriHeatModeChange}
                 enabled={agriHeatmapEnabled}
+                emergenceView={emergenceView}
+                onEmergenceSummary={(summary) => {
+                    setEmergenceSummary(summary);
+                    setEmergenceReady(true);
+                }}
             />
 
             {/* ── Section: Chart for this canonical land ─────────────────────────── */}

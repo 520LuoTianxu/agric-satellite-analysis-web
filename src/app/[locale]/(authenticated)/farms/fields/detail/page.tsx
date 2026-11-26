@@ -9,6 +9,7 @@ import { landsApi, alertsApi, INDEX_CONFIG, ALL_INDEX_TYPES, monitoringApi } fro
 import CropSelect from "@/components/field/crop-select";
 import type { LandParcel, RasterLayer, IndexType } from "@/lib/api";
 import type { AgriHeatIndex, AgriHeatmapImage } from "@/lib/agri-heatmap";
+import { parseAgriLandId, type EmergenceMapView } from "@/lib/emergence";
 import { AGRI_MODE_LABELS, AGRI_PRIMARY_MODES, canvasToObjectUrl, clipHeatmapImageToField, dataUrlToObjectUrl, heatmapImageHasContent, revokeHeatmapObjectUrl } from "@/lib/agri-heatmap";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -106,6 +107,10 @@ const NdviLegend = dynamic(() => import("@/components/field/ndvi-legend"), {
 });
 
 const AgriHeatmapLegend = dynamic(() => import("@/components/field/agri-heatmap-legend"), {
+    ssr: false,
+});
+
+const EmergenceLegend = dynamic(() => import("@/components/field/emergence-legend"), {
     ssr: false,
 });
 
@@ -367,6 +372,9 @@ function FieldDetailPageContent() {
         ? harvestHeatmap
         : agriHeatmap;
     const [agriHeatMode, setAgriHeatMode] = useState<AgriHeatIndex>("ndvi");
+    const [emergenceView, setEmergenceView] = useState<EmergenceMapView>("increment");
+    const agriHeatModeRef = useRef(agriHeatMode);
+    agriHeatModeRef.current = agriHeatMode;
     const [activeIndexType, setActiveIndexType] = useState<IndexType>("NDVI");
     const indexLayerRef = useRef<RasterLayer | null>(null);
     const activeIndexTypeRef = useRef<IndexType>("NDVI");
@@ -1046,7 +1054,7 @@ function FieldDetailPageContent() {
 
         // Re-add index overlay if active
         const layer = indexLayerRef.current;
-        if (layer?.tile_url) {
+        if (layer?.tile_url && agriHeatModeRef.current !== "emergence") {
             addIndexOverlay(map, layer, f, activeIndexTypeRef.current);
         }
 
@@ -1236,10 +1244,10 @@ function FieldDetailPageContent() {
         const map = mapInstance;
         if (!map || !map.isStyleLoaded()) return;
         removeAllIndexOverlays(map);
-        if (indexLayer?.tile_url && land) {
+        if (agriHeatMode !== "emergence" && indexLayer?.tile_url && land) {
             addIndexOverlay(map, indexLayer, land, activeIndexType);
         }
-    }, [indexLayer, land, mapInstance, activeIndexType]);
+    }, [indexLayer, land, mapInstance, activeIndexType, agriHeatMode]);
 
     // Agri 色斑图 — canvas image film ONLY (blob:/data:); never GeoJSON fill (white seams)
     useEffect(() => {
@@ -1853,7 +1861,15 @@ function FieldDetailPageContent() {
                         sheetSnap === "full" && "pointer-events-none opacity-0",
                     )}
                 >
-                    <AgriHeatmapLegend heatmap={shownHeatmap} variant="thumb" />
+                    {shownHeatmap.index === "emergence" ? (
+                        <EmergenceLegend
+                            heatmap={shownHeatmap}
+                            view={emergenceView}
+                            onViewChange={setEmergenceView}
+                        />
+                    ) : (
+                        <AgriHeatmapLegend heatmap={shownHeatmap} variant="thumb" />
+                    )}
                 </div>
             )}
 
@@ -1861,7 +1877,15 @@ function FieldDetailPageContent() {
             {(shownHeatmap || indexLayer) && (
                 <div className="absolute bottom-6 left-4 z-20 hidden transition-opacity duration-200 md:block">
                     {shownHeatmap ? (
-                        <AgriHeatmapLegend heatmap={shownHeatmap} variant="legend" />
+                        shownHeatmap.index === "emergence" ? (
+                            <EmergenceLegend
+                                heatmap={shownHeatmap}
+                                view={emergenceView}
+                                onViewChange={setEmergenceView}
+                            />
+                        ) : (
+                            <AgriHeatmapLegend heatmap={shownHeatmap} variant="legend" />
+                        )
                     ) : indexLayer ? (
                         <div className="hidden md:block">
                             <NdviLegend layer={indexLayer} indexType={activeIndexType} />
@@ -1904,10 +1928,21 @@ function FieldDetailPageContent() {
                                 {AGRI_MODE_LABELS[mode]}
                             </Button>
                         ))}
+                        {land && parseAgriLandId(land.land_id) && (
+                            <Button
+                                variant={agriHeatMode === "emergence" ? "default" : "ghost"}
+                                size="sm"
+                                onClick={() => setAgriHeatMode("emergence")}
+                                className="px-3 text-xs font-medium"
+                                title={t("emergenceChipTitle")}
+                            >
+                                {t("emergenceChip")}
+                            </Button>
+                        )}
                     </div>
                 )}
 
-                {activeTab === "ndvi" && availableTypes.length > 0 && (
+                {activeTab === "ndvi" && agriHeatMode !== "emergence" && availableTypes.length > 0 && (
                     <div className={cn("flex max-w-full flex-wrap justify-center gap-1 rounded-lg p-1", MAP_CHROME)}>
                         {availableTypes.filter((idx) => idx !== "EVI").map((idx) => (
                             <Button
@@ -1962,10 +1997,16 @@ function FieldDetailPageContent() {
                         <p className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
                             <Satellite className="h-3 w-3 shrink-0" aria-hidden="true" />
                             {[
-                                shownHeatmap.index === "flood" ? "Sentinel-1" : "Sentinel-2",
-                                AGRI_MODE_LABELS[shownHeatmap.index],
-                                shownHeatmap.mean != null ? `均≈${shownHeatmap.mean.toFixed(2)}` : null,
-                                `${shownHeatmap.pixelCount} px`,
+                                shownHeatmap.index === "emergence"
+                                    ? t("emergenceCaption", { pixels: shownHeatmap.pixelCount })
+                                    : shownHeatmap.index === "flood"
+                                      ? "Sentinel-1"
+                                      : "Sentinel-2",
+                                shownHeatmap.index === "emergence" ? null : AGRI_MODE_LABELS[shownHeatmap.index],
+                                shownHeatmap.index !== "emergence" && shownHeatmap.mean != null
+                                    ? `均≈${shownHeatmap.mean.toFixed(2)}`
+                                    : null,
+                                shownHeatmap.index === "emergence" ? null : `${shownHeatmap.pixelCount} px`,
                             ]
                                 .filter(Boolean)
                                 .join(" · ")}
@@ -2284,6 +2325,8 @@ function FieldDetailPageContent() {
                                             agriHeatMode={agriHeatMode}
                                             onAgriHeatModeChange={setAgriHeatMode}
                                             agriHeatmapEnabled={activeTab === "ndvi"}
+                                            emergenceView={emergenceView}
+                                            onEmergenceViewChange={setEmergenceView}
                                         />
                                     </TabsContent>
 
@@ -2327,6 +2370,10 @@ function FieldDetailPageContent() {
                                             onMapOverlayChange={setHarvestHeatmap}
                                             onHarvestSectionOpenChange={setHarvestSectionOpen}
                                             onSectionFocusChange={handleParcelSectionFocus}
+                                            onShowEmergence={() => {
+                                                setActiveTab("ndvi");
+                                                setAgriHeatMode("emergence");
+                                            }}
                                         />
                                     </TabsContent>
                                     )}

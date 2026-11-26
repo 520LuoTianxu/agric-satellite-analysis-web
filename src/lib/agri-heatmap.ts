@@ -66,7 +66,11 @@ export type AgriHeatIndex =
     | "vv"
     | "vh"
     | "drought"
-    | "flood";
+    | "flood"
+    | "emergence";
+
+/** 连续色标指数。出苗不用 NDVI 0–1 色标，也不进入 HEAT_RESCALE。 */
+export type AgriContinuousIndex = Exclude<AgriHeatIndex, "drought" | "flood" | "emergence">;
 
 /** 地图色膜种类：指数/风险模式之外，另有收获逐像元状态（收获页签）。 */
 export type AgriOverlayIndex = AgriHeatIndex | "harvest";
@@ -139,7 +143,7 @@ export function sensorForIndex(index: AgriHeatIndex): "S1" | "S2" {
  * Default rescale ranges.
  * NDVI/EVI use figure-3 style fixed scales (0→high green) for continuous 色斑.
  */
-export const HEAT_RESCALE: Record<Exclude<AgriHeatIndex, "drought" | "flood">, [number, number]> = {
+export const HEAT_RESCALE: Record<AgriContinuousIndex, [number, number]> = {
     ndvi: [0, 0.9],
     evi: [0, 1.2],
     ndmi: [-0.5, 0.5],
@@ -221,7 +225,7 @@ export const FLOOD_CLASS_STYLE: Record<
 
 export function colorizeValue(
     value: number,
-    index: Exclude<AgriHeatIndex, "drought" | "flood">,
+    index: AgriContinuousIndex,
     rescale: [number, number] = HEAT_RESCALE[index],
 ): [number, number, number, number] {
     const [lo, hi] = rescale;
@@ -394,6 +398,16 @@ export type AgriHeatmapLegend =
           label: string;
           hint?: string;
           classes: { key: string; label: string; color: string }[];
+      }
+    | {
+          kind: "emergence";
+          label: string;
+          view: "increment" | "class";
+          min: number;
+          max: number;
+          gradient: string;
+          classes: { key: string; color: string; count?: number }[];
+          incrementMedian?: number | null;
       };
 
 export type AgriHeatmapGeoJSON = GeoJSON.FeatureCollection<
@@ -453,7 +467,7 @@ export interface AgriHeatmapImage {
     previewS2HeatmapUrl?: string | null;
 }
 
-function continuousLegend(index: Exclude<AgriHeatIndex, "drought" | "flood">): AgriHeatmapLegend {
+function continuousLegend(index: AgriContinuousIndex): AgriHeatmapLegend {
     const [min, max] = HEAT_RESCALE[index];
     const isSar = index === "vv" || index === "vh";
     return {
@@ -536,6 +550,7 @@ function collectPaintedCells(
 
     const expected = sensorForIndex(index);
     if (sensor !== expected) return null;
+    if (index === "emergence") return null;
 
     const { width, height } = grid;
     if (!width || !height || !grid.resolution || !grid.epsg) return null;
@@ -602,7 +617,7 @@ function collectPaintedCells(
             vmax = Math.max(vmax, vv);
         }
     } else {
-        const cont = index as Exclude<AgriHeatIndex, "drought" | "flood">;
+        const cont = index as AgriContinuousIndex;
         const vi = valueIndexFor(cont, sensor);
         if (vi == null) return null;
         const rs = rescale ?? HEAT_RESCALE[cont];
@@ -1193,7 +1208,7 @@ export function rasterizeAgriPixels(
             ? droughtLegend()
             : index === "flood"
               ? floodLegend()
-              : continuousLegend(index as Exclude<AgriHeatIndex, "drought" | "flood">);
+              : continuousLegend(index as AgriContinuousIndex);
 
     const paintedCount = painted.cells.length;
     return {
@@ -1236,6 +1251,7 @@ function collectLonLatPainted(
     if (!pixels?.length) return null;
     const expected = sensorForIndex(index);
     if (sensor !== expected) return null;
+    if (index === "emergence") return null;
 
     const cells: Omit<LonLatPainted, "row" | "col">[] = [];
     let sum = 0;
@@ -1245,8 +1261,7 @@ function collectLonLatPainted(
     // Continuous optical/SAR indices: if any clear=true pixels exist, skip clear=false
     // so cloudy zeros do not paint over valid vegetation signal. If ALL clear=false,
     // keep painting (caller may show a cloudy/low-veg hint).
-    const continuous =
-        index !== "drought" && index !== "flood";
+    const continuous = index !== "drought" && index !== "flood";
     const anyClear = continuous
         ? pixels.some((p) => Number(p.clear) === 1)
         : false;
@@ -1309,7 +1324,7 @@ function collectLonLatPainted(
             continue;
         }
 
-        const cont = index as Exclude<AgriHeatIndex, "drought" | "flood">;
+        const cont = index as AgriContinuousIndex;
         const keyMap: Record<typeof cont, string[]> = {
             ndvi: ["NDVI"],
             evi: ["EVI"],
@@ -1664,7 +1679,7 @@ export function rasterizeAgriLonLatPixels(
             ? droughtLegend()
             : index === "flood"
               ? floodLegend()
-              : continuousLegend(index as Exclude<AgriHeatIndex, "drought" | "flood">);
+              : continuousLegend(index as AgriContinuousIndex);
 
     const paintedCount = film.pixelCount;
     return {
@@ -1789,8 +1804,58 @@ export const AGRI_MODE_LABELS: Record<AgriOverlayIndex, string> = {
     vh: "VH",
     drought: "干旱",
     flood: "洪涝",
+    emergence: "出苗",
     harvest: "收获状态",
 };
+
+export interface PrecoloredLonLatSample {
+    lon: number;
+    lat: number;
+    value: number;
+    rgba: [number, number, number, number];
+    class?: string;
+}
+
+/** 调用方已经算好颜色的 lon/lat 像元，复用同一张 WebMercator 色膜。 */
+export function rasterizePrecoloredLonLat(
+    samples: PrecoloredLonLatSample[],
+    opts: {
+        index: AgriOverlayIndex;
+        legend: AgriHeatmapLegend;
+        fieldGeom?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
+        resM?: number;
+    },
+): AgriHeatmapImage | null {
+    const cells = samples
+        .filter((sample) => Number.isFinite(sample.lon) && Number.isFinite(sample.lat))
+        .map((sample) => ({
+            lon: sample.lon,
+            lat: sample.lat,
+            color: rgbaToHex(sample.rgba[0], sample.rgba[1], sample.rgba[2]),
+            rgba: sample.rgba,
+            value: sample.value,
+            class: sample.class,
+        }));
+    const film = filmFromLonLatCells(cells, opts.fieldGeom, opts.resM ?? 10);
+    if (!film) return null;
+    const finite = cells.map((cell) => cell.value).filter((value) => Number.isFinite(value));
+    const sum = finite.reduce((acc, value) => acc + value, 0);
+    return {
+        dataUrl: film.dataUrl,
+        coordinates: film.coordinates,
+        geojson: film.geojson,
+        fromLonLat: true,
+        grid: film.grid,
+        width: film.width,
+        height: film.height,
+        index: opts.index,
+        pixelCount: film.pixelCount,
+        mean: finite.length ? sum / finite.length : null,
+        min: finite.length ? Math.min(...finite) : null,
+        max: finite.length ? Math.max(...finite) : null,
+        legend: opts.legend,
+    };
+}
 
 /** 地图底部主入口：EVI 作为补充指标，不在快捷按钮中直接展示。 */
 export const AGRI_PRIMARY_MODES: AgriHeatIndex[] = ["ndvi", "drought", "flood"];

@@ -18,6 +18,8 @@ import {
 import { useLocale, useTranslations } from "next-intl";
 import { monthsInWindows, type Phenology } from "@/lib/parcel-insights";
 import PhenologyPicker from "./phenology-picker";
+import { rasterizeEmergenceLayer } from "@/lib/emergence-raster";
+import { parseAgriLandId, type EmergenceSummary } from "@/lib/emergence";
 import {
     rasterizeAgriPixels,
     rasterizeAgriLonLatPixels,
@@ -76,6 +78,10 @@ import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land
 import type { DayGradeShare } from "@/components/charts/ndvi-grade-shares-chart";
 import { computePixelNdviGradeShares } from "@/components/charts/ndvi-grade-shares-chart";
 import { filterRealisticNdviStats } from "@/lib/ndvi-realistic-filter";
+
+const EmergenceChart = dynamic(() => import("@/components/charts/emergence-chart"), {
+    ssr: false,
+});
 
 const NdviChart = dynamic(() => import("@/components/charts/ndvi-chart"), {
     ssr: false,
@@ -209,6 +215,11 @@ const SERIES_META: Record<
         sensor: "S1",
         avgKey: null,
         chartKey: "vv_avg",
+    },
+    emergence: {
+        sensor: "S2",
+        avgKey: null,
+        chartKey: null,
     },
 };
 
@@ -487,6 +498,7 @@ const VEG_AVG_KEYS = new Set<SeriesKey>(["ndvi", "evi", "ndmi", "ndre", "cire", 
  * (which is often fully cloudy → solid red NDVI film).
  */
 function pickBestDefaultDate(scenes: AgriSceneProduct[], key: SeriesKey): string | null {
+    if (key === "emergence") return null;
     const sensor = sensorForIndex(key);
     const list = scenes.filter((s) => s.sensor === sensor);
     if (!list.length) return null;
@@ -554,6 +566,9 @@ export interface AgriTimeseriesPanelProps {
     onModeChange?: (mode: AgriHeatIndex) => void;
     /** Parent 指数 tab active — clear overlay when false, reload when true */
     enabled?: boolean;
+    /** 出苗色膜：相对本底增量，或接口给出的抬升分组。 */
+    emergenceView?: "increment" | "class";
+    onEmergenceSummary?: (summary: EmergenceSummary | null) => void;
 }
 
 const MAX_RS_HISTORY_YEARS = 5;
@@ -616,8 +631,11 @@ export default function AgriTimeseriesPanel({
     mode: modeProp,
     onModeChange,
     enabled = true,
+    emergenceView = "increment",
+    onEmergenceSummary,
 }: AgriTimeseriesPanelProps) {
     const t = useTranslations("agriPanel");
+    const te = useTranslations("emergence");
     const locale = useLocale();
     const gridSpacingFormatter = useMemo(
         () => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }),
@@ -657,6 +675,9 @@ export default function AgriTimeseriesPanel({
     const [seriesInternal, setSeriesInternal] = useState<SeriesKey>("ndvi");
     const earlierScenesRequestRef = useRef<AbortController | null>(null);
     const series = modeProp ?? seriesInternal;
+    const [emergenceSummary, setEmergenceSummary] = useState<EmergenceSummary | null>(null);
+    const onEmergenceSummaryRef = useRef(onEmergenceSummary);
+    onEmergenceSummaryRef.current = onEmergenceSummary;
     const setSeries = useCallback(
         (next: SeriesKey) => {
             setSeriesInternal(next);
@@ -689,6 +710,7 @@ export default function AgriTimeseriesPanel({
         landId: string;
         date: string;
         index: SeriesKey;
+        view?: string;
         img: AgriHeatmapImage | null;
         meta: HeatmapMeta | null;
     } | null>(null);
@@ -1067,6 +1089,7 @@ export default function AgriTimeseriesPanel({
     // When switching series, keep date if still valid; else prefer usable optical scene
     useEffect(() => {
         if (!scenes.length) return; // wait for initial scenes fetch; do not null out date early
+        if (series === "emergence") return;
         const sensor = sensorForIndex(series);
         const dates = scenes
             .filter((s) => s.sensor === sensor)
@@ -1081,6 +1104,42 @@ export default function AgriTimeseriesPanel({
         );
     }, [series, scenes]);
 
+    useEffect(() => {
+        if (!parseAgriLandId(landId)) {
+            setEmergenceSummary(null);
+            onEmergenceSummaryRef.current?.(null);
+            return;
+        }
+        let cancelled = false;
+        agriApi
+            .emergenceSummary(landId)
+            .then((summary) => {
+                if (cancelled) return;
+                setEmergenceSummary(summary);
+                onEmergenceSummaryRef.current?.(summary);
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setEmergenceSummary(null);
+                onEmergenceSummaryRef.current?.(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [landId]);
+
+    useEffect(() => {
+        if (series !== "emergence") return;
+        const dates = emergenceSummary?.timeseries.map((point) => point.date) ?? [];
+        const known = dates.length
+            ? dates
+            : emergenceSummary?.as_of_date
+              ? [emergenceSummary.as_of_date]
+              : [];
+        if (!known.length) return;
+        setSelectedDate((prev) => (prev && known.includes(prev) ? prev : known[known.length - 1]!));
+    }, [series, emergenceSummary]);
+
     const publishHeatmap = useCallback(
         (img: AgriHeatmapImage | null) => {
             if (!onHeatmapChange) return;
@@ -1092,7 +1151,12 @@ export default function AgriTimeseriesPanel({
     const loadHeatmap = useCallback(
         async (date: string, index: SeriesKey) => {
             if (!landId) return;
-            const requestKey = JSON.stringify([landId, date, index]);
+            const requestKey = JSON.stringify([
+                landId,
+                date,
+                index,
+                index === "emergence" ? emergenceView : "",
+            ]);
             const activeRequest = heatmapRequestRef.current;
             // 两个 UI 触发点可能在同一帧请求相同像元；复用进行中的请求避免重复下载。
             if (activeRequest?.key === requestKey && !activeRequest.controller.signal.aborted) return;
@@ -1105,6 +1169,58 @@ export default function AgriTimeseriesPanel({
             setHeatmapError(null);
             // 新请求尚未完成时，不把上个日期的统计与来源误显示成当前选择的数据。
             setHeatmapMeta(null);
+            if (index === "emergence") {
+                try {
+                    const layer = await agriApi.emergenceMap(landId, date, { signal: controller.signal });
+                    if (gen !== heatmapLoadGenRef.current) return;
+                    const img = rasterizeEmergenceLayer(layer, emergenceView);
+                    const nextMeta: HeatmapMeta | null = img
+                        ? {
+                              landId,
+                              sceneId: date,
+                              pixels: img.pixelCount,
+                              date,
+                              index: te("chip"),
+                              sensor: "S2",
+                              mean: layer.increment_median ?? img.mean,
+                              source: null,
+                              productSource: null,
+                              stacItemId: null,
+                              algorithmVersion: null,
+                              gridSpacingM: null,
+                              radiometricCalibration: null,
+                              platform: null,
+                              processingVersion: null,
+                              calibrationEpoch: null,
+                          }
+                        : null;
+                    cachedHeatmapRef.current = { landId, date, index, view: emergenceView, img, meta: nextMeta };
+                    setHeatmapMeta(nextMeta);
+                    publishHeatmap(img);
+                    if (!img && enabledRef.current) {
+                        toast(te("mapMissing"), { description: date });
+                    }
+                } catch (e) {
+                    if (controller.signal.aborted || gen !== heatmapLoadGenRef.current) return;
+                    cachedHeatmapRef.current = { landId, date, index, view: emergenceView, img: null, meta: null };
+                    setHeatmapMeta(null);
+                    publishHeatmap(null);
+                    setHeatmapError(e instanceof ApiError && e.status === 413 ? "tooLarge" : "failed");
+                    if (enabledRef.current && !(e instanceof ApiError && e.status === 404)) {
+                        toast(te("mapFailed"), { description: date });
+                    } else if (enabledRef.current) {
+                        toast(te("mapMissing"), { description: date });
+                    }
+                } finally {
+                    if (gen === heatmapLoadGenRef.current) {
+                        if (heatmapRequestRef.current?.controller === controller) {
+                            heatmapRequestRef.current = null;
+                        }
+                        setHeatmapLoading(false);
+                    }
+                }
+                return;
+            }
             try {
                 const res = await agriApi.scenes(landId, {
                     sensor: meta.sensor,
@@ -1247,7 +1363,7 @@ export default function AgriTimeseriesPanel({
                 }
             }
         },
-        [landId, publishHeatmap, t, isWithinSeason],
+        [landId, publishHeatmap, t, te, isWithinSeason, emergenceView],
     );
     loadHeatmapRef.current = loadHeatmap;
 
@@ -1432,17 +1548,32 @@ export default function AgriTimeseriesPanel({
     );
 
 
+    const emergenceDates = emergenceSummary?.timeseries.map((point) => point.date) ?? [];
+    const emergenceDateReady =
+        series !== "emergence" ||
+        !emergenceSummary ||
+        (emergenceDates.length === 0 && !emergenceSummary.as_of_date) ||
+        (selectedDate != null &&
+            (emergenceDates.includes(selectedDate) || emergenceSummary.as_of_date === selectedDate));
+
     // Prefetch/reload film whenever date or series changes (tab may be inactive).
     useEffect(() => {
-        if (!selectedDate) return;
+        if (!selectedDate || !emergenceDateReady) return;
         const cache = cachedHeatmapRef.current;
-        if (cache && cache.landId === landId && cache.date === selectedDate && cache.index === series) {
+        const viewKey = series === "emergence" ? emergenceView : "";
+        if (
+            cache &&
+            cache.landId === landId &&
+            cache.date === selectedDate &&
+            cache.index === series &&
+            (cache.view ?? "") === viewKey
+        ) {
             setHeatmapError(null);
             setHeatmapMeta(cache.meta);
             return;
         }
         void loadHeatmap(selectedDate, series);
-    }, [landId, selectedDate, series, loadHeatmap]);
+    }, [landId, selectedDate, series, emergenceView, emergenceDateReady, loadHeatmap]);
 
     // enabled gate：只同步地图显示状态；大体量像元请求由上方 effect 统一触发，避免重复拉取。
     useEffect(() => {
@@ -1460,8 +1591,19 @@ export default function AgriTimeseriesPanel({
             onHeatmapChange?.(null);
             return;
         }
+        if (series === "emergence" && !emergenceDateReady) {
+            onHeatmapChange?.(null);
+            return;
+        }
         const cache = cachedHeatmapRef.current;
-        if (cache && cache.landId === landId && cache.date === selectedDate && cache.index === series) {
+        const viewKey = series === "emergence" ? emergenceView : "";
+        if (
+            cache &&
+            cache.landId === landId &&
+            cache.date === selectedDate &&
+            cache.index === series &&
+            (cache.view ?? "") === viewKey
+        ) {
             setHeatmapError(null);
             setHeatmapMeta(cache.meta);
             onHeatmapChange?.(cache.img);
@@ -1469,7 +1611,7 @@ export default function AgriTimeseriesPanel({
         }
         // 当前日期尚无缓存时先清除旧日期色膜，等待唯一的预取请求完成。
         onHeatmapChange?.(null);
-    }, [enabled, landId, selectedDate, series, onHeatmapChange]);
+    }, [enabled, landId, selectedDate, series, emergenceView, emergenceDateReady, onHeatmapChange]);
 
     const stats = useMemo(() => scenesToStats(scenes, series, landId), [scenes, series, landId]);
     const decloudAltStats = useMemo(
@@ -1477,10 +1619,11 @@ export default function AgriTimeseriesPanel({
         [scenes, series, stats, landId],
     );
 
-    const availableKeys = useMemo(
-        () => BUTTON_ORDER.filter((key) => seriesIsAvailable(key, scenes)),
-        [scenes],
-    );
+    const availableKeys = useMemo(() => {
+        const keys = BUTTON_ORDER.filter((key) => seriesIsAvailable(key, scenes));
+        if (parseAgriLandId(landId) && !keys.includes("emergence")) keys.push("emergence");
+        return keys;
+    }, [scenes, landId]);
 
     const droughtByDate = useMemo(() => {
         const s2 = scenes.filter((s) => s.sensor === "S2");
@@ -1736,7 +1879,7 @@ export default function AgriTimeseriesPanel({
         .join(" · ");
 
     if (!landId) return null;
-    if (!loading && hasMonitoringData && total === 0) return null;
+    if (!loading && hasMonitoringData && total === 0 && series !== "emergence") return null;
 
     const CHART_INDEX_TYPE: Partial<Record<SeriesKey, IndexType>> = {
         ndvi: "NDVI",
@@ -2027,14 +2170,33 @@ export default function AgriTimeseriesPanel({
                         <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => setReloadKey((k) => k + 1)}>{t("retry")}</Button>
                     </div>
                 )}
-                {!loading && !error && total === 0 && (
+                {!loading && !error && total === 0 && series !== "emergence" && (
                     <p className="text-[11px] text-muted-foreground py-3 leading-relaxed">
                         {t("empty")}
                     </p>
                 )}
-                {!loading && total > 0 && (
+                {!loading && (total > 0 || series === "emergence") && (
                     <>
-                        {(series === "drought" || series === "flood") && (
+                        {series === "emergence" ? (
+                            <div className="space-y-2">
+                                <div className="flex justify-end md:hidden">
+                                    <SeriesSwitcher series={series} keys={availableKeys} onChange={setSeries} />
+                                </div>
+                                {emergenceSummary && emergenceSummary.timeseries.length > 0 ? (
+                                    <EmergenceChart
+                                        summary={emergenceSummary}
+                                        selectedDate={selectedDate}
+                                        onDateSelect={setSelectedDate}
+                                        height={280}
+                                    />
+                                ) : (
+                                    <p className="py-3 text-[11px] leading-relaxed text-muted-foreground">
+                                        {te("emptyChart")}
+                                    </p>
+                                )}
+                            </div>
+                        ) : null}
+                        {series !== "emergence" && (series === "drought" || series === "flood") && (
                             <p className="text-[11px] text-muted-foreground leading-snug">
                                 {t(`indexHints.${series}`)}
                                 {series === "drought" && clearS2Count > 0
@@ -2049,6 +2211,7 @@ export default function AgriTimeseriesPanel({
                                     : ""}
                             </p>
                         )}
+                        {series !== "emergence" && (
                         <div className="rounded-lg bg-background p-2.5 max-md:bg-transparent max-md:p-0">
                             <NdviChart
                                 stats={stats}
@@ -2085,6 +2248,7 @@ export default function AgriTimeseriesPanel({
                                     onOnlyRealisticChange={setOnlyRealistic}
                                 />
                         </div>
+                        )}
                         {(series === "ndvi" || series === "evi" || series === "drought") && (
                             <>
                                 <div className="space-y-2 rounded-xl bg-muted/30 p-2.5">
@@ -2127,7 +2291,9 @@ export default function AgriTimeseriesPanel({
                         )}
                         <div data-tour="select-date" className="space-y-2 rounded-xl bg-muted/30 p-2.5">
                             <p className="text-xs text-muted-foreground leading-snug">
-                                {selectedDate
+                                {series === "emergence" && selectedDate
+                                    ? te("heatmapDate", { date: selectedDate })
+                                    : selectedDate
                                     ? t("heatmapDate", { date: selectedDate, mode: t(`indexLabels.${series}`) })
                                     : t("pickDate")}
                                 {cloudCoverPct != null
