@@ -49,6 +49,7 @@ interface ParcelAnalysisTabProps {
     onHarvestSectionOpenChange?: (open: boolean) => void;
     focusSection?: ParcelAnalysisSection;
     onSectionFocusChange?: (section: ParcelAnalysisSection) => void;
+    onShowEmergence?: () => void;
 }
 
 type OpenState = Record<ParcelAnalysisSection, boolean>;
@@ -158,6 +159,7 @@ export default function ParcelAnalysisTab({
     onHarvestSectionOpenChange,
     focusSection = "land-report",
     onSectionFocusChange,
+    onShowEmergence,
 }: ParcelAnalysisTabProps) {
     const t = useTranslations("fieldDetail");
     const landReportT = useTranslations("landReportTab");
@@ -215,6 +217,7 @@ export default function ParcelAnalysisTab({
                     embedded
                     onCropBound={onCropBound}
                     onSummaryChange={(value) => setSectionSummary("land-report", value)}
+                    onShowEmergence={onShowEmergence}
                 />
             </AnalysisSection>
             <AnalysisSection

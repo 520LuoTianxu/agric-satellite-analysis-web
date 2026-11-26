@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { resolveCdfinanceCredentials } from "@/lib/auth/cdfinance";
 import CropSelect from "@/components/field/crop-select";
+import EmergenceReportCard from "@/components/field/emergence-report-card";
 import LandScorecardRadar from "@/components/charts/land-scorecard-radar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +47,7 @@ interface LandReportTabProps {
     /** 嵌在选地报告页时隐藏页内大标题，避免和分区标题重复。 */
     embedded?: boolean;
     onSummaryChange?: (summary: string | null) => void;
+    onShowEmergence?: () => void;
 }
 
 type ScorecardState = "loading" | "empty" | "legacy" | "ready";
@@ -114,7 +116,7 @@ function isCropRequiredError(err: any): boolean {
     return false;
 }
 
-export default function LandReportTab({ landId, groupId, cropType, onCropBound, onReportReady, embedded = false, onSummaryChange }: LandReportTabProps) {
+export default function LandReportTab({ landId, groupId, cropType, onCropBound, onReportReady, embedded = false, onSummaryChange, onShowEmergence }: LandReportTabProps) {
     const t = useTranslations("landReportTab");
     const [latestState, setLatest] = useState<NdviJob | null>(null);
     const [loading, setLoading] = useState(true);
@@ -447,6 +449,8 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
                 </p>
             </div>
             )}
+
+            <EmergenceReportCard landId={landId} onShowOnMap={onShowEmergence} />
 
             {loading ? (
                 <div className="space-y-2">

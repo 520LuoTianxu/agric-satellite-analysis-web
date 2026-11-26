@@ -475,7 +475,10 @@
     "placeholderAgriLandId": "例如：25107",
     "agriLandIdHint": "填写后写入 agri:<id> 标签，用于遥感 HTTP 回填",
     "cdfinanceGroupId": "中和农信项目组ID（可选）",
-    "placeholderCdfinanceGroupId": "例如：7694"
+    "placeholderCdfinanceGroupId": "例如：7694",
+    "emergenceChip": "出苗",
+    "emergenceChipTitle": "相对土壤本底的抬升。0.30 只是参考刻度，不是出苗线",
+    "emergenceCaption": "出苗 · 相对土壤本底 · {pixels} px"
   },
   "alertsTab": {
     "noAlerts": "暂无预警",
@@ -1193,7 +1196,8 @@
       "flood": "洪涝",
       "harvest": "收获状态",
       "sentinel2": "哨兵二号 · 光学",
-      "sentinel1": "哨兵一号 · 雷达"
+      "sentinel1": "哨兵一号 · 雷达",
+      "emergence": "出苗"
     },
     "indexHints": {
       "ndvi": "观察地表绿度，帮助了解植被覆盖与长势；数值下降也可能与成熟、收割或云有关。",
@@ -1209,7 +1213,8 @@
       "savi": "苗期或露土较多时减少土壤背景影响的植被指标。",
       "ndwi": "用于识别地表水体候选，不等于土壤含水量。",
       "sentinel2": "光学卫星影像可计算 NDVI 等指标，但云雾会遮挡地面。",
-      "sentinel1": "全天时雷达观测可穿云；提供 VV/VH 回波强度，不是普通照片。"
+      "sentinel1": "全天时雷达观测可穿云；提供 VV/VH 回波强度，不是普通照片。",
+      "emergence": "相对土壤本底的抬升。不是 NDVI 0–1 色标，也不以 0.30 为出苗线。"
     },
     "indexMenuHints": {
       "ndvi": "看地表绿度，下降也可能是成熟或云。",
@@ -1221,7 +1226,8 @@
       "vv": "雷达回波强弱，不是长势分数。",
       "vh": "交叉极化回波，建议对照 VV 看。",
       "drought": "筛查可能缺水，请对照降雨核实。",
-      "flood": "看疑似积水，样本少时不确认洪涝。"
+      "flood": "看疑似积水，样本少时不确认洪涝。",
+      "emergence": "相对土壤本底的抬升。0.30 只是参考刻度。"
     },
     "indexGuideNames": {
       "ndvi": "归一化植被指数",
@@ -1272,12 +1278,30 @@
       "sentinel1": "连续阴雨、看不清光学影像时，可用它辅助排查地表变化和积水。"
     },
     "indexGuideTerms": {
-      "scene": { "label": "影像 / 景", "description": "卫星一次拍到或探测到的地面记录。日期是观测日期，不一定是今天。" },
-      "cloud": { "label": "云量 / 晴空", "description": "云量是被云遮住的比例，越少通常越容易看清；晴空表示云遮挡较少。" },
-      "decloud": { "label": "去云", "description": "用其他观测信息估算被云挡住的内容，是补充参考，不等同于当天拍到的清晰照片。" },
-      "heatmap": { "label": "色斑图 / 像元", "description": "地图颜色表示指标大小或候选等级；像元是组成影像的小格子。不同指标要分别看图例。" },
-      "mean": { "label": "均值 / 时序曲线", "description": "均值是整块地有效数据的平均数，可能掩盖局部差异；时序曲线把不同日期的数值连起来，方便看变化。" },
-      "season": { "label": "生育期 / 生育窗", "description": "这茬庄稼从播种到生长结束的一段时间。比较长势时，要分清苗期、旺盛期和成熟期。" }
+      "scene": {
+        "label": "影像 / 景",
+        "description": "卫星一次拍到或探测到的地面记录。日期是观测日期，不一定是今天。"
+      },
+      "cloud": {
+        "label": "云量 / 晴空",
+        "description": "云量是被云遮住的比例，越少通常越容易看清；晴空表示云遮挡较少。"
+      },
+      "decloud": {
+        "label": "去云",
+        "description": "用其他观测信息估算被云挡住的内容，是补充参考，不等同于当天拍到的清晰照片。"
+      },
+      "heatmap": {
+        "label": "色斑图 / 像元",
+        "description": "地图颜色表示指标大小或候选等级；像元是组成影像的小格子。不同指标要分别看图例。"
+      },
+      "mean": {
+        "label": "均值 / 时序曲线",
+        "description": "均值是整块地有效数据的平均数，可能掩盖局部差异；时序曲线把不同日期的数值连起来，方便看变化。"
+      },
+      "season": {
+        "label": "生育期 / 生育窗",
+        "description": "这茬庄稼从播种到生长结束的一段时间。比较长势时，要分清苗期、旺盛期和成熟期。"
+      }
     },
     "indexGuideButton": "指标说明",
     "indexGuideAria": "{index}指标说明",
@@ -2303,5 +2327,54 @@
     "fallback": "回退",
     "fallbackHint": "最新日期多云/无数据，采用更早的晴空日期",
     "showMore": "显示更多"
+  },
+  "emergence": {
+    "chip": "出苗",
+    "chipTitle": "相对土壤本底的抬升，不是 NDVI 0–1 色标",
+    "statusBarLabel": "出苗状态",
+    "status_not_emerged": "未出苗",
+    "status_emerging": "出苗中",
+    "status_emerged": "已出苗",
+    "status_uncertain": "不确定",
+    "loading": "正在读出苗结果…",
+    "statusMeta": "本底 {baseline} · 最近景 {asOf}{frozen}",
+    "baselineMissing": "—",
+    "sceneMissing": "—",
+    "frozen": " · 已冻结",
+    "viewIncrement": "增量",
+    "viewClass": "分组",
+    "legendIncrement": "相对本底增量",
+    "legendClass": "持续抬升分组",
+    "legendNote": "分组只用于读图，不是出苗产品阈值。着色用增量或分组，不用 0.30。",
+    "class0": "未明显高于平台",
+    "class1": "轻度持续抬升",
+    "class2": "中度持续抬升",
+    "class3": "较强持续抬升",
+    "class4": "最强持续抬升",
+    "pixelCount": "{count} 像元",
+    "chartNdvi": "NDVI",
+    "chartIncrement": "相对本底的 NDVI 增量",
+    "chartMedian": "中位数",
+    "chartMean": "均值",
+    "chartBaseline": "像元本底中位数 {value}",
+    "chartReference": "产品参考刻度 0.30（非出苗线）",
+    "chartP05": "第 5–95 百分位",
+    "chartP25": "第 25–75 百分位",
+    "chartIncrementMedian": "中位数增量",
+    "chartNoise": "平台噪声带 ±{value}（试算）",
+    "heatmapDate": "出苗图层 · {date}",
+    "emptyChart": "还没有出苗时间序列。",
+    "mapMissing": "这一天还没有出苗图层。",
+    "mapFailed": "出苗图层加载失败",
+    "referenceNote": "0.30 只是 NDVI 参考刻度，不是出苗分界。",
+    "cardTitle": "出苗",
+    "showOnMap": "在地图上查看出苗",
+    "sentence_not_emerged": "到 {asOf}，相对土壤本底还没有形成持续抬升。本底窗口 {baseline}。",
+    "sentence_emerging": "到 {asOf}，相对土壤本底已有抬升，出苗还在进行{increment}。本底窗口 {baseline}。",
+    "sentence_emerged": "到 {asOf}，相对土壤本底的抬升已经稳住{increment}。本底窗口 {baseline}。",
+    "sentence_uncertain": "晴空像元或土壤本底不足，出苗状态还不能确定。",
+    "sentence_empty": "出苗结果还没有返回。可以把地图切到出苗视图。",
+    "incrementClause": "（抬升中位数 {value}）",
+    "dateMissing": "最近晴空日"
   }
 }

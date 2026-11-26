@@ -1,4 +1,5 @@
 import { resolveGatewayUrl } from "@/lib/api-origin";
+import { normalizeEmergenceMap, normalizeEmergenceSummary } from "@/lib/emergence";
 import { buildLandWeatherPath } from "@/lib/land-weather";
 import { getAlertSession } from "@/lib/alert-session";
 import { mutate as mutateCache } from "swr";
@@ -2051,7 +2052,26 @@ export const agriApi = {
             { signal: opts.signal },
         );
     },
+    /**
+     * 出苗摘要。只读新资源，不从既有 NDVI 场景字段推导。
+     * GET /agri/lands/{land_id}/emergence
+     */
+    emergenceSummary: (landId: string, opts: { signal?: AbortSignal } = {}) =>
+        apiFetch<unknown>(`/agri/lands/${encodeURIComponent(landId)}/emergence`, {
+            signal: opts.signal,
+        }).then(normalizeEmergenceSummary),
+    /**
+     * 出苗图层：逐像元相对土壤本底的增量和抬升分组。
+     * GET /agri/lands/{land_id}/emergence/map?date=YYYY-MM-DD
+     */
+    emergenceMap: (landId: string, date: string, opts: { signal?: AbortSignal } = {}) =>
+        apiFetch<unknown>(
+            `/agri/lands/${encodeURIComponent(landId)}/emergence/map?date=${encodeURIComponent(date)}`,
+            { signal: opts.signal },
+        ).then(normalizeEmergenceMap),
 };
+
+export type { EmergenceMapLayer, EmergenceSummary } from "@/lib/emergence";
 
 export type HarvestProgressStatus = "off_season" | "growing" | "harvesting" | "harvested";
 
