@@ -14,6 +14,7 @@ import {
 interface EmergenceStatusBarProps {
     summary: EmergenceSummary | null;
     loading?: boolean;
+    error?: string | null;
     view?: EmergenceMapView;
     onViewChange?: (view: EmergenceMapView) => void;
 }
@@ -21,11 +22,19 @@ interface EmergenceStatusBarProps {
 export default function EmergenceStatusBar({
     summary,
     loading = false,
+    error = null,
     view,
     onViewChange,
 }: EmergenceStatusBarProps) {
     const t = useTranslations("emergence");
-    const status: EmergenceStatus = summary?.status ?? "uncertain";
+    const status: EmergenceStatus | null = summary?.status ?? null;
+    const pending = !loading && !error && summary?.pending === true && status == null && summary.timeseries.length === 0;
+    const empty =
+        !loading &&
+        !error &&
+        !pending &&
+        status == null &&
+        (summary?.timeseries.length ?? 0) === 0;
     const baseline = baselineWindowLabel(summary?.baseline.dates);
     const asOf = summary?.as_of_date;
 
@@ -37,7 +46,7 @@ export default function EmergenceStatusBar({
                 className="grid grid-cols-4 gap-1 rounded-lg bg-muted/50 p-1"
             >
                 {EMERGENCE_STATUSES.map((key) => {
-                    const active = !loading && status === key;
+                    const active = !loading && !pending && !empty && status === key;
                     return (
                         <span
                             key={key}
@@ -54,14 +63,20 @@ export default function EmergenceStatusBar({
                     );
                 })}
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className={cn("text-[11px] leading-relaxed", error ? "text-destructive" : "text-muted-foreground")}>
                 {loading
                     ? t("loading")
-                    : t("statusMeta", {
-                          baseline: baseline ?? t("baselineMissing"),
-                          asOf: asOf ?? t("sceneMissing"),
-                          frozen: summary?.frozen ? t("frozen") : "",
-                      })}
+                    : error
+                      ? error
+                      : pending
+                        ? t("pending")
+                        : empty
+                          ? t("emptyResult")
+                          : t("statusMeta", {
+                                baseline: baseline ?? t("baselineMissing"),
+                                asOf: asOf ?? t("sceneMissing"),
+                                frozen: summary?.frozen ? t("frozen") : "",
+                            })}
             </p>
             {view && onViewChange && (
                 <div className="flex gap-1">

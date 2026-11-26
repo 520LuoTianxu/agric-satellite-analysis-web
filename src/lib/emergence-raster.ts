@@ -29,7 +29,7 @@ function classCounts(layer: EmergenceMapLayer): { key: string; color: string; co
             tallies.set(key, (tallies.get(key) ?? 0) + 1);
         }
     }
-    return [0, 1, 2, 3, 4].map((cls) => ({
+    return [0, 1, 2].map((cls) => ({
         key: String(cls),
         color: EMERGENCE_CLASS_STYLE[cls]!.color,
         count: tallies.get(String(cls)),

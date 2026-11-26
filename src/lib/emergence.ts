@@ -1,22 +1,22 @@
 /**
- * Emergence (出苗) — field median vs soil baseline, and per-pixel rise.
+ * Autumn emergence (出苗) — rise above the soil baseline, per pixel.
  *
- * Companion API (agric-satellite-analysis-api). These routes are the
- * contract this client calls. Adapt the paths in `agriApi` if that PR
- * names them slightly differently; do not read emergence out of S2 scene
- * NDVI JSON or NDVI min/max/avg.
+ * The browser talks to the live autumn-emergence reads. Nginx maps the
+ * app's `/satellite-api` prefix onto the API `/v1` prefix, so these paths
+ * are written without `/v1` and without `/satellite-api`:
  *
- *   GET /agri/lands/{land_id}/emergence
- *   GET /agri/lands/{land_id}/emergence/map?date=YYYY-MM-DD
+ *   GET  /agri/lands/{land_id}/autumn-emergence
+ *   GET  /agri/lands/{land_id}/autumn-emergence/pixels?date=YYYY-MM-DD
+ *   POST /agri/lands/{land_id}/autumn-emergence
+ *        { sowing_date: "YYYY-MM-DD", season?: "YYYY-autumn" }
  *
- * Summary: status, emerged_flag, frozen, baseline, as_of_date,
- * first_emerged_date, method_version, summary stats, timeseries
- * (date, ndvi_median, increment_median, …).
+ * POST only schedules work. The API receives callbacks and does not ask
+ * the browser to download satellite imagery. A missing crop_type does not
+ * block the manual POST; automatic compute skips those lands.
  *
- * Map: per-pixel increment and class on lon/lat, a new resource.
- *
- * `EMERGENCE_NDVI_REFERENCE` (0.30) is a chart tick only. It is not a
- * status rule and not a color break.
+ * Pixel class is 0 / 1 / 2 (within noise, above noise, sustained).
+ * Status is not_emerged / emerging / emerged / uncertain, or null while
+ * pending or empty. `EMERGENCE_NDVI_REFERENCE` (0.30) is a chart tick only.
  */
 
 export const EMERGENCE_NDVI_REFERENCE = 0.3;
@@ -43,6 +43,8 @@ export interface EmergenceBaseline {
 
 export interface EmergenceTimeseriesPoint {
     date: string;
+    /** True when this clear day is part of the soil-baseline window. */
+    in_baseline: boolean;
     ndvi_median: number | null;
     ndvi_mean: number | null;
     ndvi_p05: number | null;
@@ -62,15 +64,21 @@ export interface EmergenceSummaryStats {
     ndvi_median: number | null;
     increment_median: number | null;
     increment_min: number | null;
-    /** Trial display noise (for example P99). Not an emergence threshold. */
+    /** This land's residual P99. Not a fixed 0.035 and not an NDVI cutoff. */
     noise_floor: number | null;
 }
 
 export interface EmergenceSummary {
     field_id: string;
-    status: EmergenceStatus;
+    /** Null when the season has no status yet (pending or not computed). */
+    status: EmergenceStatus | null;
     emerged_flag: boolean | null;
     frozen: boolean;
+    /** False while the API is still computing this season. */
+    pending: boolean;
+    /** False when automatic compute skips the land. Manual POST is still allowed. */
+    eligible: boolean;
+    season_key: string | null;
     baseline: EmergenceBaseline;
     as_of_date: string | null;
     first_emerged_date: string | null;
@@ -84,7 +92,7 @@ export interface EmergenceMapPixel {
     lon: number;
     lat: number;
     increment: number | null;
-    /** 0–4 display class from the API. Absent when the resource did not send one. */
+    /** Product class 0, 1, or 2. Absent when the resource did not send one. */
     rise_class: number | null;
 }
 
@@ -174,7 +182,10 @@ function bool(value: unknown): boolean | null {
     return null;
 }
 
-export function parseEmergenceStatus(value: unknown, emergedFlag: boolean | null): EmergenceStatus {
+export function parseEmergenceStatus(value: unknown, emergedFlag: boolean | null): EmergenceStatus | null {
+    if (value == null || value === "") {
+        return emergedFlag === true ? "emerged" : null;
+    }
     const key = str(value)?.toLowerCase().replace(/[\s-]+/g, "_");
     if (key && STATUS_ALIASES[key]) return STATUS_ALIASES[key];
     const raw = str(value);
@@ -182,6 +193,43 @@ export function parseEmergenceStatus(value: unknown, emergedFlag: boolean | null
     if (emergedFlag === true) return "emerged";
     if (emergedFlag === false) return "not_emerged";
     return "uncertain";
+}
+
+/** Gateway path for the autumn-emergence summary GET and the schedule POST. */
+export function autumnEmergencePath(landId: string): string {
+    return `/agri/lands/${encodeURIComponent(landId)}/autumn-emergence`;
+}
+
+/** Sowing-year autumn key (`2026-autumn`). Feb–Aug dates are not an autumn season. */
+export function autumnSeasonKeyFromSowingDate(iso: string): string | null {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (!Number.isInteger(year) || month < 1 || month > 12 || day < 1 || day > 31) return null;
+    if (month >= 9) return `${year}-autumn`;
+    if (month === 1) return `${year - 1}-autumn`;
+    return null;
+}
+
+/** Stop polling once the GET is no longer pending, or a status / series is present. */
+export function emergencePollSettled(summary: EmergenceSummary): boolean {
+    if (summary.status != null) return true;
+    if (summary.timeseries.length > 0) return true;
+    return summary.pending === false;
+}
+
+export function emergenceHasResult(summary: EmergenceSummary | null | undefined): boolean {
+    if (!summary) return false;
+    return summary.status != null || summary.timeseries.length > 0;
+}
+
+export const AUTUMN_EMERGENCE_EVENT = "agri-autumn-emergence";
+
+export function notifyAutumnEmergenceUpdated(summary: EmergenceSummary | null) {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent(AUTUMN_EMERGENCE_EVENT, { detail: summary }));
 }
 
 function dateList(value: unknown): string[] {
@@ -201,21 +249,33 @@ function pointFrom(raw: unknown): EmergenceTimeseriesPoint | null {
     if (!date) return null;
     return {
         date,
-        ndvi_median: num(pick(row, "ndvi_median", "median_ndvi", "ndvi_med")),
+        in_baseline: bool(pick(row, "in_baseline")) === true,
+        ndvi_median: num(pick(row, "median_ndvi", "ndvi_median", "ndvi_med")),
         ndvi_mean: num(pick(row, "ndvi_mean", "mean_ndvi")),
         ndvi_p05: num(pick(row, "ndvi_p05", "ndvi_p5", "p05", "p5")),
         ndvi_p25: num(pick(row, "ndvi_p25", "p25")),
         ndvi_p75: num(pick(row, "ndvi_p75", "p75")),
         ndvi_p95: num(pick(row, "ndvi_p95", "ndvi_p5_95", "p95")),
         increment_median: num(
-            pick(row, "increment_median", "delta_median", "rise_median", "increment", "delta_ndvi"),
+            pick(row, "median_increment", "increment_median", "delta_median", "rise_median", "increment", "delta_ndvi"),
         ),
         increment_p05: num(pick(row, "increment_p05", "increment_p5", "delta_p05", "delta_p5")),
         increment_p25: num(pick(row, "increment_p25", "delta_p25")),
         increment_p75: num(pick(row, "increment_p75", "delta_p75")),
         increment_p95: num(pick(row, "increment_p95", "delta_p95")),
-        n_clear: num(pick(row, "n_clear", "n", "n_official_clear")),
+        n_clear: num(pick(row, "n_pixels", "n_clear", "n", "n_official_clear")),
     };
+}
+
+function medianOf(values: number[]): number | null {
+    if (!values.length) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 1) return sorted[mid] ?? null;
+    const left = sorted[mid - 1];
+    const right = sorted[mid];
+    if (left == null || right == null) return null;
+    return (left + right) / 2;
 }
 
 export function normalizeEmergenceSummary(payload: unknown, fallbackId = ""): EmergenceSummary {
@@ -234,19 +294,30 @@ export function normalizeEmergenceSummary(payload: unknown, fallbackId = ""): Em
         pick(baselineRaw, "dates", "baseline_dates") ?? pick(root, "baseline_dates"),
     );
     const latest = timeseries.length ? timeseries[timeseries.length - 1] : null;
+    const eligibleRaw = pick(root, "eligible");
+    const baselineMedian =
+        num(
+            pick(fieldRaw, "median", "ndvi_median", "median_ndvi") ??
+                pick(baselineRaw, "median", "ndvi_median", "median_ndvi") ??
+                pick(statsRaw, "median_baseline_ndvi") ??
+                pick(root, "baseline_median"),
+        ) ?? medianOf(
+            timeseries
+                .filter((point) => point.in_baseline && point.ndvi_median != null)
+                .map((point) => point.ndvi_median as number),
+        );
     return {
         field_id: str(pick(root, "field_id", "land_id")) ?? fallbackId,
         status: parseEmergenceStatus(pick(root, "status", "emergence_status", "phase"), emergedFlag),
         emerged_flag: emergedFlag,
         frozen: bool(pick(root, "frozen", "is_frozen")) === true,
+        pending: bool(pick(root, "pending")) === true,
+        eligible: eligibleRaw == null ? true : bool(eligibleRaw) === true,
+        season_key: str(pick(root, "season_key", "season")),
         baseline: {
             dates: baselineDates,
             statistic: str(pick(baselineRaw, "statistic", "method")),
-            median: num(
-                pick(fieldRaw, "median", "ndvi_median") ??
-                    pick(baselineRaw, "median", "ndvi_median") ??
-                    pick(root, "baseline_median"),
-            ),
+            median: baselineMedian,
         },
         as_of_date:
             dateStr(pick(root, "as_of_date", "as_of", "latest_scene_date", "latest_date")) ??
@@ -256,9 +327,9 @@ export function normalizeEmergenceSummary(payload: unknown, fallbackId = ""): Em
         method_version: str(pick(root, "method_version", "method", "version")),
         summary: {
             n_clear: num(pick(statsRaw, "n_clear", "n_official_clear", "n") ?? pick(root, "n_official_clear")),
-            ndvi_median: num(pick(statsRaw, "ndvi_median", "latest_ndvi_median")) ?? latest?.ndvi_median ?? null,
+            ndvi_median: num(pick(statsRaw, "median_ndvi", "ndvi_median", "latest_ndvi_median")) ?? latest?.ndvi_median ?? null,
             increment_median:
-                num(pick(statsRaw, "increment_median", "latest_increment_median")) ??
+                num(pick(statsRaw, "median_increment", "increment_median", "latest_increment_median")) ??
                 latest?.increment_median ??
                 null,
             increment_min: num(pick(statsRaw, "increment_min", "min_increment")),
@@ -276,7 +347,7 @@ function classNumber(value: unknown): number | null {
     const n = num(value);
     if (n == null) return null;
     const rounded = Math.round(n);
-    if (rounded < 0 || rounded > 4) return null;
+    if (rounded < 0 || rounded > 2) return null;
     return rounded;
 }
 
@@ -305,7 +376,7 @@ function pixelFrom(raw: unknown): EmergenceMapPixel | null {
             lon,
             lat,
             increment: num(pick(props, "increment", "delta", "delta_ndvi", "rise", "ndvi_increment")),
-            rise_class: classNumber(pick(props, "class", "rise_class", "cls")),
+            rise_class: classNumber(pick(props, "class", "pixel_class", "rise_class", "cls")),
         };
     }
     const lon = num(pick(row, "lon", "lng", "longitude"));
@@ -315,7 +386,7 @@ function pixelFrom(raw: unknown): EmergenceMapPixel | null {
         lon,
         lat,
         increment: num(pick(row, "increment", "delta", "delta_ndvi", "rise", "ndvi_increment")),
-        rise_class: classNumber(pick(row, "class", "rise_class", "cls")),
+        rise_class: classNumber(pick(row, "class", "pixel_class", "rise_class", "cls")),
     };
 }
 
@@ -324,7 +395,7 @@ export function normalizeEmergenceMap(payload: unknown, fallbackId = "", request
     const featureCollection = root?.type === "FeatureCollection" ? root : null;
     const list = featureCollection
         ? featureCollection.features
-        : pick(root, "pixels", "points", "samples", "features", "items") ??
+        : pick(root, "pixels_lonlat", "pixels", "points", "samples", "features", "items") ??
           (Array.isArray(payload) ? payload : []);
     const pixels = (Array.isArray(list) ? list : [])
         .map(pixelFrom)
@@ -345,7 +416,9 @@ export function normalizeEmergenceMap(payload: unknown, fallbackId = "", request
         baseline_dates: dateList(pick(root, "baseline_dates", "baseline")),
         pixels,
         class_counts: classCounts,
-        increment_median: num(pick(root, "increment_median", "median_increment")),
+        increment_median:
+            num(pick(root, "median_increment", "increment_median")) ??
+            medianOf(pixels.map((pixel) => pixel.increment).filter((value): value is number => value != null)),
         increment_min: num(pick(root, "increment_min", "min_increment")),
     };
 }
@@ -393,16 +466,17 @@ export function colorizeIncrement(value: number): [number, number, number, numbe
     return [Math.round(r), Math.round(g), Math.round(b), 230];
 }
 
-/** Display classes 0–4. Colors follow the reviewed rise-class plate, not NDVI. */
+/**
+ * Product classes from autumn-emergence pixels:
+ * 0 within noise, 1 above noise but not sustained, 2 sustained.
+ */
 export const EMERGENCE_CLASS_STYLE: Record<
     number,
     { color: string; rgba: [number, number, number, number] }
 > = {
     0: { color: "#d0d0d0", rgba: [208, 208, 208, 210] },
-    1: { color: "#edf8e9", rgba: [237, 248, 233, 220] },
-    2: { color: "#a1d99b", rgba: [161, 217, 155, 228] },
-    3: { color: "#41ab5d", rgba: [65, 171, 93, 232] },
-    4: { color: "#006d2c", rgba: [0, 109, 44, 236] },
+    1: { color: "#a1d99b", rgba: [161, 217, 155, 228] },
+    2: { color: "#006d2c", rgba: [0, 109, 44, 236] },
 };
 
 export function colorizeRiseClass(riseClass: number): [number, number, number, number] | null {

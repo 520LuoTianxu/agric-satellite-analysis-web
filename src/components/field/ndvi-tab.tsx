@@ -82,10 +82,12 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
     const [loadError, setLoadError] = useState(false);
     const [emergenceSummary, setEmergenceSummary] = useState<EmergenceSummary | null>(null);
     const [emergenceReady, setEmergenceReady] = useState(false);
+    const [emergenceError, setEmergenceError] = useState<string | null>(null);
 
     useEffect(() => {
         setEmergenceSummary(null);
         setEmergenceReady(false);
+        setEmergenceError(null);
     }, [landId]);
 
     // ── Selected date ────────────────────────────────
@@ -241,6 +243,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
                 <EmergenceStatusBar
                     summary={emergenceSummary}
                     loading={!emergenceReady}
+                    error={emergenceError}
                     view={emergenceView}
                     onViewChange={onEmergenceViewChange}
                 />
@@ -270,6 +273,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
                     setEmergenceSummary(summary);
                     setEmergenceReady(true);
                 }}
+                onEmergenceActivity={({ error }) => setEmergenceError(error)}
             />
 
             {/* ── Section: Chart for this canonical land ─────────────────────────── */}

@@ -1,5 +1,5 @@
 import { resolveGatewayUrl } from "@/lib/api-origin";
-import { normalizeEmergenceMap, normalizeEmergenceSummary } from "@/lib/emergence";
+import { autumnEmergencePath, normalizeEmergenceMap, normalizeEmergenceSummary } from "@/lib/emergence";
 import { buildLandWeatherPath } from "@/lib/land-weather";
 import { getAlertSession } from "@/lib/alert-session";
 import { mutate as mutateCache } from "swr";
@@ -2053,23 +2053,87 @@ export const agriApi = {
         );
     },
     /**
-     * 出苗摘要。只读新资源，不从既有 NDVI 场景字段推导。
-     * GET /agri/lands/{land_id}/emergence
+     * 秋季出苗摘要。网关 `/satellite-api` 转发到 `/v1`。
+     * GET /agri/lands/{land_id}/autumn-emergence
+     * 可选 season=`YYYY-autumn`（例如 2026-autumn）。
      */
-    emergenceSummary: (landId: string, opts: { signal?: AbortSignal } = {}) =>
-        apiFetch<unknown>(`/agri/lands/${encodeURIComponent(landId)}/emergence`, {
-            signal: opts.signal,
-        }).then(normalizeEmergenceSummary),
-    /**
-     * 出苗图层：逐像元相对土壤本底的增量和抬升分组。
-     * GET /agri/lands/{land_id}/emergence/map?date=YYYY-MM-DD
-     */
-    emergenceMap: (landId: string, date: string, opts: { signal?: AbortSignal } = {}) =>
-        apiFetch<unknown>(
-            `/agri/lands/${encodeURIComponent(landId)}/emergence/map?date=${encodeURIComponent(date)}`,
+    emergenceSummary: (
+        landId: string,
+        opts: { season?: string; signal?: AbortSignal } = {},
+    ) => {
+        const params = new URLSearchParams();
+        if (opts.season) params.set("season", opts.season);
+        const query = params.toString();
+        return apiFetch<unknown>(
+            `${autumnEmergencePath(landId)}${query ? `?${query}` : ""}`,
             { signal: opts.signal },
-        ).then(normalizeEmergenceMap),
+        ).then((payload) => normalizeEmergenceSummary(payload, landId));
+    },
+    /**
+     * 秋季出苗像元。class 为 0 / 1 / 2。
+     * GET /agri/lands/{land_id}/autumn-emergence/pixels?date=YYYY-MM-DD
+     */
+    emergenceMap: (
+        landId: string,
+        date: string,
+        opts: { season?: string; signal?: AbortSignal } = {},
+    ) => {
+        const params = new URLSearchParams({ date });
+        if (opts.season) params.set("season", opts.season);
+        return apiFetch<unknown>(
+            `${autumnEmergencePath(landId)}/pixels?${params.toString()}`,
+            { signal: opts.signal },
+        ).then((payload) => normalizeEmergenceMap(payload, landId, date));
+    },
+    /**
+     * 排队计算秋季出苗。接口只负责调度并接收回调，浏览器不下载卫星影像。
+     * 202 只表示已排队。不要把响应体当作出苗结果，之后轮询 GET。
+     *
+     * POST /agri/lands/{landId}/autumn-emergence
+     * 网关 /satellite-api/agri/lands/{land_id}/autumn-emergence
+     * → API POST /v1/agri/lands/{land_id}/autumn-emergence
+     * body: { sowing_date: "YYYY-MM-DD", season?: "YYYY-autumn" }
+     *
+     * 不要求 crop_type。作物为空的地块（例如生产 33052）也可以手动触发。
+     */
+    computeAutumnEmergence: (
+        landId: string,
+        body: AutumnEmergenceScheduleRequest,
+        opts: { signal?: AbortSignal } = {},
+    ) =>
+        apiFetch<AutumnEmergenceScheduleResponse>(`${autumnEmergencePath(landId)}`, {
+            method: "POST",
+            body: JSON.stringify(body),
+            signal: opts.signal,
+        }),
 };
+
+/** POST /agri/lands/{landId}/autumn-emergence */
+export interface AutumnEmergenceScheduleRequest {
+    sowing_date: string;
+    season?: string;
+}
+
+/**
+ * 202 from the schedule POST. Poll the summary GET for the emergence result.
+ * `dispatch` is `compute` when clear S2 is already stored, `s2_download` when
+ * an S2 batch is staged, or `frozen` when the season is already emerged.
+ */
+export interface AutumnEmergenceScheduleResponse {
+    land_id?: string;
+    field_id?: string;
+    season_key?: string;
+    sowing_date?: string;
+    pending?: boolean;
+    eligible?: boolean;
+    dispatch?: "compute" | "s2_download" | "frozen";
+    status?: string | null;
+    date_from?: string;
+    date_to?: string;
+    sensors?: string[];
+    job_ids?: string[];
+    message?: string;
+}
 
 export type { EmergenceMapLayer, EmergenceSummary } from "@/lib/emergence";
 
