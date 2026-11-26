@@ -2053,23 +2053,75 @@ export const agriApi = {
         );
     },
     /**
-     * 出苗摘要。只读新资源，不从既有 NDVI 场景字段推导。
-     * GET /agri/lands/{land_id}/emergence
+     * 秋季出苗摘要。网关 `/satellite-api` 转发到 `/v1`。
+     * GET /agri/lands/{land_id}/autumn-emergence
+     * 可选 season=`YYYY-autumn`（例如 2026-autumn）。
      */
-    emergenceSummary: (landId: string, opts: { signal?: AbortSignal } = {}) =>
-        apiFetch<unknown>(`/agri/lands/${encodeURIComponent(landId)}/emergence`, {
-            signal: opts.signal,
-        }).then(normalizeEmergenceSummary),
-    /**
-     * 出苗图层：逐像元相对土壤本底的增量和抬升分组。
-     * GET /agri/lands/{land_id}/emergence/map?date=YYYY-MM-DD
-     */
-    emergenceMap: (landId: string, date: string, opts: { signal?: AbortSignal } = {}) =>
-        apiFetch<unknown>(
-            `/agri/lands/${encodeURIComponent(landId)}/emergence/map?date=${encodeURIComponent(date)}`,
+    emergenceSummary: (
+        landId: string,
+        opts: { season?: string; signal?: AbortSignal } = {},
+    ) => {
+        const params = new URLSearchParams();
+        if (opts.season) params.set("season", opts.season);
+        const query = params.toString();
+        return apiFetch<unknown>(
+            `/agri/lands/${encodeURIComponent(landId)}/autumn-emergence${query ? `?${query}` : ""}`,
             { signal: opts.signal },
-        ).then(normalizeEmergenceMap),
+        ).then((payload) => normalizeEmergenceSummary(payload, landId));
+    },
+    /**
+     * 秋季出苗像元。class 为 0 / 1 / 2。
+     * GET /agri/lands/{land_id}/autumn-emergence/pixels?date=YYYY-MM-DD
+     */
+    emergenceMap: (
+        landId: string,
+        date: string,
+        opts: { season?: string; signal?: AbortSignal } = {},
+    ) => {
+        const params = new URLSearchParams({ date });
+        if (opts.season) params.set("season", opts.season);
+        return apiFetch<unknown>(
+            `/agri/lands/${encodeURIComponent(landId)}/autumn-emergence/pixels?${params.toString()}`,
+            { signal: opts.signal },
+        ).then((payload) => normalizeEmergenceMap(payload, landId, date));
+    },
+    /**
+     * 排队计算秋季出苗。接口只负责调度并接收回调，浏览器不下载卫星影像。
+     *
+     * 约定契约（与正在落地的 API 变更对齐；若 POST 尚未合并，按钮仍调用此方法）：
+     * POST /agri/lands/{landId}/autumn-emergence/compute
+     * body: { sowing_date: "YYYY-MM-DD", season?: "YYYY-autumn" }
+     *
+     * 不要求 crop_type。作物为空的地块（例如生产 33052）也可以手动触发。
+     */
+    computeAutumnEmergence: (
+        landId: string,
+        body: AutumnEmergenceComputeRequest,
+        opts: { signal?: AbortSignal } = {},
+    ) =>
+        apiFetch<AutumnEmergenceComputeResponse>(
+            `/agri/lands/${encodeURIComponent(landId)}/autumn-emergence/compute`,
+            {
+                method: "POST",
+                body: JSON.stringify(body),
+                signal: opts.signal,
+            },
+        ),
 };
+
+/** POST /agri/lands/{landId}/autumn-emergence/compute */
+export interface AutumnEmergenceComputeRequest {
+    sowing_date: string;
+    season?: string;
+}
+
+/** The compute route only schedules. Fields are optional until that POST is merged. */
+export interface AutumnEmergenceComputeResponse {
+    land_id?: string;
+    season_key?: string;
+    pending?: boolean;
+    status?: string | null;
+}
 
 export type { EmergenceMapLayer, EmergenceSummary } from "@/lib/emergence";
 

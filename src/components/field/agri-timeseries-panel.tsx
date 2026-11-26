@@ -19,7 +19,14 @@ import { useLocale, useTranslations } from "next-intl";
 import { monthsInWindows, type Phenology } from "@/lib/parcel-insights";
 import PhenologyPicker from "./phenology-picker";
 import { rasterizeEmergenceLayer } from "@/lib/emergence-raster";
-import { parseAgriLandId, type EmergenceSummary } from "@/lib/emergence";
+import {
+    autumnSeasonKeyFromSowingDate,
+    emergenceHasResult,
+    emergencePollSettled,
+    notifyAutumnEmergenceUpdated,
+    parseAgriLandId,
+    type EmergenceSummary,
+} from "@/lib/emergence";
 import {
     rasterizeAgriPixels,
     rasterizeAgriLonLatPixels,
@@ -74,6 +81,7 @@ import type { LucideIcon } from "lucide-react";
 import { reverseDescScenesPage } from "@/lib/agri-scenes-page";
 import { IndexExplainer } from "@/components/field/index-explainer";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { formatLandAreaMu, isOversizedLand, resolveLandAreaMu } from "@/lib/land-schedule-filter";
 import type { DayGradeShare } from "@/components/charts/ndvi-grade-shares-chart";
 import { computePixelNdviGradeShares } from "@/components/charts/ndvi-grade-shares-chart";
@@ -569,6 +577,8 @@ export interface AgriTimeseriesPanelProps {
     /** 出苗色膜：相对本底增量，或接口给出的抬升分组。 */
     emergenceView?: "increment" | "class";
     onEmergenceSummary?: (summary: EmergenceSummary | null) => void;
+    /** Read / compute failures for the emergence status bar. */
+    onEmergenceActivity?: (activity: { error: string | null }) => void;
 }
 
 const MAX_RS_HISTORY_YEARS = 5;
@@ -602,6 +612,13 @@ type SeasonWindowDraft = {
     label: string;
 };
 
+function readApiError(err: unknown, fallback: string): string {
+    if (err instanceof ApiError && typeof err.detail === "string" && err.detail.trim()) {
+        return err.detail;
+    }
+    return fallback;
+}
+
 function newWindowId(): string {
     return `w-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -633,9 +650,12 @@ export default function AgriTimeseriesPanel({
     enabled = true,
     emergenceView = "increment",
     onEmergenceSummary,
+    onEmergenceActivity,
 }: AgriTimeseriesPanelProps) {
     const t = useTranslations("agriPanel");
     const te = useTranslations("emergence");
+    const teRef = useRef(te);
+    teRef.current = te;
     const locale = useLocale();
     const gridSpacingFormatter = useMemo(
         () => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }),
@@ -676,8 +696,24 @@ export default function AgriTimeseriesPanel({
     const earlierScenesRequestRef = useRef<AbortController | null>(null);
     const series = modeProp ?? seriesInternal;
     const [emergenceSummary, setEmergenceSummary] = useState<EmergenceSummary | null>(null);
+    const [emergenceOpen, setEmergenceOpen] = useState(false);
+    const [sowingDate, setSowingDate] = useState("");
+    const [emergenceBusy, setEmergenceBusy] = useState(false);
+    const [emergenceComputing, setEmergenceComputing] = useState(false);
+    const [emergenceRequested, setEmergenceRequested] = useState(false);
+    const [emergenceLoadError, setEmergenceLoadError] = useState<string | null>(null);
+    const [emergenceComputeError, setEmergenceComputeError] = useState<string | null>(null);
+    const [emergenceReload, setEmergenceReload] = useState(0);
+    const emergenceSeasonRef = useRef<string | null>(null);
+    const emergenceLandRef = useRef(landId);
+    if (emergenceLandRef.current !== landId) {
+        emergenceLandRef.current = landId;
+        emergenceSeasonRef.current = null;
+    }
     const onEmergenceSummaryRef = useRef(onEmergenceSummary);
     onEmergenceSummaryRef.current = onEmergenceSummary;
+    const onEmergenceActivityRef = useRef(onEmergenceActivity);
+    onEmergenceActivityRef.current = onEmergenceActivity;
     const setSeries = useCallback(
         (next: SeriesKey) => {
             setSeriesInternal(next);
@@ -1104,29 +1140,93 @@ export default function AgriTimeseriesPanel({
         );
     }, [series, scenes]);
 
+    const publishEmergence = useCallback((summary: EmergenceSummary | null) => {
+        setEmergenceSummary(summary);
+        onEmergenceSummaryRef.current?.(summary);
+        if (summary) notifyAutumnEmergenceUpdated(summary);
+    }, []);
+
+    useEffect(() => {
+        onEmergenceActivityRef.current?.({ error: emergenceLoadError });
+    }, [emergenceLoadError]);
+
     useEffect(() => {
         if (!parseAgriLandId(landId)) {
-            setEmergenceSummary(null);
-            onEmergenceSummaryRef.current?.(null);
+            publishEmergence(null);
+            setEmergenceLoadError(null);
+            setEmergenceComputeError(null);
+            setEmergenceComputing(false);
+            setEmergenceRequested(false);
             return;
         }
         let cancelled = false;
-        agriApi
-            .emergenceSummary(landId)
-            .then((summary) => {
+        const controller = new AbortController();
+        const pull = async () => {
+            try {
+                const season = emergenceSeasonRef.current;
+                const summary = await agriApi.emergenceSummary(landId, {
+                    signal: controller.signal,
+                    ...(season ? { season } : {}),
+                });
                 if (cancelled) return;
-                setEmergenceSummary(summary);
-                onEmergenceSummaryRef.current?.(summary);
-            })
-            .catch(() => {
-                if (cancelled) return;
-                setEmergenceSummary(null);
-                onEmergenceSummaryRef.current?.(null);
-            });
+                publishEmergence(summary);
+                setEmergenceLoadError(null);
+                if (emergencePollSettled(summary)) {
+                    setEmergenceComputing(false);
+                    return;
+                }
+                window.setTimeout(() => {
+                    if (!cancelled) void pull();
+                }, 5000);
+            } catch (err) {
+                if (cancelled || controller.signal.aborted) return;
+                setEmergenceLoadError(readApiError(err, teRef.current("loadFailed")));
+                publishEmergence(null);
+                setEmergenceComputing(false);
+            }
+        };
+        void pull();
         return () => {
             cancelled = true;
+            controller.abort();
         };
-    }, [landId]);
+    }, [landId, emergenceReload, publishEmergence]);
+
+    const handleComputeEmergence = async () => {
+        if (!landId || !/^\d{4}-\d{2}-\d{2}$/.test(sowingDate)) return;
+        // 手动触发不看 crop_type。自动计算会跳过空作物，这里仍允许排队。
+        setEmergenceBusy(true);
+        setEmergenceComputeError(null);
+        const season = autumnSeasonKeyFromSowingDate(sowingDate);
+        try {
+            await agriApi.computeAutumnEmergence(landId, {
+                sowing_date: sowingDate,
+                ...(season ? { season } : {}),
+            });
+            emergenceSeasonRef.current = season;
+            setEmergenceRequested(true);
+            setEmergenceComputing(true);
+            setEmergenceOpen(false);
+            toast.success(te("computeStarted"));
+            setEmergenceReload((n) => n + 1);
+        } catch (err) {
+            if (err instanceof ApiError && err.status === 409) {
+                emergenceSeasonRef.current = season;
+                setEmergenceRequested(true);
+                setEmergenceComputing(true);
+                setEmergenceOpen(false);
+                toast.success(te("computeStarted"));
+                setEmergenceReload((n) => n + 1);
+            } else {
+                const detail = readApiError(err, te("computeFailed"));
+                setEmergenceComputeError(detail);
+                setEmergenceComputing(false);
+                toast.error(detail);
+            }
+        } finally {
+            setEmergenceBusy(false);
+        }
+    };
 
     useEffect(() => {
         if (series !== "emergence") return;
@@ -1171,7 +1271,11 @@ export default function AgriTimeseriesPanel({
             setHeatmapMeta(null);
             if (index === "emergence") {
                 try {
-                    const layer = await agriApi.emergenceMap(landId, date, { signal: controller.signal });
+                    const season = emergenceSeasonRef.current;
+                    const layer = await agriApi.emergenceMap(landId, date, {
+                        signal: controller.signal,
+                        ...(season ? { season } : {}),
+                    });
                     if (gen !== heatmapLoadGenRef.current) return;
                     const img = rasterizeEmergenceLayer(layer, emergenceView);
                     const nextMeta: HeatmapMeta | null = img
@@ -1205,11 +1309,12 @@ export default function AgriTimeseriesPanel({
                     cachedHeatmapRef.current = { landId, date, index, view: emergenceView, img: null, meta: null };
                     setHeatmapMeta(null);
                     publishHeatmap(null);
-                    setHeatmapError(e instanceof ApiError && e.status === 413 ? "tooLarge" : "failed");
-                    if (enabledRef.current && !(e instanceof ApiError && e.status === 404)) {
-                        toast(te("mapFailed"), { description: date });
-                    } else if (enabledRef.current) {
-                        toast(te("mapMissing"), { description: date });
+                    if (e instanceof ApiError && e.status === 404) {
+                        setHeatmapError(null);
+                        if (enabledRef.current) toast(te("mapMissing"), { description: date });
+                    } else {
+                        setHeatmapError(e instanceof ApiError && e.status === 413 ? "tooLarge" : "failed");
+                        if (enabledRef.current) toast(te("mapFailed"), { description: date });
                     }
                 } finally {
                     if (gen === heatmapLoadGenRef.current) {
@@ -1878,6 +1983,57 @@ export default function AgriTimeseriesPanel({
         .map((sensor) => `${sensor.sensor} ${loadedSceneCounts[sensor.sensor]}/${sensor.count}`)
         .join(" · ");
 
+    const emergencePending =
+        emergenceComputing ||
+        (emergenceSummary?.pending === true && !emergenceHasResult(emergenceSummary));
+    const emergenceEmpty =
+        emergenceRequested &&
+        !emergencePending &&
+        !emergenceComputeError &&
+        !emergenceLoadError &&
+        !emergenceHasResult(emergenceSummary);
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const renderImageryActions = () => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+            <Button
+                type="button"
+                size="sm"
+                variant="default"
+                className="h-7 gap-1.5 text-[11px]"
+                onClick={openRefreshRsDialog}
+                disabled={oversizedLand || backfilling || backfillActive}
+                title={oversizedLand ? t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }) : backfillActive ? t("refreshInProgress") : t("refreshRsTitle")}
+            >
+                {backfilling || backfillActive ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                {t("refreshRs")}
+            </Button>
+            <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 text-[11px]"
+                onClick={() => {
+                    setEmergenceComputeError(null);
+                    setEmergenceOpen(true);
+                }}
+                disabled={!parseAgriLandId(landId) || emergenceBusy || emergenceComputing}
+                aria-busy={emergenceBusy || emergenceComputing}
+                title={te("fetchTitle")}
+            >
+                {emergenceBusy || emergenceComputing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                ) : (
+                    <Sprout className="h-3.5 w-3.5" />
+                )}
+                {te("fetch")}
+            </Button>
+        </div>
+    );
+
     if (!landId) return null;
     if (!loading && hasMonitoringData && total === 0 && series !== "emergence") return null;
 
@@ -1917,22 +2073,18 @@ export default function AgriTimeseriesPanel({
                         )}
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1.5 max-md:hidden">
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant="default"
-                            className="h-7 text-[11px] gap-1.5"
-                            onClick={openRefreshRsDialog}
-                            disabled={oversizedLand || backfilling || backfillActive}
-                            title={oversizedLand ? t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }) : backfillActive ? t("refreshInProgress") : t("refreshRsTitle")}
-                        >
-                            {backfilling || backfillActive ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                                <RefreshCw className="h-3.5 w-3.5" />
-                            )}
-                            {t("refreshRs")}
-                        </Button>
+                        {renderImageryActions()}
+                        {(emergenceComputeError || emergencePending || emergenceEmpty) && (
+                            <p
+                                role={emergenceComputeError ? "alert" : "status"}
+                                className={cn(
+                                    "max-w-[18rem] text-right text-[11px] leading-snug",
+                                    emergenceComputeError ? "text-destructive" : "text-muted-foreground",
+                                )}
+                            >
+                                {emergenceComputeError || (emergencePending ? te("pending") : te("emptyResult"))}
+                            </p>
+                        )}
                         {summary && (
                             <div className="flex flex-wrap gap-1 justify-end">
                                 {(summary.sensors ?? []).map((s) => (
@@ -1983,6 +2135,20 @@ export default function AgriTimeseriesPanel({
                 </div>
             </CardHeader>
             <CardContent className="space-y-3 p-3 max-md:space-y-2 max-md:p-0">
+                <div className="flex flex-col items-end gap-1 md:hidden">
+                    {renderImageryActions()}
+                    {(emergenceComputeError || emergencePending || emergenceEmpty) && (
+                        <p
+                            role={emergenceComputeError ? "alert" : "status"}
+                            className={cn(
+                                "text-right text-[11px] leading-snug",
+                                emergenceComputeError ? "text-destructive" : "text-muted-foreground",
+                            )}
+                        >
+                            {emergenceComputeError || (emergencePending ? te("pending") : te("emptyResult"))}
+                        </p>
+                    )}
+                </div>
                 <div className="max-md:hidden">
                 <PhenologyPicker landId={landId}
                     onLoaded={data => {
@@ -2110,6 +2276,48 @@ export default function AgriTimeseriesPanel({
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+                <Dialog open={emergenceOpen} onOpenChange={setEmergenceOpen}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>{te("dialogTitle")}</DialogTitle>
+                            <DialogDescription>{te("dialogDesc")}</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-2 py-2">
+                            <Label htmlFor="emergence-sowing-date">{te("sowingDate")}</Label>
+                            <Input
+                                id="emergence-sowing-date"
+                                type="date"
+                                required
+                                value={sowingDate}
+                                max={todayIso}
+                                onChange={(event) => setSowingDate(event.target.value)}
+                            />
+                            {!sowingDate ? (
+                                <p className="text-[10px] text-muted-foreground">{te("sowingRequired")}</p>
+                            ) : null}
+                            {emergenceComputeError && emergenceOpen ? (
+                                <p role="alert" className="text-[11px] leading-snug text-destructive">
+                                    {emergenceComputeError}
+                                </p>
+                            ) : null}
+                        </div>
+                        <DialogFooter className="gap-2 sm:gap-0">
+                            <Button type="button" variant="outline" onClick={() => setEmergenceOpen(false)}>
+                                {te("cancel")}
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={() => void handleComputeEmergence()}
+                                disabled={!/^\d{4}-\d{2}-\d{2}$/.test(sowingDate) || emergenceBusy}
+                            >
+                                {emergenceBusy ? (
+                                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                                ) : null}
+                                {te("confirm")}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
                 {backfillActive && (
                     <div className="rounded-md border border-info/30 bg-info-subtle/60 px-2.5 py-2 space-y-1.5">
                         <p className="text-[11px] text-info flex items-center gap-1.5 font-medium">
@@ -2189,9 +2397,18 @@ export default function AgriTimeseriesPanel({
                                         onDateSelect={setSelectedDate}
                                         height={280}
                                     />
+                                ) : emergencePending ? (
+                                    <p role="status" className="flex items-center gap-2 py-3 text-[11px] leading-relaxed text-muted-foreground">
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                                        {te("pending")}
+                                    </p>
+                                ) : emergenceLoadError || emergenceComputeError ? (
+                                    <p role="alert" className="py-3 text-[11px] leading-relaxed text-destructive">
+                                        {emergenceLoadError || emergenceComputeError}
+                                    </p>
                                 ) : (
                                     <p className="py-3 text-[11px] leading-relaxed text-muted-foreground">
-                                        {te("emptyChart")}
+                                        {te("emptyResult")}
                                     </p>
                                 )}
                             </div>
