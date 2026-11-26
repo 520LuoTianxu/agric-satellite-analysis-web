@@ -1356,6 +1356,7 @@
     "refreshInProgress": "遥感数据拉取进行中…",
     "landTooLargeWarning": "可能为异常地块：面积 {area} 亩，超过 5000 亩，无法下载卫星数据，请联系技术处理。",
     "noMeanPoints": "这个指标暂时没有可用数据，可换个指标或更新影像。",
+    "dateSlider": "拖动查看不同日期的出苗",
     "heatmapDate": "色斑图日期：{date} · {mode}",
     "pickDate": "选择曲线上的日期以加载色斑图",
     "pixelsMeta": " · {pixels} 像素",

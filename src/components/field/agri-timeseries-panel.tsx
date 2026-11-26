@@ -2459,12 +2459,34 @@ export default function AgriTimeseriesPanel({
                                     <SeriesSwitcher series={series} keys={availableKeys} onChange={setSeries} />
                                 </div>
                                 {emergenceSummary && emergenceSummary.timeseries.length > 0 ? (
+                                    <div className="space-y-2">
                                     <EmergenceChart
                                         summary={emergenceSummary}
                                         selectedDate={selectedDate}
                                         onDateSelect={setSelectedDate}
                                         height={280}
                                     />
+                                    {emergenceDates.length > 1 ? (
+                                        <label className="block space-y-1">
+                                            <span className="text-[11px] text-muted-foreground">
+                                                {te("dateSlider")}
+                                                {selectedDate ? ` · ${selectedDate}` : ""}
+                                            </span>
+                                            <input
+                                                type="range"
+                                                min={0}
+                                                max={emergenceDates.length - 1}
+                                                value={Math.max(0, emergenceDates.indexOf(selectedDate ?? ""))}
+                                                onChange={(event) => {
+                                                    const next = emergenceDates[Number(event.target.value)];
+                                                    if (next) setSelectedDate(next);
+                                                }}
+                                                aria-label={te("dateSlider")}
+                                                className="w-full accent-emerald-700"
+                                            />
+                                        </label>
+                                    ) : null}
+                                    </div>
                                 ) : emergenceLoadError || emergenceComputeError ? (
                                     <p role="alert" className="py-3 text-[11px] leading-relaxed text-destructive">
                                         {emergenceLoadError || emergenceComputeError}
