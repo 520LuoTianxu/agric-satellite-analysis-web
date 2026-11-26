@@ -38,6 +38,8 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
+import { parseAgriLandId, type EmergenceMapView, type EmergenceSummary } from "@/lib/emergence";
+import EmergenceStatusBar from "@/components/field/emergence-status-bar";
 
 const NdviChart = dynamic(() => import("@/components/charts/ndvi-chart"), {
     ssr: false,
@@ -103,9 +105,11 @@ interface NdviTabProps {
     onAgriHeatModeChange?: (mode: import("@/lib/agri-heatmap").AgriHeatIndex) => void;
     /** When false (left 指数 tab), clear overlay; when true again, reload */
     agriHeatmapEnabled?: boolean;
+    emergenceView?: EmergenceMapView;
+    onEmergenceViewChange?: (view: EmergenceMapView) => void;
 }
 
-export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, onActiveIndexChange, activeIndexOverride, onDataLoaded, onAgriHeatmapChange, agriHeatMode, onAgriHeatModeChange, agriHeatmapEnabled = true }: NdviTabProps) {
+export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, onActiveIndexChange, activeIndexOverride, onDataLoaded, onAgriHeatmapChange, agriHeatMode, onAgriHeatModeChange, agriHeatmapEnabled = true, emergenceView = "increment", onEmergenceViewChange }: NdviTabProps) {
     const tMon = useTranslations("monitoring");
     // ── Index selector ───────────────────────────────
     const [activeIndex, setActiveIndex] = useState<IndexType>("NDVI");
@@ -144,6 +148,13 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const backfillPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const loadGenRef = useRef(0); // prevents stale fetch results
+    const [emergenceSummary, setEmergenceSummary] = useState<EmergenceSummary | null>(null);
+    const [emergenceReady, setEmergenceReady] = useState(false);
+
+    useEffect(() => {
+        setEmergenceSummary(null);
+        setEmergenceReady(false);
+    }, [landId]);
 
     // ── Load layers + stats for active index ─────────
     // 监测表和 parcel_scene_products 都属于同一地块主表的下游数据，统一按 land_id 读取。
@@ -436,6 +447,14 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
 
     return (
         <div className="space-y-4">
+            {agriHeatMode === "emergence" && parseAgriLandId(landId) && (
+                <EmergenceStatusBar
+                    summary={emergenceSummary}
+                    loading={!emergenceReady}
+                    view={emergenceView}
+                    onViewChange={onEmergenceViewChange}
+                />
+            )}
             {/* ── Section: Run Analysis + Backfill for the canonical land ───── */}
             {/* 这些任务和场景产品都直接以 land_id 关联同一条地块主表记录。 */}
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -679,6 +698,11 @@ export default function NdviTab({ landId, cropType, areaHa = null, onShowLayer, 
                 mode={agriHeatMode}
                 onModeChange={onAgriHeatModeChange}
                 enabled={agriHeatmapEnabled}
+                emergenceView={emergenceView}
+                onEmergenceSummary={(summary) => {
+                    setEmergenceSummary(summary);
+                    setEmergenceReady(true);
+                }}
             />
 
             {/* ── Section: Chart for this canonical land ─────────────────────────── */}
