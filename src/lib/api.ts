@@ -1,5 +1,5 @@
 import { resolveGatewayUrl } from "@/lib/api-origin";
-import { normalizeEmergenceMap, normalizeEmergenceSummary } from "@/lib/emergence";
+import { autumnEmergencePath, normalizeEmergenceMap, normalizeEmergenceSummary } from "@/lib/emergence";
 import { buildLandWeatherPath } from "@/lib/land-weather";
 import { getAlertSession } from "@/lib/alert-session";
 import { mutate as mutateCache } from "swr";
@@ -2065,7 +2065,7 @@ export const agriApi = {
         if (opts.season) params.set("season", opts.season);
         const query = params.toString();
         return apiFetch<unknown>(
-            `/agri/lands/${encodeURIComponent(landId)}/autumn-emergence${query ? `?${query}` : ""}`,
+            `${autumnEmergencePath(landId)}${query ? `?${query}` : ""}`,
             { signal: opts.signal },
         ).then((payload) => normalizeEmergenceSummary(payload, landId));
     },
@@ -2081,46 +2081,58 @@ export const agriApi = {
         const params = new URLSearchParams({ date });
         if (opts.season) params.set("season", opts.season);
         return apiFetch<unknown>(
-            `/agri/lands/${encodeURIComponent(landId)}/autumn-emergence/pixels?${params.toString()}`,
+            `${autumnEmergencePath(landId)}/pixels?${params.toString()}`,
             { signal: opts.signal },
         ).then((payload) => normalizeEmergenceMap(payload, landId, date));
     },
     /**
      * 排队计算秋季出苗。接口只负责调度并接收回调，浏览器不下载卫星影像。
+     * 202 只表示已排队。不要把响应体当作出苗结果，之后轮询 GET。
      *
-     * 约定契约（与正在落地的 API 变更对齐；若 POST 尚未合并，按钮仍调用此方法）：
-     * POST /agri/lands/{landId}/autumn-emergence/compute
+     * POST /agri/lands/{landId}/autumn-emergence
+     * 网关 /satellite-api/agri/lands/{land_id}/autumn-emergence
+     * → API POST /v1/agri/lands/{land_id}/autumn-emergence
      * body: { sowing_date: "YYYY-MM-DD", season?: "YYYY-autumn" }
      *
      * 不要求 crop_type。作物为空的地块（例如生产 33052）也可以手动触发。
      */
     computeAutumnEmergence: (
         landId: string,
-        body: AutumnEmergenceComputeRequest,
+        body: AutumnEmergenceScheduleRequest,
         opts: { signal?: AbortSignal } = {},
     ) =>
-        apiFetch<AutumnEmergenceComputeResponse>(
-            `/agri/lands/${encodeURIComponent(landId)}/autumn-emergence/compute`,
-            {
-                method: "POST",
-                body: JSON.stringify(body),
-                signal: opts.signal,
-            },
-        ),
+        apiFetch<AutumnEmergenceScheduleResponse>(`${autumnEmergencePath(landId)}`, {
+            method: "POST",
+            body: JSON.stringify(body),
+            signal: opts.signal,
+        }),
 };
 
-/** POST /agri/lands/{landId}/autumn-emergence/compute */
-export interface AutumnEmergenceComputeRequest {
+/** POST /agri/lands/{landId}/autumn-emergence */
+export interface AutumnEmergenceScheduleRequest {
     sowing_date: string;
     season?: string;
 }
 
-/** The compute route only schedules. Fields are optional until that POST is merged. */
-export interface AutumnEmergenceComputeResponse {
+/**
+ * 202 from the schedule POST. Poll the summary GET for the emergence result.
+ * `dispatch` is `compute` when clear S2 is already stored, `s2_download` when
+ * an S2 batch is staged, or `frozen` when the season is already emerged.
+ */
+export interface AutumnEmergenceScheduleResponse {
     land_id?: string;
+    field_id?: string;
     season_key?: string;
+    sowing_date?: string;
     pending?: boolean;
+    eligible?: boolean;
+    dispatch?: "compute" | "s2_download" | "frozen";
     status?: string | null;
+    date_from?: string;
+    date_to?: string;
+    sensors?: string[];
+    job_ids?: string[];
+    message?: string;
 }
 
 export type { EmergenceMapLayer, EmergenceSummary } from "@/lib/emergence";

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+    autumnEmergencePath,
     autumnSeasonKeyFromSowingDate,
     emergenceHasResult,
     emergencePollSettled,
@@ -134,6 +135,11 @@ test("pixels endpoint class 0/1/2 is read from pixels_lonlat", () => {
     assert.equal(layer.class_counts?.["2"], 1);
     assert.equal(layer.date, "2026-10-02");
     assert.ok(layer.increment_median != null);
+});
+
+test("schedule and summary share the autumn-emergence path", () => {
+    assert.equal(autumnEmergencePath("33052"), "/agri/lands/33052/autumn-emergence");
+    assert.equal(autumnEmergencePath("a/b"), "/agri/lands/a%2Fb/autumn-emergence");
 });
 
 test("sowing date maps onto the autumn season key", () => {

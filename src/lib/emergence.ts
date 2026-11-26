@@ -7,7 +7,7 @@
  *
  *   GET  /agri/lands/{land_id}/autumn-emergence
  *   GET  /agri/lands/{land_id}/autumn-emergence/pixels?date=YYYY-MM-DD
- *   POST /agri/lands/{land_id}/autumn-emergence/compute
+ *   POST /agri/lands/{land_id}/autumn-emergence
  *        { sowing_date: "YYYY-MM-DD", season?: "YYYY-autumn" }
  *
  * POST only schedules work. The API receives callbacks and does not ask
@@ -193,6 +193,11 @@ export function parseEmergenceStatus(value: unknown, emergedFlag: boolean | null
     if (emergedFlag === true) return "emerged";
     if (emergedFlag === false) return "not_emerged";
     return "uncertain";
+}
+
+/** Gateway path for the autumn-emergence summary GET and the schedule POST. */
+export function autumnEmergencePath(landId: string): string {
+    return `/agri/lands/${encodeURIComponent(landId)}/autumn-emergence`;
 }
 
 /** Sowing-year autumn key (`2026-autumn`). Feb–Aug dates are not an autumn season. */
