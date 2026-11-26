@@ -1356,6 +1356,7 @@
     "refreshInProgress": "Remote-sensing refresh in progress…",
     "landTooLargeWarning": "This may be an abnormal field: {area} mu exceeds 5,000 mu. Satellite data cannot be downloaded. Please contact technical support.",
     "noMeanPoints": "No valid mean points for this index.",
+    "dateSlider": "Drag to inspect emergence on different days",
     "heatmapDate": "Heatmap date: {date} · {mode}",
     "pickDate": "Select a date on the chart to load the heatmap",
     "pixelsMeta": " · {pixels} pixels",

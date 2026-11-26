@@ -1,7 +1,8 @@
 /**
  * Autumn emergence (出苗) — rise above the soil baseline, per pixel.
  *
- * The browser talks to the live autumn-emergence reads. Nginx maps the
+ * Daily results come from official daily product fields plus the land-level
+ * emerged flag. The browser talks to the same autumn-emergence reads. Nginx maps the
  * app's `/satellite-api` prefix onto the API `/v1` prefix, so these paths
  * are written without `/v1` and without `/satellite-api`:
  *
@@ -60,6 +61,9 @@ export interface EmergenceTimeseriesPoint {
     increment_p75: number | null;
     increment_p95: number | null;
     n_clear: number | null;
+    share_above_noise: number | null;
+    share_sustained: number | null;
+    status: EmergenceStatus | null;
 }
 
 export interface EmergenceSummaryStats {
@@ -285,6 +289,9 @@ function pointFrom(raw: unknown): EmergenceTimeseriesPoint | null {
         increment_p75: num(pick(row, "increment_p75", "delta_p75")),
         increment_p95: num(pick(row, "increment_p95", "delta_p95")),
         n_clear: num(pick(row, "n_pixels", "n_clear", "n", "n_official_clear")),
+        share_above_noise: num(pick(row, "share_above_noise", "share_above")),
+        share_sustained: num(pick(row, "share_sustained")),
+        status: parseEmergenceStatus(pick(row, "status", "status_zh"), bool(pick(row, "emerged_flag"))),
     };
 }
 
