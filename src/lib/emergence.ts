@@ -10,9 +10,12 @@
  *   POST /agri/lands/{land_id}/autumn-emergence
  *        { sowing_date: "YYYY-MM-DD", season?: "YYYY-autumn" }
  *
- * POST only schedules work. The API receives callbacks and does not ask
- * the browser to download satellite imagery. A missing crop_type does not
- * block the manual POST; automatic compute skips those lands.
+ * POST only schedules work on the same backfill-indices / satellite_batch
+ * claim path as 更新影像. Task progress is that pull's job status, not a
+ * long poll of this GET while pending is true. Read this GET when a result
+ * is ready. The browser does not download satellite imagery. A missing
+ * crop_type does not block the manual POST; automatic compute skips those
+ * lands.
  *
  * Pixel class is 0 / 1 / 2 (within noise, above noise, sustained).
  * Status is not_emerged / emerging / emerged / uncertain, or null while
@@ -213,11 +216,29 @@ export function autumnSeasonKeyFromSowingDate(iso: string): string | null {
     return null;
 }
 
-/** Stop polling once the GET is no longer pending, or a status / series is present. */
+/**
+ * A summary can be shown as a result. `pending: true` with no status is not
+ * a result, and it is not a reason to keep polling this GET.
+ */
 export function emergencePollSettled(summary: EmergenceSummary): boolean {
     if (summary.status != null) return true;
     if (summary.timeseries.length > 0) return true;
     return summary.pending === false;
+}
+
+/**
+ * Same progress sentence as an imagery pull, with the task name changed to 出苗.
+ * Job counts and the failure note stay as the backfill status wrote them.
+ */
+export function emergenceTaskProgressTitle(imageryTitle: string): string {
+    const adapted = imageryTitle
+        .replaceAll("正在拉取遥感数据", "正在拉取出苗数据")
+        .replaceAll("遥感回填已完成", "出苗数据拉取完成")
+        .replaceAll("遥感回填", "出苗数据拉取")
+        .replaceAll("正在写入遥感结果", "正在整理出苗数据")
+        .replaceAll("正在整理影像", "正在整理出苗数据");
+    if (adapted.includes("出苗")) return adapted;
+    return `出苗 · ${adapted}`;
 }
 
 export function emergenceHasResult(summary: EmergenceSummary | null | undefined): boolean {

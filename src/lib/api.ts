@@ -2086,8 +2086,9 @@ export const agriApi = {
         ).then((payload) => normalizeEmergenceMap(payload, landId, date));
     },
     /**
-     * 排队计算秋季出苗。接口只负责调度并接收回调，浏览器不下载卫星影像。
-     * 202 只表示已排队。不要把响应体当作出苗结果，之后轮询 GET。
+     * 按播种日把出苗排进与“更新影像”相同的领取队列。
+     * 202 只表示已登记。不要把响应体当作出苗结果，也不要靠 GET 的 pending 空转。
+     * 任务进度读 GET /lands/{landId}/backfill-status（与 backfill-indices 相同）。
      *
      * POST /agri/lands/{landId}/autumn-emergence
      * 网关 /satellite-api/agri/lands/{land_id}/autumn-emergence
@@ -2095,6 +2096,7 @@ export const agriApi = {
      * body: { sowing_date: "YYYY-MM-DD", season?: "YYYY-autumn" }
      *
      * 不要求 crop_type。作物为空的地块（例如生产 33052）也可以手动触发。
+     * 浏览器不下载卫星影像。
      */
     computeAutumnEmergence: (
         landId: string,
@@ -2115,7 +2117,10 @@ export interface AutumnEmergenceScheduleRequest {
 }
 
 /**
- * 202 from the schedule POST. Poll the summary GET for the emergence result.
+ * 202 from the schedule POST. It records the sowing date and joins the same
+ * satellite_batch claim path as POST /lands/{landId}/backfill-indices.
+ * Watch GET /lands/{landId}/backfill-status for job progress. Read the
+ * summary GET when that pull finishes, not while it is still queued.
  * `dispatch` is `compute` when clear S2 is already stored, `s2_download` when
  * an S2 batch is staged, or `frozen` when the season is already emerged.
  */

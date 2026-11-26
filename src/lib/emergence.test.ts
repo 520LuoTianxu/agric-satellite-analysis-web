@@ -5,6 +5,7 @@ import {
     autumnSeasonKeyFromSowingDate,
     emergenceHasResult,
     emergencePollSettled,
+    emergenceTaskProgressTitle,
     normalizeEmergenceMap,
     normalizeEmergenceSummary,
 } from "./emergence.ts";
@@ -38,7 +39,7 @@ test("empty crop land stays empty instead of not_emerged", () => {
     assert.equal(emergencePollSettled(summary), true);
 });
 
-test("pending winter wheat keeps polling until a status arrives", () => {
+test("pending without a status is not an emergence result", () => {
     const summary = normalizeEmergenceSummary({
         ...SUMMARY,
         eligible: true,
@@ -140,6 +141,22 @@ test("pixels endpoint class 0/1/2 is read from pixels_lonlat", () => {
 test("schedule and summary share the autumn-emergence path", () => {
     assert.equal(autumnEmergencePath("33052"), "/agri/lands/33052/autumn-emergence");
     assert.equal(autumnEmergencePath("a/b"), "/agri/lands/a%2Fb/autumn-emergence");
+});
+
+test("emergence progress keeps the imagery job counts and renames the task", () => {
+    assert.equal(
+        emergenceTaskProgressTitle("正在拉取遥感数据… 分片任务 1/4（进行中 1，排队 2，失败 1，约 25%）"),
+        "正在拉取出苗数据… 分片任务 1/4（进行中 1，排队 2，失败 1，约 25%）",
+    );
+    assert.equal(
+        emergenceTaskProgressTitle("遥感回填已完成（分片任务 3/3）"),
+        "出苗数据拉取完成（分片任务 3/3）",
+    );
+    assert.equal(
+        emergenceTaskProgressTitle("正在整理影像，完成后会自动刷新…"),
+        "正在整理出苗数据，完成后会自动刷新…",
+    );
+    assert.equal(emergenceTaskProgressTitle("Fetching emergence"), "出苗 · Fetching emergence");
 });
 
 test("sowing date maps onto the autumn season key", () => {
