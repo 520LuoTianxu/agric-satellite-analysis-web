@@ -13,7 +13,6 @@ import {
     type NdviJob,
 } from "@/lib/api";
 import CropSelect from "@/components/field/crop-select";
-import EmergenceReportCard from "@/components/field/emergence-report-card";
 import LandScorecardRadar from "@/components/charts/land-scorecard-radar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,8 +38,6 @@ interface LandReportTabProps {
     landId: string;
     cropType?: string | null;
     onCropBound?: (cropKey: string) => void;
-    /** Switch the field map to the emergence (出苗) view on the 指数 tab. */
-    onShowEmergence?: () => void;
 }
 
 type ScorecardState = "loading" | "empty" | "legacy" | "ready";
@@ -109,7 +106,7 @@ function isCropRequiredError(err: any): boolean {
     return false;
 }
 
-export default function LandReportTab({ landId, cropType, onCropBound, onShowEmergence }: LandReportTabProps) {
+export default function LandReportTab({ landId, cropType, onCropBound }: LandReportTabProps) {
     const t = useTranslations("landReportTab");
     const [latest, setLatest] = useState<NdviJob | null>(null);
     const [loading, setLoading] = useState(true);
@@ -464,8 +461,6 @@ export default function LandReportTab({ landId, cropType, onCropBound, onShowEme
                     {t("description")}
                 </p>
             </div>
-
-            <EmergenceReportCard landId={landId} onShowOnMap={onShowEmergence} />
 
             {loading ? (
                 <div className="space-y-2">

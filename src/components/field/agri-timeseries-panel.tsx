@@ -15,8 +15,6 @@ import {
     type HarvestDetectResult,
     type IndexType,
 } from "@/lib/api";
-import { parseAgriLandId, type EmergenceMapView, type EmergenceSummary } from "@/lib/emergence";
-import { rasterizeEmergenceLayer } from "@/lib/emergence-raster";
 import { useTranslations } from "next-intl";
 import {
     rasterizeAgriPixels,
@@ -101,15 +99,6 @@ const NdviGradeSharesChart = dynamic(
     },
 );
 
-const EmergenceChart = dynamic(() => import("@/components/charts/emergence-chart"), {
-    ssr: false,
-    loading: () => <Skeleton className="h-[420px] w-full rounded-md" />,
-});
-
-const EmergenceStatusBar = dynamic(() => import("@/components/field/emergence-status-bar"), {
-    ssr: false,
-});
-
 type SeriesKey = AgriHeatIndex;
 
 const SERIES_META: Record<
@@ -192,13 +181,6 @@ const SERIES_META: Record<
         avgKey: null,
         chartKey: "vv_avg",
         hint: "S1 分轨道 VV 基线：VV≤−17 dB 且下降≥3 dB 且 VH/差分辅助；近阈值为关注。春灌积水可能不是灾害洪涝",
-    },
-    emergence: {
-        label: "出苗",
-        sensor: "S2",
-        avgKey: null,
-        chartKey: null,
-        hint: "相对土壤本底的抬升。不是 NDVI 0–1 色标，也不以 0.30 为出苗线",
     },
 };
 
@@ -369,7 +351,6 @@ const VEG_AVG_KEYS = new Set<SeriesKey>(["ndvi", "evi", "ndmi", "ndre", "cire", 
  * (which is often fully cloudy → solid red NDVI film).
  */
 function pickBestDefaultDate(scenes: AgriSceneProduct[], key: SeriesKey): string | null {
-    if (key === "emergence") return null;
     const sensor = sensorForIndex(key);
     const list = scenes.filter((s) => s.sensor === sensor);
     if (!list.length) return null;
@@ -435,9 +416,6 @@ export interface AgriTimeseriesPanelProps {
     onModeChange?: (mode: AgriHeatIndex) => void;
     /** Parent 指数 tab active — clear overlay when false, reload when true */
     enabled?: boolean;
-    /** Increment film or rise-class film. Ignored unless mode is emergence. */
-    emergenceView?: "increment" | "class";
-    onEmergenceSummary?: (summary: import("@/lib/emergence").EmergenceSummary | null) => void;
 }
 
 function defaultRsDateFrom(): string {
@@ -484,11 +462,8 @@ export default function AgriTimeseriesPanel({
     mode: modeProp,
     onModeChange,
     enabled = true,
-    emergenceView = "increment",
-    onEmergenceSummary,
 }: AgriTimeseriesPanelProps) {
     const t = useTranslations("agriPanel");
-    const te = useTranslations("emergence");
     const [backfilling, setBackfilling] = useState(false);
     const [backfillActive, setBackfillActive] = useState(false);
     const [refreshDateOpen, setRefreshDateOpen] = useState(false);
@@ -536,18 +511,9 @@ export default function AgriTimeseriesPanel({
     /** Bumps on every loadHeatmap call; stale async results are ignored. */
     const heatmapLoadGenRef = useRef(0);
     /** Prefetched film — kept even when enabled=false (map cleared, cache retained). */
-    const [emergenceSummary, setEmergenceSummary] = useState<EmergenceSummary | null>(null);
-    const [emergenceLoading, setEmergenceLoading] = useState(false);
-    const [emergenceError, setEmergenceError] = useState(false);
-    const emergenceViewRef = useRef<EmergenceMapView>(emergenceView);
-    emergenceViewRef.current = emergenceView;
-    const emergenceLayerRef = useRef<import("@/lib/emergence").EmergenceMapLayer | null>(null);
-    const onEmergenceSummaryRef = useRef(onEmergenceSummary);
-    onEmergenceSummaryRef.current = onEmergenceSummary;
     const cachedHeatmapRef = useRef<{
         date: string;
         index: SeriesKey;
-        view?: string;
         img: AgriHeatmapImage | null;
     } | null>(null);
     const loadHeatmapRef = useRef<(date: string, index: SeriesKey) => Promise<void>>(async () => {});
@@ -644,7 +610,6 @@ export default function AgriTimeseriesPanel({
                 const nextSeries: SeriesKey = modeProp ?? (hasS2 ? "ndvi" : "vv");
                 setSeriesInternal(nextSeries);
                 onModeChange?.(nextSeries);
-                if (nextSeries === "emergence") return;
                 const bestDate = pickBestDefaultDate(all, nextSeries);
                 if (bestDate) setSelectedDate(bestDate);
                 // Prefetch include_pixels=1 as soon as land scenes load (even if 指数 tab
@@ -900,41 +865,8 @@ export default function AgriTimeseriesPanel({
         }
     };
 
+    // When switching series, keep date if still valid; else prefer usable optical scene
     useEffect(() => {
-        const agriId = parseAgriLandId(landId);
-        if (!agriId) {
-            setEmergenceSummary(null);
-            onEmergenceSummaryRef.current?.(null);
-            return;
-        }
-        let cancelled = false;
-        setEmergenceLoading(true);
-        setEmergenceError(false);
-        agriApi
-            .emergenceSummary(agriId)
-            .then((summary) => {
-                if (cancelled) return;
-                setEmergenceSummary(summary);
-                onEmergenceSummaryRef.current?.(summary);
-            })
-            .catch(() => {
-                if (cancelled) return;
-                setEmergenceSummary(null);
-                setEmergenceError(true);
-                onEmergenceSummaryRef.current?.(null);
-            })
-            .finally(() => {
-                if (!cancelled) setEmergenceLoading(false);
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [landId, reloadKey]);
-
-    // When switching series, keep date if still valid; else prefer usable optical scene.
-    // Emergence dates come from the emergence summary, not NDVI scene averages.
-    useEffect(() => {
-        if (series === "emergence") return;
         if (!scenes.length) return; // wait for initial scenes fetch; do not null out date early
         const sensor = sensorForIndex(series);
         const dates = scenes
@@ -950,17 +882,6 @@ export default function AgriTimeseriesPanel({
         );
     }, [series, scenes]);
 
-    useEffect(() => {
-        if (series !== "emergence") return;
-        const dates = (emergenceSummary?.timeseries ?? []).map((p) => p.date);
-        const asOf = emergenceSummary?.as_of_date ?? null;
-        const preferred =
-            (asOf && (dates.length === 0 || dates.includes(asOf)) ? asOf : null) ??
-            (dates.length ? dates[dates.length - 1]! : null);
-        if (!preferred) return;
-        setSelectedDate((prev) => (prev && (dates.length === 0 || dates.includes(prev)) ? prev : preferred));
-    }, [series, emergenceSummary]);
-
     const publishHeatmap = useCallback(
         (img: AgriHeatmapImage | null) => {
             if (!onHeatmapChange) return;
@@ -975,53 +896,6 @@ export default function AgriTimeseriesPanel({
         async (date: string, index: SeriesKey) => {
             if (!landId) return;
             const gen = ++heatmapLoadGenRef.current;
-            if (index === "emergence") {
-                const agriId = parseAgriLandId(landId);
-                const view = emergenceViewRef.current;
-                setHeatmapLoading(true);
-                setHeatmapError(false);
-                try {
-                    if (!agriId) {
-                        cachedHeatmapRef.current = { date, index, view, img: null };
-                        setHeatmapMeta(null);
-                        publishHeatmap(null);
-                        return;
-                    }
-                    let layer = emergenceLayerRef.current;
-                    if (!layer || layer.date !== date) {
-                        layer = await agriApi.emergenceMap(agriId, { date });
-                        if (gen !== heatmapLoadGenRef.current) return;
-                        emergenceLayerRef.current = layer;
-                    }
-                    const img = rasterizeEmergenceLayer(layer, view);
-                    if (gen !== heatmapLoadGenRef.current) return;
-                    cachedHeatmapRef.current = { date, index, view, img };
-                    setHeatmapMeta(
-                        img
-                            ? {
-                                  pixels: img.pixelCount,
-                                  date,
-                                  index: te("chip"),
-                                  mean: layer.increment_median ?? img.mean,
-                              }
-                            : null,
-                    );
-                    publishHeatmap(img);
-                    if (!img && enabledRef.current) {
-                        toast(te("mapMissing"), { description: `${date} · ${te("chip")}` });
-                    }
-                } catch {
-                    if (gen !== heatmapLoadGenRef.current) return;
-                    cachedHeatmapRef.current = { date, index, view, img: null };
-                    emergenceLayerRef.current = null;
-                    setHeatmapMeta(null);
-                    publishHeatmap(null);
-                    setHeatmapError(true);
-                } finally {
-                    if (gen === heatmapLoadGenRef.current) setHeatmapLoading(false);
-                }
-                return;
-            }
             const meta = SERIES_META[index];
             setHeatmapLoading(true);
             setHeatmapError(false);
@@ -1142,7 +1016,7 @@ export default function AgriTimeseriesPanel({
                 }
             }
         },
-        [landId, publishHeatmap, t, te, cropOption?.season_months],
+        [landId, publishHeatmap, t, cropOption?.season_months],
     );
     loadHeatmapRef.current = loadHeatmap;
 
@@ -1200,18 +1074,11 @@ export default function AgriTimeseriesPanel({
     );
 
 
-    const emergenceDateIsReady =
-        series !== "emergence" ||
-        !emergenceSummary ||
-        emergenceSummary.timeseries.length === 0 ||
-        emergenceSummary.timeseries.some((point) => point.date === selectedDate);
-
     // Prefetch/reload film whenever date or series changes (tab may be inactive).
     useEffect(() => {
-        if (!selectedDate || !emergenceDateIsReady) return;
+        if (!selectedDate) return;
         const cache = cachedHeatmapRef.current;
-        const viewKey = series === "emergence" ? emergenceView : "";
-        if (cache && cache.date === selectedDate && cache.index === series && (cache.view ?? "") === viewKey) {
+        if (cache && cache.date === selectedDate && cache.index === series) {
             // Already have this film — publish if tab active, else keep cache warm
             if (enabledRef.current && heatmapVisibleRef.current) {
                 onHeatmapChange?.(cache.img);
@@ -1219,7 +1086,7 @@ export default function AgriTimeseriesPanel({
             return;
         }
         void loadHeatmap(selectedDate, series);
-    }, [selectedDate, series, emergenceView, emergenceDateIsReady, loadHeatmap, onHeatmapChange]);
+    }, [selectedDate, series, loadHeatmap, onHeatmapChange]);
 
     // enabled gate: clear map overlay only (keep cached film). On rise → apply cache or fetch.
     useEffect(() => {
@@ -1232,15 +1099,14 @@ export default function AgriTimeseriesPanel({
             onHeatmapChange?.(null);
             return;
         }
-        if (!selectedDate || !emergenceDateIsReady) return;
+        if (!selectedDate) return;
         const cache = cachedHeatmapRef.current;
-        const viewKey = series === "emergence" ? emergenceView : "";
-        if (cache && cache.date === selectedDate && cache.index === series && (cache.view ?? "") === viewKey) {
+        if (cache && cache.date === selectedDate && cache.index === series) {
             onHeatmapChange?.(cache.img);
             return;
         }
         void loadHeatmap(selectedDate, series);
-    }, [enabled, heatmapVisible, selectedDate, series, emergenceView, emergenceDateIsReady, loadHeatmap, onHeatmapChange]);
+    }, [enabled, heatmapVisible, selectedDate, series, loadHeatmap, onHeatmapChange]);
 
     const stats = useMemo(() => scenesToStats(scenes, series, landId), [scenes, series, landId]);
     const decloudAltStats = useMemo(
@@ -1515,7 +1381,7 @@ export default function AgriTimeseriesPanel({
     const total = summary?.total ?? 0;
 
     if (!landId) return null;
-    if (!loading && hasMonitoringData && total === 0 && series !== "emergence") return null;
+    if (!loading && hasMonitoringData && total === 0) return null;
 
     const CHART_INDEX_TYPE: Partial<Record<SeriesKey, IndexType>> = {
         ndvi: "NDVI",
@@ -1540,7 +1406,7 @@ export default function AgriTimeseriesPanel({
                         <CardTitle className="flex flex-wrap items-center gap-1.5 text-xs font-semibold tracking-tight">
                             <span>{t("title")}</span>
                             <AgriIndexGlossary
-                                initialKey={series === "emergence" ? null : series}
+                                initialKey={series}
                                 triggerClassName="h-6 ml-0.5 font-normal"
                             />
                         </CardTitle>
@@ -1749,7 +1615,7 @@ export default function AgriTimeseriesPanel({
                         {t("empty")}
                     </p>
                 )}
-                {!loading && (total > 0 || series === "emergence") && (
+                {!loading && total > 0 && (
                     <>
                         <div className="flex flex-wrap gap-1.5 items-center rounded-xl bg-muted/40 p-2">
                             {primaryKeys.map((key) => {
@@ -1773,18 +1639,6 @@ export default function AgriTimeseriesPanel({
                                     </Button>
                                 );
                             })}
-                            {parseAgriLandId(landId) && (
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant={series === "emergence" ? "default" : "outline"}
-                                    className="h-7 shrink-0 px-2.5 text-xs"
-                                    onClick={() => setSeries("emergence")}
-                                    title={te("chipTitle")}
-                                >
-                                    {te("chip")}
-                                </Button>
-                            )}
                             {seriesInOverflow && (
                                 <Button
                                     type="button"
@@ -1864,7 +1718,6 @@ export default function AgriTimeseriesPanel({
                             </p>
                         )}
                         <div className="rounded-lg bg-background p-2.5">
-                            {series !== "emergence" && (
                             <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-muted/35 p-3">
                                 <Button
                                     type="button"
@@ -1889,30 +1742,11 @@ export default function AgriTimeseriesPanel({
                                 ) : null}
                                 {harvestError && <p role="alert" className="w-full text-[11px] text-destructive">{t("harvestFailed")}</p>}
                             </div>
-                            )}
                             <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                                <span>{series === "emergence" ? te("chip") : AGRI_MODE_LABELS[series]}</span>
-                                <span className="tabular-nums">{selectedDate ?? "—"} · {series === "emergence" ? (emergenceSummary?.summary.increment_median?.toFixed(3) ?? "—") : (selectedMean != null ? selectedMean.toFixed(2) : "—")}</span>
+                                <span>{AGRI_MODE_LABELS[series]}</span>
+                                <span className="tabular-nums">{selectedDate ?? "—"} · {selectedMean != null ? selectedMean.toFixed(2) : "—"}</span>
                             </div>
-                            {series === "emergence" ? (
-                                emergenceLoading && !emergenceSummary ? (
-                                    <Skeleton className="h-[420px] w-full rounded-md" />
-                                ) : emergenceSummary && emergenceSummary.timeseries.length > 0 ? (
-                                    <>
-                                        <EmergenceChart
-                                            summary={emergenceSummary}
-                                            selectedDate={selectedDate}
-                                            onDateSelect={(d) => setSelectedDate(d)}
-                                            height={420}
-                                        />
-                                        <p className="mt-1 text-[10px] leading-snug text-muted-foreground">{te("referenceNote")}</p>
-                                    </>
-                                ) : (
-                                    <p className="py-2 text-xs text-muted-foreground">
-                                        {emergenceError ? te("mapFailed") : te("emptyChart")}
-                                    </p>
-                                )
-                            ) : stats.length > 0 ? (
+                            {stats.length > 0 ? (
                                 <NdviChart
                                     stats={stats}
                                     decloudAltStats={decloudAltStats}
@@ -1947,7 +1781,7 @@ export default function AgriTimeseriesPanel({
                                 <p className="text-xs text-muted-foreground py-2">{t("noMeanPoints")}</p>
                             )}
                         </div>
-                        {series !== "emergence" && (series === "ndvi" || series === "evi" || series === "drought") && (
+                        {(series === "ndvi" || series === "evi" || series === "drought") && (
                             <>
                                 <div className="rounded-lg bg-background p-2.5 space-y-3">
                                     <div className="flex flex-wrap items-center gap-1.5">
@@ -1986,9 +1820,7 @@ export default function AgriTimeseriesPanel({
                         <div className="space-y-3 rounded-lg bg-muted/20 p-2.5">
                             <p className="text-[11px] text-muted-foreground leading-relaxed">
                                 {selectedDate
-                                    ? series === "emergence"
-                                        ? te("heatmapDate", { date: selectedDate })
-                                        : t("heatmapDate", { date: selectedDate, mode: AGRI_MODE_LABELS[series] })
+                                    ? t("heatmapDate", { date: selectedDate, mode: AGRI_MODE_LABELS[series] })
                                     : t("pickDate")}
                                 {cloudCoverPct != null
                                     ? ` · ${formatCloudCoverLabel(cloudCoverPct, selectedCloud.source, t)}`
@@ -2018,10 +1850,7 @@ export default function AgriTimeseriesPanel({
                             {selectedDate && (
                                 <div className="space-y-2">
                                     <div className="flex max-h-36 flex-wrap gap-2 items-center overflow-y-auto">
-                                        {(series === "emergence"
-                                            ? [...(emergenceSummary?.timeseries ?? [])].map((p) => p.date).reverse()
-                                            : chipDates
-                                        ).map((date) => {
+                                        {chipDates.map((date) => {
                                             const active = selectedDate === date;
                                             const chipCloud = active ? cloudCoverPct : cloudPctByDate[date];
                                             const chipOver30 =
@@ -2039,14 +1868,10 @@ export default function AgriTimeseriesPanel({
                                                         "h-7 rounded-lg text-[11px] px-2 tabular-nums shrink-0 gap-1.5",
                                                         active && cloudCoverOver30 && "ring-1 ring-warning/50",
                                                     )}
-                                                    onClick={() =>
-                                                        series === "emergence"
-                                                            ? setSelectedDate(date)
-                                                            : selectDateExplicit(date)
-                                                    }
+                                                    onClick={() => selectDateExplicit(date)}
                                                 >
                                                     {date.slice(5)}
-                                                    {series !== "emergence" && droughtCls && (
+                                                    {droughtCls && (
                                                         <span
                                                             className={cn(
                                                                 "rounded px-0.5 text-[9px] font-medium",
@@ -2065,7 +1890,7 @@ export default function AgriTimeseriesPanel({
                                                                   : t("droughtChip_mild")}
                                                         </span>
                                                     )}
-                                                    {series !== "emergence" && floodCls && (isFloodDayClass(floodCls) || isFloodWatchClass(floodCls)) && (
+                                                    {floodCls && (isFloodDayClass(floodCls) || isFloodWatchClass(floodCls)) && (
                                                         <span
                                                             className={cn(
                                                                 "rounded px-0.5 text-[9px] font-medium",

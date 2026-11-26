@@ -383,7 +383,7 @@ export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeat
                         </p>
                     )}
                 </>
-            ) : legend.kind === "classes" ? (
+            ) : (
                 <>
                     <ul className="space-y-1">
                         {legend.classes.map((c) => (
@@ -400,7 +400,7 @@ export default function AgriHeatmapLegend({ heatmap, compact = false }: AgriHeat
                         <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">{legend.hint}</p>
                     )}
                 </>
-            ) : null}
+            )}
 
             {hasPreview && (
                 <OssPreviewStack
