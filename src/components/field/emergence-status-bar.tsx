@@ -28,11 +28,9 @@ export default function EmergenceStatusBar({
 }: EmergenceStatusBarProps) {
     const t = useTranslations("emergence");
     const status: EmergenceStatus | null = summary?.status ?? null;
-    const pending = !loading && !error && summary?.pending === true && status == null && summary.timeseries.length === 0;
     const empty =
         !loading &&
         !error &&
-        !pending &&
         status == null &&
         (summary?.timeseries.length ?? 0) === 0;
     const baseline = baselineWindowLabel(summary?.baseline.dates);
@@ -46,7 +44,7 @@ export default function EmergenceStatusBar({
                 className="grid grid-cols-4 gap-1 rounded-lg bg-muted/50 p-1"
             >
                 {EMERGENCE_STATUSES.map((key) => {
-                    const active = !loading && !pending && !empty && status === key;
+                    const active = !loading && !empty && status === key;
                     return (
                         <span
                             key={key}
@@ -68,9 +66,7 @@ export default function EmergenceStatusBar({
                     ? t("loading")
                     : error
                       ? error
-                      : pending
-                        ? t("pending")
-                        : empty
+                      : empty
                           ? t("emptyResult")
                           : t("statusMeta", {
                                 baseline: baseline ?? t("baselineMissing"),

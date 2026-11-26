@@ -22,7 +22,7 @@ import { rasterizeEmergenceLayer } from "@/lib/emergence-raster";
 import {
     autumnSeasonKeyFromSowingDate,
     emergenceHasResult,
-    emergencePollSettled,
+    emergenceTaskProgressTitle,
     notifyAutumnEmergenceUpdated,
     parseAgriLandId,
     type EmergenceSummary,
@@ -602,6 +602,40 @@ function clampRsDateFrom(value: string): string {
     return value && value < minimum ? minimum : value;
 }
 
+/** 更新影像 and 拉取出苗数据 share one satellite_batch wave. Only the label differs. */
+type SatellitePullTask = "imagery" | "emergence";
+
+function pullTaskStorageKey(landId: string): string {
+    return `agri-satellite-pull-task:${landId}`;
+}
+
+function readStoredPullTask(landId: string): SatellitePullTask {
+    if (typeof sessionStorage === "undefined") return "imagery";
+    try {
+        return sessionStorage.getItem(pullTaskStorageKey(landId)) === "emergence" ? "emergence" : "imagery";
+    } catch {
+        return "imagery";
+    }
+}
+
+function writeStoredPullTask(landId: string, task: SatellitePullTask) {
+    if (typeof sessionStorage === "undefined") return;
+    try {
+        sessionStorage.setItem(pullTaskStorageKey(landId), task);
+    } catch {
+        /* private mode */
+    }
+}
+
+function clearStoredPullTask(landId: string) {
+    if (typeof sessionStorage === "undefined") return;
+    try {
+        sessionStorage.removeItem(pullTaskStorageKey(landId));
+    } catch {
+        /* private mode */
+    }
+}
+
 const MAX_SEASON_WINDOWS = 3;
 
 type SeasonWindowDraft = {
@@ -677,6 +711,8 @@ export default function AgriTimeseriesPanel({
     const seasonMonths = useMemo(() => monthsInWindows(seasonWindows), [seasonWindows]);
     const peakMonths = useMemo(() => Array.from(new Set((inferredPhenology?.windows ?? []).map(window => Number(window.peak_date?.slice(5, 7))).filter(Boolean))), [inferredPhenology]);
     const [backfillProgress, setBackfillProgress] = useState<BackfillStatusResponse | null>(null);
+    const [pullTask, setPullTask] = useState<SatellitePullTask>("imagery");
+    const pullTaskRef = useRef<SatellitePullTask>("imagery");
     const [reloadKey, setReloadKey] = useState(0);
     const backfillPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const backfillPollControllerRef = useRef<AbortController | null>(null);
@@ -699,7 +735,6 @@ export default function AgriTimeseriesPanel({
     const [emergenceOpen, setEmergenceOpen] = useState(false);
     const [sowingDate, setSowingDate] = useState("");
     const [emergenceBusy, setEmergenceBusy] = useState(false);
-    const [emergenceComputing, setEmergenceComputing] = useState(false);
     const [emergenceRequested, setEmergenceRequested] = useState(false);
     const [emergenceLoadError, setEmergenceLoadError] = useState<string | null>(null);
     const [emergenceComputeError, setEmergenceComputeError] = useState<string | null>(null);
@@ -901,12 +936,19 @@ export default function AgriTimeseriesPanel({
             setBackfillActive(res.has_active_backfill);
             if (res.has_active_backfill) return true;
             if (opts?.wasActive) {
+                const task = pullTaskRef.current;
+                clearStoredPullTask(landId);
                 setReloadKey((k) => k + 1);
-                toast.success(t("refreshComplete"));
+                if (task === "emergence") {
+                    setEmergenceReload((n) => n + 1);
+                    toast.success(te("pullComplete"));
+                } else {
+                    toast.success(t("refreshComplete"));
+                }
             }
             return false;
         },
-        [t],
+        [landId, t, te],
     );
 
     const startBackfillPoll = useCallback(() => {
@@ -974,8 +1016,12 @@ export default function AgriTimeseriesPanel({
                     || controller.signal.aborted
                     || currentLandIdRef.current !== landId
                 ) return;
+                const stored = readStoredPullTask(landId);
+                pullTaskRef.current = stored;
+                setPullTask(stored);
                 const active = applyBackfillStatus(res);
                 if (active) startBackfillPoll();
+                else clearStoredPullTask(landId);
             } catch {
                 /* ignore */
             }
@@ -986,6 +1032,31 @@ export default function AgriTimeseriesPanel({
             stopBackfillPoll();
         };
     }, [landId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const armSatellitePull = useCallback((task: SatellitePullTask) => {
+        pullTaskRef.current = task;
+        setPullTask(task);
+        writeStoredPullTask(landId, task);
+        const message = task === "emergence" ? te("pullInProgress") : t("refreshInProgress");
+        setBackfillActive(true);
+        setBackfillProgress((prev) =>
+            prev
+                ? { ...prev, has_active_backfill: true, phase: "stac", message }
+                : {
+                      land_id: landId,
+                      has_active_backfill: true,
+                      pending_jobs: 0,
+                      running_jobs: 0,
+                      completed_jobs: 0,
+                      failed_jobs: 0,
+                      total_jobs: 0,
+                      percent: 0,
+                      phase: "stac",
+                      message,
+                  },
+        );
+        startBackfillPoll();
+    }, [landId, startBackfillPoll, t, te]);
 
     const openRefreshRsDialog = () => {
         if (oversizedLand) {
@@ -1092,29 +1163,11 @@ export default function AgriTimeseriesPanel({
                 date_to: today,
                 ...(growing_seasons.length ? { growing_seasons } : {}),
             });
-            setBackfillActive(true);
-            setBackfillProgress((prev) =>
-                prev
-                    ? { ...prev, has_active_backfill: true, phase: "stac", message: t("refreshInProgress") }
-                    : {
-                          land_id: landId,
-                          has_active_backfill: true,
-                          pending_jobs: 0,
-                          running_jobs: 0,
-                          completed_jobs: 0,
-                          failed_jobs: 0,
-                          total_jobs: 0,
-                          percent: 0,
-                          phase: "stac",
-                          message: t("refreshInProgress"),
-                      },
-            );
+            armSatellitePull("imagery");
             toast.success(t("refreshStarted"));
-            startBackfillPoll();
         } catch (e: any) {
             if (e?.status === 409) {
-                setBackfillActive(true);
-                startBackfillPoll();
+                armSatellitePull("imagery");
             }
             toast.error(e?.detail || t("refreshFailed"));
         } finally {
@@ -1155,13 +1208,12 @@ export default function AgriTimeseriesPanel({
             publishEmergence(null);
             setEmergenceLoadError(null);
             setEmergenceComputeError(null);
-            setEmergenceComputing(false);
             setEmergenceRequested(false);
             return;
         }
         let cancelled = false;
         const controller = new AbortController();
-        const pull = async () => {
+        (async () => {
             try {
                 const season = emergenceSeasonRef.current;
                 const summary = await agriApi.emergenceSummary(landId, {
@@ -1171,21 +1223,12 @@ export default function AgriTimeseriesPanel({
                 if (cancelled) return;
                 publishEmergence(summary);
                 setEmergenceLoadError(null);
-                if (emergencePollSettled(summary)) {
-                    setEmergenceComputing(false);
-                    return;
-                }
-                window.setTimeout(() => {
-                    if (!cancelled) void pull();
-                }, 5000);
             } catch (err) {
                 if (cancelled || controller.signal.aborted) return;
                 setEmergenceLoadError(readApiError(err, teRef.current("loadFailed")));
                 publishEmergence(null);
-                setEmergenceComputing(false);
             }
-        };
-        void pull();
+        })();
         return () => {
             cancelled = true;
             controller.abort();
@@ -1194,37 +1237,56 @@ export default function AgriTimeseriesPanel({
 
     const handleComputeEmergence = async () => {
         if (!landId || !/^\d{4}-\d{2}-\d{2}$/.test(sowingDate)) return;
+        if (oversizedLand) {
+            toast.error(t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }));
+            return;
+        }
         // 手动触发不看 crop_type。自动计算会跳过空作物，这里仍允许排队。
         setEmergenceBusy(true);
+        setBackfilling(true);
         setEmergenceComputeError(null);
         const season = autumnSeasonKeyFromSowingDate(sowingDate);
+        const dateFrom = clampRsDateFrom(sowingDate);
+        const today = new Date().toISOString().slice(0, 10);
         try {
-            await agriApi.computeAutumnEmergence(landId, {
-                sowing_date: sowingDate,
-                ...(season ? { season } : {}),
-            });
+            let alreadyDone = false;
+            try {
+                const scheduled = await agriApi.computeAutumnEmergence(landId, {
+                    sowing_date: sowingDate,
+                    ...(season ? { season } : {}),
+                });
+                alreadyDone = scheduled.pending === false;
+            } catch (err) {
+                // 同一领取队列里已有任务时，接着看 backfill-status，不再另开一条等待。
+                if (!(err instanceof ApiError && err.status === 409)) throw err;
+            }
             emergenceSeasonRef.current = season;
             setEmergenceRequested(true);
-            setEmergenceComputing(true);
             setEmergenceOpen(false);
-            toast.success(te("computeStarted"));
-            setEmergenceReload((n) => n + 1);
-        } catch (err) {
-            if (err instanceof ApiError && err.status === 409) {
-                emergenceSeasonRef.current = season;
-                setEmergenceRequested(true);
-                setEmergenceComputing(true);
-                setEmergenceOpen(false);
-                toast.success(te("computeStarted"));
+            if (alreadyDone) {
                 setEmergenceReload((n) => n + 1);
-            } else {
-                const detail = readApiError(err, te("computeFailed"));
-                setEmergenceComputeError(detail);
-                setEmergenceComputing(false);
-                toast.error(detail);
+                toast.success(te("alreadyReady"));
+                return;
             }
+            try {
+                await landsApi.backfillIndices(landId, {
+                    force: true,
+                    date_from: dateFrom,
+                    date_to: today,
+                });
+            } catch (err) {
+                // 出苗接口已经把工作放进同一 backfill 波次时，这里是 409。进度仍是这一条。
+                if (!(err instanceof ApiError && err.status === 409)) throw err;
+            }
+            armSatellitePull("emergence");
+            toast.success(te("computeStarted"));
+        } catch (err) {
+            const detail = readApiError(err, te("computeFailed"));
+            setEmergenceComputeError(detail);
+            toast.error(detail);
         } finally {
             setEmergenceBusy(false);
+            setBackfilling(false);
         }
     };
 
@@ -1983,15 +2045,23 @@ export default function AgriTimeseriesPanel({
         .map((sensor) => `${sensor.sensor} ${loadedSceneCounts[sensor.sensor]}/${sensor.count}`)
         .join(" · ");
 
-    const emergencePending =
-        emergenceComputing ||
-        (emergenceSummary?.pending === true && !emergenceHasResult(emergenceSummary));
     const emergenceEmpty =
         emergenceRequested &&
-        !emergencePending &&
+        !backfillActive &&
         !emergenceComputeError &&
         !emergenceLoadError &&
         !emergenceHasResult(emergenceSummary);
+    const pullInFlight = backfilling || backfillActive;
+    const emergencePullInFlight = emergenceBusy || (backfillActive && pullTask === "emergence");
+    const pullProgressTitle = pullTask === "emergence"
+        ? backfillProgress?.phase === "bridge"
+            ? te("progressBridge")
+            : backfillProgress?.message && backfillProgress.message !== te("pullInProgress")
+                ? emergenceTaskProgressTitle(backfillProgress.message)
+                : te("pullInProgress")
+        : backfillProgress?.phase === "bridge"
+            ? t("progressBridge")
+            : backfillProgress?.message || t("refreshInProgress");
     const todayIso = new Date().toISOString().slice(0, 10);
     const renderImageryActions = () => (
         <div className="flex flex-wrap justify-end gap-1.5">
@@ -2001,10 +2071,10 @@ export default function AgriTimeseriesPanel({
                 variant="default"
                 className="h-7 gap-1.5 text-[11px]"
                 onClick={openRefreshRsDialog}
-                disabled={oversizedLand || backfilling || backfillActive}
-                title={oversizedLand ? t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }) : backfillActive ? t("refreshInProgress") : t("refreshRsTitle")}
+                disabled={oversizedLand || pullInFlight}
+                title={oversizedLand ? t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }) : backfillActive ? (pullTask === "emergence" ? te("pullInProgress") : t("refreshInProgress")) : t("refreshRsTitle")}
             >
-                {backfilling || backfillActive ? (
+                {pullInFlight ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                     <RefreshCw className="h-3.5 w-3.5" />
@@ -2020,11 +2090,11 @@ export default function AgriTimeseriesPanel({
                     setEmergenceComputeError(null);
                     setEmergenceOpen(true);
                 }}
-                disabled={!parseAgriLandId(landId) || emergenceBusy || emergenceComputing}
-                aria-busy={emergenceBusy || emergenceComputing}
-                title={te("fetchTitle")}
+                disabled={!parseAgriLandId(landId) || oversizedLand || pullInFlight}
+                aria-busy={emergencePullInFlight}
+                title={oversizedLand ? t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }) : emergencePullInFlight ? te("pullInProgress") : te("fetchTitle")}
             >
-                {emergenceBusy || emergenceComputing ? (
+                {emergencePullInFlight ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
                 ) : (
                     <Sprout className="h-3.5 w-3.5" />
@@ -2074,7 +2144,7 @@ export default function AgriTimeseriesPanel({
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1.5 max-md:hidden">
                         {renderImageryActions()}
-                        {(emergenceComputeError || emergencePending || emergenceEmpty) && (
+                        {(emergenceComputeError || emergenceEmpty) && (
                             <p
                                 role={emergenceComputeError ? "alert" : "status"}
                                 className={cn(
@@ -2082,7 +2152,7 @@ export default function AgriTimeseriesPanel({
                                     emergenceComputeError ? "text-destructive" : "text-muted-foreground",
                                 )}
                             >
-                                {emergenceComputeError || (emergencePending ? te("pending") : te("emptyResult"))}
+                                {emergenceComputeError || te("emptyResult")}
                             </p>
                         )}
                         {summary && (
@@ -2137,7 +2207,7 @@ export default function AgriTimeseriesPanel({
             <CardContent className="space-y-3 p-3 max-md:space-y-2 max-md:p-0">
                 <div className="flex flex-col items-end gap-1 md:hidden">
                     {renderImageryActions()}
-                    {(emergenceComputeError || emergencePending || emergenceEmpty) && (
+                    {(emergenceComputeError || emergenceEmpty) && (
                         <p
                             role={emergenceComputeError ? "alert" : "status"}
                             className={cn(
@@ -2145,7 +2215,7 @@ export default function AgriTimeseriesPanel({
                                 emergenceComputeError ? "text-destructive" : "text-muted-foreground",
                             )}
                         >
-                            {emergenceComputeError || (emergencePending ? te("pending") : te("emptyResult"))}
+                            {emergenceComputeError || te("emptyResult")}
                         </p>
                     )}
                 </div>
@@ -2322,9 +2392,7 @@ export default function AgriTimeseriesPanel({
                     <div className="rounded-md border border-info/30 bg-info-subtle/60 px-2.5 py-2 space-y-1.5">
                         <p className="text-[11px] text-info flex items-center gap-1.5 font-medium">
                             <History className="h-3 w-3 shrink-0" />
-                            {backfillProgress?.phase === "bridge"
-                                ? t("progressBridge")
-                                : backfillProgress?.message || t("refreshInProgress")}
+                            {pullProgressTitle}
                         </p>
                         {backfillProgress && backfillProgress.phase !== "bridge" && (
                             <p className="text-[10px] text-info/80 tabular-nums">
@@ -2343,7 +2411,7 @@ export default function AgriTimeseriesPanel({
                         )}
                         <div
                             role="progressbar"
-                            aria-label={t("refreshProgressLabel")}
+                            aria-label={pullTask === "emergence" ? te("progressLabel") : t("refreshProgressLabel")}
                             aria-valuemin={0}
                             aria-valuemax={100}
                             aria-valuenow={
@@ -2397,11 +2465,6 @@ export default function AgriTimeseriesPanel({
                                         onDateSelect={setSelectedDate}
                                         height={280}
                                     />
-                                ) : emergencePending ? (
-                                    <p role="status" className="flex items-center gap-2 py-3 text-[11px] leading-relaxed text-muted-foreground">
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                                        {te("pending")}
-                                    </p>
                                 ) : emergenceLoadError || emergenceComputeError ? (
                                     <p role="alert" className="py-3 text-[11px] leading-relaxed text-destructive">
                                         {emergenceLoadError || emergenceComputeError}

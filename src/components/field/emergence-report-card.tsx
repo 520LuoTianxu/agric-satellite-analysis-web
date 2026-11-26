@@ -79,13 +79,10 @@ export default function EmergenceReportCard({ landId, onShowOnMap }: EmergenceRe
     if (!parseAgriLandId(landId)) return null;
 
     const status = summary?.status ?? null;
-    const pending = summary?.pending === true && status == null && (summary.timeseries.length ?? 0) === 0;
     const increment = summary?.summary.increment_median;
     const body = error
         ? t("loadFailed")
-        : pending
-          ? t("pending")
-          : status
+        : status
             ? t(sentenceKey(status), {
                   asOf: summary?.as_of_date ?? t("dateMissing"),
                   baseline: baselineWindowLabel(summary?.baseline.dates) ?? t("baselineMissing"),
