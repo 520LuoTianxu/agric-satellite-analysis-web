@@ -65,11 +65,7 @@ export type AgriHeatIndex =
     | "vv"
     | "vh"
     | "drought"
-    | "flood"
-    | "emergence";
-
-/** Continuous index ramps. Drought, flood, and emergence paint their own legends. */
-export type AgriContinuousIndex = Exclude<AgriHeatIndex, "drought" | "flood" | "emergence">;
+    | "flood";
 
 export interface AgriPixelGrid {
     epsg: number;
@@ -118,8 +114,6 @@ const S1_VALUE_INDEX: Record<"vv" | "vh", number> = {
 };
 
 export function valueIndexFor(index: AgriHeatIndex, sensor: "S1" | "S2"): number | null {
-    // Emergence is a separate map resource — never a column of the S2 NDVI row.
-    if (index === "emergence") return null;
     if (index === "drought") return sensor === "S2" ? S2_VALUE_INDEX.ndvi : null;
     if (index === "flood") return sensor === "S1" ? S1_VALUE_INDEX.vv : null;
     if (sensor === "S2" && index in S2_VALUE_INDEX) {
@@ -141,7 +135,7 @@ export function sensorForIndex(index: AgriHeatIndex): "S1" | "S2" {
  * Default rescale ranges.
  * NDVI/EVI use figure-3 style fixed scales (0→high green) for continuous 色斑.
  */
-export const HEAT_RESCALE: Record<AgriContinuousIndex, [number, number]> = {
+export const HEAT_RESCALE: Record<Exclude<AgriHeatIndex, "drought" | "flood">, [number, number]> = {
     ndvi: [0, 0.9],
     evi: [0, 1.2],
     ndmi: [-0.5, 0.5],
@@ -223,7 +217,7 @@ export const FLOOD_CLASS_STYLE: Record<
 
 export function colorizeValue(
     value: number,
-    index: AgriContinuousIndex,
+    index: Exclude<AgriHeatIndex, "drought" | "flood">,
     rescale: [number, number] = HEAT_RESCALE[index],
 ): [number, number, number, number] {
     const [lo, hi] = rescale;
@@ -396,16 +390,6 @@ export type AgriHeatmapLegend =
           label: string;
           hint?: string;
           classes: { key: string; label: string; color: string }[];
-      }
-    | {
-          kind: "emergence";
-          label: string;
-          view: "increment" | "class";
-          min: number;
-          max: number;
-          gradient: string;
-          classes: { key: string; color: string; count?: number }[];
-          incrementMedian: number | null;
       };
 
 export type AgriHeatmapGeoJSON = GeoJSON.FeatureCollection<
@@ -465,7 +449,7 @@ export interface AgriHeatmapImage {
     previewS2HeatmapUrl?: string | null;
 }
 
-function continuousLegend(index: AgriContinuousIndex): AgriHeatmapLegend {
+function continuousLegend(index: Exclude<AgriHeatIndex, "drought" | "flood">): AgriHeatmapLegend {
     const [min, max] = HEAT_RESCALE[index];
     const isSar = index === "vv" || index === "vh";
     return {
@@ -552,8 +536,6 @@ function collectPaintedCells(
     const { width, height } = grid;
     if (!width || !height || !grid.resolution || !grid.epsg) return null;
 
-    if (index === "emergence") return null;
-
     const cells: PaintedCell[] = [];
     let sum = 0;
     let vmin = Infinity;
@@ -616,7 +598,7 @@ function collectPaintedCells(
             vmax = Math.max(vmax, vv);
         }
     } else {
-        const cont = index as AgriContinuousIndex;
+        const cont = index as Exclude<AgriHeatIndex, "drought" | "flood">;
         const vi = valueIndexFor(cont, sensor);
         if (vi == null) return null;
         const rs = rescale ?? HEAT_RESCALE[cont];
@@ -1207,7 +1189,7 @@ export function rasterizeAgriPixels(
             ? droughtLegend()
             : index === "flood"
               ? floodLegend()
-              : continuousLegend(index as AgriContinuousIndex);
+              : continuousLegend(index as Exclude<AgriHeatIndex, "drought" | "flood">);
 
     const paintedCount = painted.cells.length;
     return {
@@ -1250,8 +1232,6 @@ function collectLonLatPainted(
     if (!pixels?.length) return null;
     const expected = sensorForIndex(index);
     if (sensor !== expected) return null;
-
-    if (index === "emergence") return null;
 
     const cells: Omit<LonLatPainted, "row" | "col">[] = [];
     let sum = 0;
@@ -1325,7 +1305,7 @@ function collectLonLatPainted(
             continue;
         }
 
-        const cont = index as AgriContinuousIndex;
+        const cont = index as Exclude<AgriHeatIndex, "drought" | "flood">;
         const keyMap: Record<typeof cont, string[]> = {
             ndvi: ["NDVI"],
             evi: ["EVI"],
@@ -1525,7 +1505,6 @@ export function rasterizeAgriLonLatPixels(
     fieldGeom?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null,
     resM = 10,
 ): AgriHeatmapImage | null {
-    if (index === "emergence") return null;
     const painted = collectLonLatPainted(pixels, index, sensor, rescale);
     if (!painted) return null;
 
@@ -1673,7 +1652,7 @@ export function rasterizeAgriLonLatPixels(
             ? droughtLegend()
             : index === "flood"
               ? floodLegend()
-              : continuousLegend(index as AgriContinuousIndex);
+              : continuousLegend(index as Exclude<AgriHeatIndex, "drought" | "flood">);
 
     const paintedCount = cellsWithRc.length;
     return {
@@ -1707,193 +1686,7 @@ export const AGRI_MODE_LABELS: Record<AgriHeatIndex, string> = {
     vh: "VH",
     drought: "干旱",
     flood: "洪涝",
-    emergence: "出苗",
 };
 
-/** Primary map-bottom modes requested next to NDVI/EVI. Emergence is a separate chip. */
+/** Primary map-bottom modes requested next to NDVI/EVI. */
 export const AGRI_PRIMARY_MODES: AgriHeatIndex[] = ["ndvi", "evi", "drought", "flood"];
-
-export interface PrecoloredLonLatSample {
-    lon: number;
-    lat: number;
-    value: number;
-    rgba: [number, number, number, number];
-    class?: string;
-}
-
-/**
- * Same WebMercator color film as `rasterizeAgriLonLatPixels`, but the caller
- * supplies colors. Used by the emergence map so pixels are not run through
- * the NDVI 0–1 ramp.
- */
-export function rasterizePrecoloredLonLat(
-    samples: PrecoloredLonLatSample[],
-    opts: {
-        index: AgriHeatIndex;
-        legend: AgriHeatmapLegend;
-        fieldGeom?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
-        resM?: number;
-    },
-): AgriHeatmapImage | null {
-    const usable = samples.filter(
-        (s) => Number.isFinite(s.lon) && Number.isFinite(s.lat) && s.rgba?.length === 4,
-    );
-    if (!usable.length) return null;
-
-    const resM = opts.resM ?? 10;
-    const fieldGeom = opts.fieldGeom ?? null;
-    const merc = usable.map((c) => {
-        const [x, y] = lonLatToWebMercator(c.lon, c.lat);
-        return { ...c, x, y };
-    });
-    const cellM = estimateMedianNnMeters(
-        merc.map((c) => ({ x: c.x, y: c.y })),
-        resM,
-    );
-
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minY = Infinity;
-    let maxY = -Infinity;
-    let sum = 0;
-    let vmin = Infinity;
-    let vmax = -Infinity;
-    for (const c of merc) {
-        minX = Math.min(minX, c.x);
-        maxX = Math.max(maxX, c.x);
-        minY = Math.min(minY, c.y);
-        maxY = Math.max(maxY, c.y);
-        if (Number.isFinite(c.value)) {
-            sum += c.value;
-            vmin = Math.min(vmin, c.value);
-            vmax = Math.max(vmax, c.value);
-        }
-    }
-    const pad = cellM * 0.5;
-    minX -= pad;
-    maxX += pad;
-    minY -= pad;
-    maxY += pad;
-
-    const width = Math.max(1, Math.ceil((maxX - minX) / resM));
-    const height = Math.max(1, Math.ceil((maxY - minY) / resM));
-    if (width * height > 2000 * 2000) return null;
-
-    const grid: AgriPixelGrid = {
-        epsg: 3857,
-        width,
-        height,
-        origin_x: minX,
-        origin_y: maxY,
-        resolution: resM,
-    };
-
-    const meanLat = usable.reduce((s, c) => s + c.lat, 0) / usable.length;
-    const metersPerDegLat = 111320;
-    const metersPerDegLon = Math.max(1e-6, 111320 * Math.cos((meanLat * Math.PI) / 180));
-    const halfDegLat = ((cellM / 2) * 1.02) / metersPerDegLat;
-    const halfDegLon = ((cellM / 2) * 1.02) / metersPerDegLon;
-
-    const cellsWithRc = merc.map((c) => {
-        const col = Math.min(width - 1, Math.max(0, Math.floor((c.x - minX) / resM)));
-        const row = Math.min(height - 1, Math.max(0, Math.floor((maxY - c.y) / resM)));
-        const color = rgbaToHex(c.rgba[0], c.rgba[1], c.rgba[2]);
-        return { ...c, row, col, color };
-    });
-
-    const features: AgriHeatmapGeoJSON["features"] = cellsWithRc.map((cell) => {
-        const props: AgriHeatmapGeoJSON["features"][number]["properties"] = {
-            color: cell.color,
-            value: cell.value,
-            row: cell.row,
-            col: cell.col,
-            rgba: cell.rgba,
-        };
-        if (cell.class) props.class = cell.class;
-        return {
-            type: "Feature",
-            properties: props,
-            geometry: lonLatCellPolygon(cell.lon, cell.lat, halfDegLon, halfDegLat),
-        };
-    });
-    const geojson: AgriHeatmapGeoJSON = { type: "FeatureCollection", features };
-    const points: AgriHeatmapPoints = {
-        type: "FeatureCollection",
-        features: cellsWithRc.map((cell) => {
-            const props: AgriHeatmapPoints["features"][number]["properties"] = {
-                color: cell.color,
-                value: cell.value,
-                rgba: cell.rgba,
-            };
-            if (cell.class) props.class = cell.class;
-            return {
-                type: "Feature",
-                properties: props,
-                geometry: { type: "Point", coordinates: [cell.lon, cell.lat] },
-            };
-        }),
-    };
-
-    const tl = webMercatorToLonLat(minX, maxY);
-    const tr = webMercatorToLonLat(minX + width * resM, maxY);
-    const br = webMercatorToLonLat(minX + width * resM, maxY - height * resM);
-    const bl = webMercatorToLonLat(minX, maxY - height * resM);
-    const coordinates: AgriHeatmapImage["coordinates"] = [tl, tr, br, bl];
-
-    let dataUrl: string | undefined;
-    try {
-        if (typeof document !== "undefined") {
-            const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d", { willReadFrequently: true });
-            if (ctx) {
-                ctx.imageSmoothingEnabled = false;
-                const s = (cellM / resM) * 1.08;
-                const paintSamples: {
-                    fx: number;
-                    fy: number;
-                    rgba: [number, number, number, number];
-                }[] = [];
-                for (const cell of cellsWithRc) {
-                    const fx = (cell.x - minX) / resM;
-                    const fy = (maxY - cell.y) / resM;
-                    const [r, g, b, a] = cell.rgba;
-                    ctx.fillStyle = `rgba(${r},${g},${b},${a / 255})`;
-                    ctx.fillRect(fx - s / 2, fy - s / 2, s, s);
-                    paintSamples.push({ fx, fy, rgba: cell.rgba });
-                }
-                fillNearestNeighborHoles(ctx, width, height, paintSamples, (cellM * 0.75) / resM);
-                const alphaCount = applyFieldMaskIfHealthy(
-                    ctx,
-                    grid,
-                    fieldGeom,
-                    width,
-                    height,
-                    cellsWithRc.length,
-                );
-                if (alphaCount > 0) dataUrl = canvas.toDataURL("image/png");
-            }
-        }
-    } catch {
-        /* canvas optional */
-    }
-
-    const paintedCount = cellsWithRc.length;
-    return {
-        dataUrl,
-        coordinates,
-        geojson,
-        points,
-        fromLonLat: true,
-        grid,
-        width,
-        height,
-        index: opts.index,
-        pixelCount: paintedCount,
-        mean: paintedCount > 0 ? sum / paintedCount : null,
-        min: Number.isFinite(vmin) ? vmin : null,
-        max: Number.isFinite(vmax) ? vmax : null,
-        legend: opts.legend,
-    };
-}

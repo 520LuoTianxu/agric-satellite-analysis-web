@@ -1,10 +1,3 @@
-import {
-    normalizeEmergenceMap,
-    normalizeEmergenceSummary,
-    type EmergenceMapLayer,
-    type EmergenceSummary,
-} from "@/lib/emergence";
-
 /**
  * agric-satellite-analysis API client.
  *
@@ -1548,32 +1541,7 @@ export const agriApi = {
             `/agri/lands/${encodeURIComponent(landId)}/ndvi-day-grade-shares${q ? `?${q}` : ""}`,
         );
     },
-    /**
-     * Emergence summary. Not derived from S2 NDVI scene fields.
-     * GET /agri/lands/{land_id}/emergence
-     */
-    emergenceSummary: async (landId: string) => {
-        const raw = await apiFetch<unknown>(
-            `/agri/lands/${encodeURIComponent(landId)}/emergence`,
-        );
-        return normalizeEmergenceSummary(raw, landId);
-    },
-    /**
-     * Per-pixel increment and rise class for one product date.
-     * GET /agri/lands/{land_id}/emergence/map?date=YYYY-MM-DD
-     */
-    emergenceMap: async (landId: string, opts: { date?: string } = {}) => {
-        const params = new URLSearchParams();
-        if (opts.date) params.set("date", opts.date);
-        const q = params.toString();
-        const raw = await apiFetch<unknown>(
-            `/agri/lands/${encodeURIComponent(landId)}/emergence/map${q ? `?${q}` : ""}`,
-        );
-        return normalizeEmergenceMap(raw, landId, opts.date);
-    },
 };
-
-export type { EmergenceMapLayer, EmergenceSummary };
 
 export interface HarvestDetectResult {
     land_id: string;
