@@ -47,6 +47,7 @@ import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TOUR_PREPARE_EVENT, type TourPrepareDetail } from "@/lib/product-tour";
 import { bindSheetGesture } from "@/lib/sheet-gesture";
+import { getXiangheLandSession } from "@/lib/auth/xianghe-land";
 import {
     formatLandAreaMu,
     isOversizedLand,
@@ -266,13 +267,16 @@ function clampPanelWidthPx(px: number): number {
 
 function FieldDetailPageContent() {
     const t = useTranslations("fieldDetail");
+    const authT = useTranslations("auth");
     const agriPanelT = useTranslations("agriPanel");
     const searchParams = useSearchParams();
     const router = useRouter();
     const farmId = searchParams.get("farmId") || "";
     const groupId = searchParams.get("groupId") || "";
     const landId = searchParams.get("fieldId") || "";
-    const initialTab = resolveFieldDetailTab(searchParams.get("tab"));
+    const fromXianghe = Boolean(getXiangheLandSession());
+    const requestedTab = resolveFieldDetailTab(searchParams.get("tab"));
+    const initialTab = fromXianghe && requestedTab === "alerts" ? FIELD_DETAIL_DEFAULT_TAB : requestedTab;
     const initialParcelSection = resolveParcelAnalysisSection(
         searchParams.get("tab"),
         searchParams.get("section"),
@@ -548,7 +552,7 @@ function FieldDetailPageContent() {
 
     // 打开地块时先按最新卫星观测补算预警，再取数量，保证页签角标和预警列表一致。
     useEffect(() => {
-        if (!landId) return;
+        if (fromXianghe || !landId) return;
         let cancelled = false;
         const refreshAlerts = async () => {
             // 补算失败时仍读取已有预警，避免短时故障让页面显示为零。
@@ -564,7 +568,7 @@ function FieldDetailPageContent() {
         };
         void refreshAlerts();
         return () => { cancelled = true; };
-    }, [landId]);
+    }, [fromXianghe, landId]);
 
     // Fetch which index types have computed layers
     const refreshAvailableTypes = useCallback(() => {
@@ -620,12 +624,15 @@ function FieldDetailPageContent() {
             setEditGroupId(f.group_id || "");
             setEditGeom(f.boundary_geojson || f.geom);
         } catch {
-            toast.error(t("fieldNotFound"));
-            router.push(backHref);
+            setLand(null);
+            if (!fromXianghe) {
+                toast.error(t("fieldNotFound"));
+                router.push(backHref);
+            }
         } finally {
             setLoading(false);
         }
-    }, [landId, backHref, router, t]);
+    }, [landId, backHref, router, t, fromXianghe]);
 
     useEffect(() => {
         loadField();
@@ -633,6 +640,11 @@ function FieldDetailPageContent() {
 
     useEffect(() => {
         if (!land || land.land_id !== landId) return;
+        // 乡合入口按目标地块核验权限，地图只加载这块地。
+        if (fromXianghe) {
+            setProjectLands([land]);
+            return;
+        }
 
         const scopeGroupId = groupId || land.group_id;
         const scopeFarmId = farmId || land.farm_id;
@@ -681,7 +693,7 @@ function FieldDetailPageContent() {
         return () => {
             cancelled = true;
         };
-    }, [land, landId, farmId, groupId]);
+    }, [land, landId, farmId, groupId, fromXianghe]);
 
     const syncFieldDetailTabUrl = useCallback((tab: string, section: ParcelAnalysisSection) => {
         const url = new URL(window.location.href);
@@ -1618,7 +1630,15 @@ function FieldDetailPageContent() {
 
     if (loading) return <FieldPageSkeleton />;
 
-    if (!land) return null;
+    if (!land) {
+        return fromXianghe ? (
+            <div className="grid h-full place-items-center px-6">
+                <p role="alert" className="max-w-sm text-center text-sm text-muted-foreground">
+                    {authT("xiangheLandUnavailable")}
+                </p>
+            </div>
+        ) : null;
+    }
 
     const landAreaMu = resolveLandAreaMu(land.land_area_mu, land.area_ha);
     const oversizedLand = isOversizedLand(landAreaMu);
@@ -1667,16 +1687,16 @@ function FieldDetailPageContent() {
             {/* Top-left: Back + Style Switcher + project land search */}
             <div className="absolute z-20 hidden flex-col items-start gap-2 md:left-4 md:top-4 md:flex">
                 <div className="flex w-full flex-col items-stretch gap-2 md:w-auto md:flex-row md:items-center">
-                    <Link
+                    {!fromXianghe && <Link
                         href={backHref as "/farms"}
                         className={cn("hidden h-10 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3 md:inline-flex", MAP_CHROME)}
                     >
                         <ArrowLeft className="h-4 w-4" />
                         {t("backToFarm")}
-                    </Link>
+                    </Link>}
                     <MapStyleSwitcher className="hidden md:block" currentStyle={mapStyle} onStyleChange={handleStyleChange} />
                     <div
-                        className="relative"
+                        className={cn("relative", fromXianghe && "hidden")}
                         onBlur={(event) => {
                             const nextFocused = event.relatedTarget as Node | null;
                             if (!nextFocused || !event.currentTarget.contains(nextFocused)) {
@@ -1763,7 +1783,7 @@ function FieldDetailPageContent() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        className={cn("h-10 gap-1.5 px-3 text-[13px]", MAP_CHROME)}
+                        className={cn("h-10 gap-1.5 px-3 text-[13px]", MAP_CHROME, fromXianghe && "hidden")}
                         onClick={toggleProjectLandsView}
                         disabled={!mapInstance || projectLandsLoading || projectLands.length < 2}
                         aria-label={t(showAllProjectLands ? "showSelectedProjectLand" : "showAllProjectLands")}
@@ -2111,7 +2131,7 @@ function FieldDetailPageContent() {
                             >
                                 {t("tabSoil")}
                             </TabsTrigger>
-                            <TabsTrigger
+                            {!fromXianghe && <TabsTrigger
                                 value="alerts"
                                 variant="underline"
                                 className={FIELD_TAB_TRIGGER}
@@ -2122,7 +2142,7 @@ function FieldDetailPageContent() {
                                         <span className="absolute -top-1 -right-2 h-2 w-2 rounded-full bg-destructive" />
                                     )}
                                 </span>
-                            </TabsTrigger>
+                            </TabsTrigger>}
                             <TabsTrigger value="biweekly" variant="underline" className={FIELD_TAB_TRIGGER}>
                                 {t("tabBiweekly")}
                             </TabsTrigger>
@@ -2136,7 +2156,7 @@ function FieldDetailPageContent() {
                             </TabsTrigger>
                             </TabsList>
                             {/* 编辑收纳到页签栏右上角，避免操作按钮挤占报告内容区域。 */}
-                            <Button
+                            {!fromXianghe && <Button
                                 type="button"
                                 variant="ghost"
                                 size="icon"
@@ -2154,7 +2174,7 @@ function FieldDetailPageContent() {
                                 }}
                             >
                                 <Edit2 className="h-3.5 w-3.5" />
-                            </Button>
+                            </Button>}
                         </div>
 
                         {oversizedLand && (
@@ -2285,9 +2305,9 @@ function FieldDetailPageContent() {
                                         />
                                     </TabsContent>
 
-                                    <TabsContent value="alerts" className="mt-0 p-3">
+                                    {!fromXianghe && <TabsContent value="alerts" className="mt-0 p-3">
                                         <AlertsTab landId={landId} onOpenCountChange={setOpenAlertCount} />
-                                    </TabsContent>
+                                    </TabsContent>}
 
                                     <TabsContent value="scouting" className="mt-0">
                                         <ScoutingTab landId={landId} mapInstance={mapInstance} activeTab={activeTab} />

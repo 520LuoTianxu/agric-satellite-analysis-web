@@ -1,7 +1,10 @@
 import { readJointLoginData } from "@/lib/auth/session";
+import { getXiangheLandSession } from "@/lib/auth/xianghe-land";
 
 /** 只读取当前登录返回的基地信息，避免租户切换失败时沿用旧 activeBaseId。 */
 export function getAlertSession() {
+    // 农业凭证入口没有联营账号资料，个人已读不能沿用同域缓存中的账号。
+    if (getXiangheLandSession()) return null;
     const login = readJointLoginData();
     const baseSystem = login?.certifiedExternalSystems?.find(
         (system) => Number(system.systemType) === 2,

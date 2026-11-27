@@ -5,6 +5,7 @@ import { getAlertSession } from "@/lib/alert-session";
 import { mutate as mutateCache } from "swr";
 import { AUTH_KEYS, getItem } from "@/lib/auth/storage";
 import { readJointLoginData } from "@/lib/auth/session";
+import { getXiangheLandSession, xiangheLandHeaders } from "@/lib/auth/xianghe-land";
 
 /**
  * agric-satellite-analysis API client.
@@ -68,6 +69,8 @@ export class ApiError extends Error {
 
 /** Same login-state Bearer used by agric-api / other authenticated pages. */
 export function getSatelliteAuthHeaders(): Record<string, string> {
+    const xianghe = getXiangheLandSession();
+    if (xianghe) return xiangheLandHeaders(xianghe);
     const token =
         getItem(AUTH_KEYS.agricAdminToken) ||
         getItem(AUTH_KEYS.farmAdminToken) ||

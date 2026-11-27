@@ -4,6 +4,7 @@
  */
 import { AuthApiError } from "@/lib/auth/types";
 import { AUTH_KEYS, getItem } from "@/lib/auth/storage";
+import { getXiangheLandSession, type XiangheLandSession, xiangheLandHeaders } from "@/lib/auth/xianghe-land";
 import { resolveGatewayUrl } from "@/lib/api-origin";
 
 const AUTH_EXPIRED_CODES = new Set<string | number>([
@@ -123,14 +124,19 @@ export interface GroupListQuery {
 }
 
 function agricHeaders(): Record<string, string> {
+    const xianghe = getXiangheLandSession();
     const villageToken = getItem(AUTH_KEYS.agricAdminToken);
     const baseId = getItem(AUTH_KEYS.activeBaseId) || "-1";
     return {
         "Content-Type": "application/json;charset=UTF-8",
         Accept: "application/json, text/plain, */*",
         "Source-Channel": "WEB",
-        "Hr-Base-Id": baseId,
-        ...(villageToken ? { Authorization: `Bearer ${villageToken.replace(/^Bearer\s+/i, "")}` } : {}),
+        ...(xianghe
+            ? xiangheLandHeaders(xianghe)
+            : {
+                "Hr-Base-Id": baseId,
+                ...(villageToken ? { Authorization: `Bearer ${villageToken.replace(/^Bearer\s+/i, "")}` } : {}),
+            }),
     };
 }
 
@@ -296,6 +302,21 @@ export async function listCropLands(params: {
     return { rows: page.rows as AgricLand[], total: page.total };
 }
 
+/** 用农业接口的数据权限核对目标地块，避免仅凭 URL 里的基地 ID 放行。 */
+export async function canOpenXiangheLand(session: XiangheLandSession): Promise<boolean> {
+    const { body } = await agricRequest<AgricLand[]>(
+        `/agriculture/land/cropLandList${toQuery({
+            landId: session.landId,
+            groupId: session.groupId,
+            pageNum: 1,
+            pageSize: 1,
+        })}`,
+        { method: "GET", headers: xiangheLandHeaders(session) },
+    );
+    const { rows } = pageFrom(body);
+    return (rows as AgricLand[]).some((land) => String(land.landId) === session.landId);
+}
+
 export async function listAllCropLands(groupId: string | number): Promise<AgricLand[]> {
     const pageSize = 200;
     const all: AgricLand[] = [];
@@ -327,7 +348,7 @@ export async function getPlantingTypeDict(): Promise<PlantingTypeDict> {
         { method: "GET" },
     );
     const rows = Array.isArray(data) ? data : [];
-    const baseId = getItem(AUTH_KEYS.activeBaseId) || "-1";
+    const baseId = getXiangheLandSession()?.baseId || getItem(AUTH_KEYS.activeBaseId) || "-1";
     const dictList = rows.filter(
         (item) => item.cssClass == null || (item.cssClass && String(item.cssClass).includes(String(baseId))),
     );

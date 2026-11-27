@@ -4,6 +4,7 @@ import React from "react";
 import { ConfirmDialogProvider } from "@/components/confirm-dialog";
 import { TopNav } from "@/components/top-nav";
 import { useTranslations } from "next-intl";
+import { getXiangheLandSession } from "@/lib/auth/xianghe-land";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
     const t = useTranslations("appShell");
@@ -16,7 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                     {t("skipToMain")}
                 </a>
-                <TopNav />
+                {!getXiangheLandSession() && <TopNav />}
                 <main id="main-content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-surface-2">
                     {children}
                 </main>
