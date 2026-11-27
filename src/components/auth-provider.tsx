@@ -1,10 +1,12 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
     bootstrapSession,
     clearOrgAccessDenied,
     isOrgAccessDenied,
+    loginFromXianghe,
     loginWithPassword,
     logout as logoutSession,
     OrgAccessDeniedError,
@@ -28,16 +30,35 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function readXiangheHandoff() {
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    if (!params.has("xiangheBms")) return null;
+
+    // 凭证只从片段读取一次，并在发请求前从浏览器地址栏移除。
+    const token = params.get("xiangheBms") ?? "";
+    const baseId = params.get("baseId") ?? "";
+    window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+    if (!window.location.pathname.replace(/\/+$/, "").endsWith("/farms/fields/detail")) return null;
+    return { token, baseId };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [hydrated, setHydrated] = useState(false);
     const [accessStatus, setAccessStatus] = useState<OrgAccessStatus>("checking");
     const [session, setSession] = useState<AuthSession | null>(null);
     const [switching, setSwitching] = useState(false);
+    const handoffRef = useRef<Promise<AuthSession> | null>(null);
 
     useEffect(() => {
         let cancelled = false;
+        // 开发模式重新执行 effect 时复用同一次换登，避免片段已移除后提早跳到登录页。
+        if (!handoffRef.current) {
+            const handoff = readXiangheHandoff();
+            if (handoff) handoffRef.current = loginFromXianghe(handoff.token, handoff.baseId);
+        }
+        const handoffLogin = handoffRef.current;
         (async () => {
-            if (isOrgAccessDenied()) {
+            if (!handoffLogin && isOrgAccessDenied()) {
                 if (!cancelled) {
                     setSession(null);
                     setAccessStatus("denied");
@@ -46,8 +67,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return;
             }
             try {
-                const next = await bootstrapSession();
+                const next = await (handoffLogin ?? bootstrapSession());
                 if (cancelled) return;
+                if (handoffLogin) clearOrgAccessDenied();
                 if (isOrgAccessDenied()) {
                     setSession(null);
                     setAccessStatus("denied");
@@ -61,7 +83,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setSession(null);
                     setAccessStatus("denied");
                 } else {
-                    console.warn("bootstrapSession failed:", error);
+                    if (handoffLogin) {
+                        toast.error("乡合免登失败，请确认账号和基地后重试");
+                    } else {
+                        console.warn("bootstrapSession failed:", error);
+                    }
                     // Fail closed: do not restore a cached session without a successful SSO org check.
                     setSession(null);
                     setAccessStatus("allowed");

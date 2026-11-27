@@ -204,7 +204,7 @@ export function ProductTourOverlay({
 
             <div
                 ref={tooltipRef}
-                className="pointer-events-auto absolute rounded-xl bg-primary p-4 text-primary-foreground shadow-[0_16px_40px_-18px_rgba(15,23,42,0.55)]"
+                className="h5-tour pointer-events-auto absolute rounded-xl bg-primary p-4 text-primary-foreground shadow-[0_16px_40px_-18px_rgba(15,23,42,0.55)]"
                 style={tooltipStyle}
             >
                 {arrowStyle ? (

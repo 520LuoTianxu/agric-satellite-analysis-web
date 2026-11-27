@@ -127,13 +127,35 @@ export async function completeJointLogin(jointLoginData: JointLoginData): Promis
     });
 }
 
+/** 复用联营换登和 SSO 组织校验，基地仅在新会话确认可用后写入。 */
+export async function loginFromXianghe(bmsToken: string, baseId: string): Promise<AuthSession> {
+    if (!bmsToken || !/^[1-9]\d{0,63}$/.test(baseId)) {
+        throw new AuthApiError("缺少乡合登录凭证或基地", "XIANGHE_LOGIN");
+    }
+    const loginData = await getJointV2InfoByBmsToken(bmsToken);
+    enforceOrgAccess(loginData);
+    const ssoData = await requireSsoLogin(loginData);
+    enforceOrgAccess(ssoData, loginData);
+    if (!loginData.villageToken) {
+        throw new AuthApiError("联营登录没有返回农业凭证", "XIANGHE_LOGIN");
+    }
+    const bases = await listBaseinfo(loginData.villageToken);
+    if (!bases.some((base) => String(base.baseId) === baseId)) {
+        throw new AuthApiError("当前账号没有该基地的访问权限", "XIANGHE_BASE");
+    }
+    return applyLoginAfter(mergeSsoIntoJointLogin(loginData, ssoData), {
+        bmsToken: ssoData.token,
+        xiangheBaseId: baseId,
+    });
+}
+
 /**
  * Mirrors joint-venture-front `LoginAfter`: write the same localStorage keys
  * so the two apps can skip login on the same origin.
  */
 export async function applyLoginAfter(
     jointLoginData: JointLoginData,
-    options: { bmsToken?: string } = {},
+    options: { bmsToken?: string; xiangheBaseId?: string } = {},
 ): Promise<AuthSession> {
     const villageToken = jointLoginData.villageToken || "";
     const agricToken = jointLoginData.agricToken || "";
@@ -144,7 +166,11 @@ export async function applyLoginAfter(
     setItem(AUTH_KEYS.sldToken, jointLoginData.access_token || "");
     setItem(AUTH_KEYS.erpToken, jointLoginData.erpToken || "");
 
-    let activeAccountRoleId = getActiveAccountRoleId();
+    // 换登使用新会话的角色，避免误用同域缓存中其他账号的角色。
+    let activeAccountRoleId = options.xiangheBaseId
+        ? jointLoginData.accountRoleList?.[0]?.accountRoleId || 0
+        : getActiveAccountRoleId();
+    if (options.xiangheBaseId) setActiveAccountRoleId(activeAccountRoleId);
     if (!activeAccountRoleId) {
         activeAccountRoleId =
             jointLoginData.accountRoleList?.find((role) => role.mainAccountFlag === 1)
@@ -152,7 +178,14 @@ export async function applyLoginAfter(
         setActiveAccountRoleId(activeAccountRoleId);
     }
 
-    setJson(AUTH_KEYS.jointLoginData, jointLoginData);
+    if (!options.xiangheBaseId && readJointLoginData()?.xiangheBaseId) {
+        removeItem(AUTH_KEYS.activeBaseId);
+    }
+    setJson(AUTH_KEYS.jointLoginData, {
+        ...jointLoginData,
+        xiangheBaseId: options.xiangheBaseId,
+    });
+    if (options.xiangheBaseId) setItem(AUTH_KEYS.activeBaseId, options.xiangheBaseId);
     if (jointLoginData.bmsRefreshToken) {
         setItem(AUTH_KEYS.bmsRefreshToken, jointLoginData.bmsRefreshToken);
     }
@@ -169,7 +202,7 @@ export async function applyLoginAfter(
     }
 
     try {
-        await initBaseInfo();
+        if (!options.xiangheBaseId) await initBaseInfo();
     } catch (error) {
         console.error("InitBaseInfo failed:", error);
     }
@@ -288,6 +321,10 @@ async function getMachineMenus(): Promise<void> {
 
 export async function initBaseInfo(): Promise<void> {
     const jointLoginData = readJointLoginData();
+    if (jointLoginData?.xiangheBaseId) {
+        setItem(AUTH_KEYS.activeBaseId, jointLoginData.xiangheBaseId);
+        return;
+    }
     const activeBaseId = Number(
         jointLoginData?.certifiedExternalSystems?.find((system) => system.systemType === 2)
             ?.systemId,

@@ -5,18 +5,14 @@ import dynamic from "next/dynamic";
 import { ChevronDown, FileText, Sprout, Wheat } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AgriHeatmapImage } from "@/lib/agri-heatmap";
 import type { ParcelAnalysisSection } from "@/lib/field-detail-tabs";
 
 const LandReportTab = dynamic(() => import("./land-report-tab"), {
     ssr: false,
-    loading: () => (
-        <div className="space-y-3 px-3 pb-3">
-            <Skeleton className="h-8 w-40" />
-            <Skeleton className="h-24 w-full" />
-        </div>
-    ),
+    loading: () => <FieldTabSkeleton variant="report" className="px-3 pb-3" />,
 });
 
 const SeasonGrowthReportTab = dynamic(() => import("./season-growth-report-tab"), {
@@ -96,7 +92,7 @@ function AnalysisSection({
     const panelId = `parcel-analysis-${id}-panel`;
 
     return (
-        <section className="overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm">
+        <section className="overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm max-md:border-0 max-md:bg-muted/50 max-md:shadow-none">
             <button
                 type="button"
                 id={headerId}
@@ -104,7 +100,7 @@ function AnalysisSection({
                 aria-controls={panelId}
                 data-section={id}
                 onClick={onToggle}
-                className="flex w-full min-w-0 items-start gap-2 px-3 py-2.5 text-left hover:bg-muted/40"
+                className="flex w-full min-w-0 items-start gap-2 px-3 py-2.5 text-left max-md:min-h-12 max-md:items-center hover:bg-muted/40"
             >
                 <span className="mt-0.5 text-muted-foreground" aria-hidden="true">
                     {icon}
@@ -112,13 +108,13 @@ function AnalysisSection({
                 <span className="min-w-0 flex-1">
                     <span className="flex items-start justify-between gap-2">
                         <span className="text-sm font-semibold leading-5">{title}</span>
-                        {summary ? (
-                            <span className="max-w-[46%] shrink-0 truncate text-[11px] font-medium text-muted-foreground">
+                        {!open && summary ? (
+                            <span className="max-w-[56%] text-end text-xs font-medium text-muted-foreground">
                                 {summary}
                             </span>
                         ) : null}
                     </span>
-                    <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+                    <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground max-md:hidden">
                         {description}
                     </span>
                 </span>
@@ -197,7 +193,7 @@ export default function ParcelAnalysisTab({
 
     return (
         <div className="space-y-3 p-3">
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-[11px] leading-relaxed text-muted-foreground max-md:hidden">
                 {t("parcelAnalysisIntro")}
             </p>
             <AnalysisSection

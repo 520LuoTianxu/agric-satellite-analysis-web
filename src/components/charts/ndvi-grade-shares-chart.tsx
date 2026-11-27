@@ -2,32 +2,27 @@
 
 import React, { useMemo } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { formatObservationDay } from "./index-readout";
+import { formatObservationDate } from "./index-readout";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import * as echarts from "echarts/core";
-import { PieChart, BarChart, LineChart } from "echarts/charts";
+import { BarChart, LineChart } from "echarts/charts";
 import {
     GridComponent,
     TooltipComponent,
     LegendComponent,
-    TitleComponent,
     DataZoomComponent,
-    GraphicComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
-import { axisLabel, baseTooltip, legendStyle, ROUNDED_LINE, secondaryValueAxis, valueAxis } from "./chart-base";
-import { ChartScrubCursor, ChartScrubReadout, useChartScrub } from "./chart-scrub-view";
+import { axisLabel, legendStyle, ROUNDED_LINE, secondaryValueAxis, valueAxis } from "./chart-base";
+import { ChartScrubCursor, useChartScrub } from "./chart-scrub-view";
 
 echarts.use([
-    PieChart,
     BarChart,
     LineChart,
     GridComponent,
     TooltipComponent,
     LegendComponent,
-    TitleComponent,
     DataZoomComponent,
-    GraphicComponent,
     CanvasRenderer,
 ]);
 
@@ -84,152 +79,35 @@ export function computePixelNdviGradeShares(
     return { counts, pct, n, mean: sum / n };
 }
 
-type ChartVariant = "donut" | "stacked";
-
 interface NdviGradeSharesChartProps {
-    /** Render only one chart — parent supplies card chrome (no inner borders). */
-    variant: ChartVariant;
-    /** Selected-day shares for the donut */
-    selectedShare?: DayGradeShare | null;
-    /** History map date → shares (fills as heatmaps/prefetch load) */
-    historyByDate?: Record<string, DayGradeShare>;
-    /** Optional mean NDVI override per date (scene ndvi_avg) when share.mean missing */
+    selectedShare: DayGradeShare | null;
+    historyByDate: Record<string, DayGradeShare>;
     meanByDate?: Record<string, number | null | undefined>;
-    /** Field area in 亩 for donut center */
-    areaMu?: number | null;
-    selectedDate?: string | null;
-    height?: number;
+    selectedDate: string | null;
+    onDateSelect: (date: string) => void;
 }
 
 export default function NdviGradeSharesChart({
-    variant,
-    selectedShare = null,
-    historyByDate = {},
+    selectedShare,
+    historyByDate,
     meanByDate,
-    areaMu = null,
     selectedDate,
-    height,
+    onDateSelect,
 }: NdviGradeSharesChartProps) {
     const t = useTranslations("agriPanel");
     const locale = useLocale();
-    const selectedDateLabel = selectedDate ? formatObservationDay(selectedDate, locale) : t("gradeToday");
     const gradeLabels = useMemo<Record<NdviDayGrade, string>>(() => ({
         红: t("gradeRed"),
         橙: t("gradeOrange"),
         黄: t("gradeYellow"),
         绿: t("gradeGreen"),
     }), [t]);
-    const gradeByLabel = useMemo<Record<string, NdviDayGrade>>(() => ({
-        [gradeLabels.红]: "红",
-        [gradeLabels.橙]: "橙",
-        [gradeLabels.黄]: "黄",
-        [gradeLabels.绿]: "绿",
-    }), [gradeLabels]);
     const meanLabel = t("meanNdvi");
     const historyDates = useMemo(
         () => Object.keys(historyByDate).sort((a, b) => a.localeCompare(b)),
         [historyByDate],
     );
-    const scrub = useChartScrub(() => historyDates);
-    const showStacked = historyDates.length >= 2;
-
-    const donutOption = useMemo(() => {
-        const share = selectedShare;
-        // Drop 0% slices from the ring so tiny/empty wedges do not clutter; legend stays full.
-        const data = NDVI_DAY_GRADE_ORDER.map((g) => ({
-            name: gradeLabels[g],
-            value: share ? share.pct[g] : 0,
-            itemStyle: { color: NDVI_DAY_GRADE_COLORS[g] },
-        })).filter((d) => d.value > 0);
-        const centerTop =
-            areaMu != null && Number.isFinite(areaMu)
-                ? t("areaValue", { value: areaMu.toFixed(areaMu >= 100 ? 0 : 1) })
-                : "—";
-        // Pie sits left of vertical legend; hole center aligned for graphic label.
-        const pieCenter: [string, string] = ["34%", "52%"];
-        return {
-            animation: false,
-            tooltip: {
-                ...baseTooltip(),
-                trigger: "item" as const,
-                formatter: (p: { name?: string; value?: number; percent?: number }) => {
-                    const grade = gradeByLabel[p.name ?? ""];
-                    const count = grade ? share?.counts[grade] ?? 0 : 0;
-                    return `${p.name ?? ""} ${p.value ?? 0}%（${t("pixelCount", { count })}）`;
-                },
-            },
-            legend: {
-                orient: "vertical" as const,
-                right: 8,
-                top: "middle",
-                itemGap: 10,
-                ...legendStyle({ itemWidth: 10, itemHeight: 10 }),
-                formatter: (name: string) => {
-                    const g = gradeByLabel[name];
-                    if (!g) return name;
-                    const pct = share?.pct[g];
-                    return pct != null ? `${name}  ${pct}%` : name;
-                },
-                data: NDVI_DAY_GRADE_ORDER.map((grade) => gradeLabels[grade]),
-            },
-            // Date is rendered outside ECharts (HTML header); center area via graphic.
-            graphic: [
-                {
-                    type: "group",
-                    left: pieCenter[0],
-                    top: pieCenter[1],
-                    bounding: "raw",
-                    z: 100,
-                    children: [
-                        {
-                            type: "text",
-                            style: {
-                                text: centerTop,
-                                fill: "#111827",
-                                fontSize: 15,
-                                fontWeight: 700,
-                                align: "center",
-                                verticalAlign: "bottom",
-                            },
-                            y: -2,
-                        },
-                        {
-                            type: "text",
-                            style: {
-                                text: t("totalArea"),
-                                fill: "#6b7280",
-                                fontSize: 10,
-                                align: "center",
-                                verticalAlign: "top",
-                            },
-                            y: 4,
-                        },
-                    ],
-                },
-            ],
-            series: [
-                {
-                    name: t("gradeShareSeries"),
-                    type: "pie",
-                    radius: ["48%", "72%"],
-                    center: pieCenter,
-                    avoidLabelOverlap: true,
-                    label: { show: false },
-                    labelLine: { show: false },
-                    data: data.length
-                        ? data
-                        : [
-                              {
-                                  name: "无",
-                                  value: 1,
-                                  itemStyle: { color: "#e5e7eb" },
-                                  tooltip: { show: false },
-                              },
-                          ],
-                },
-            ],
-        };
-    }, [selectedShare, areaMu, gradeLabels, gradeByLabel, t]);
+    const scrub = useChartScrub(() => historyDates, onDateSelect);
 
     const stackedOption = useMemo(() => {
         const dates = historyDates;
@@ -347,84 +225,58 @@ export default function NdviGradeSharesChart({
         };
     }, [historyDates, historyByDate, meanByDate, gradeLabels, meanLabel]);
 
-    if (variant === "donut") {
-        const h = height ?? 200;
-        const headerH = 22;
-        if (!selectedShare) {
-            return (
-                <div
-                    className="flex flex-col"
-                    style={{ height: h }}
-                >
-                    <div className="shrink-0 px-1 text-xs font-medium text-foreground tabular-nums leading-5">
-                        {selectedDateLabel}
-                    </div>
-                    <div className="flex flex-1 items-center justify-center text-[11px] text-muted-foreground px-1">
-                        {t("gradeNoPixelsToday")}
-                    </div>
-                </div>
-            );
-        }
-        return (
-            <div className="flex w-full flex-col" style={{ height: h }}>
-                <div className="shrink-0 px-1 text-xs font-medium text-foreground tabular-nums leading-5">
-                    {selectedDateLabel}
-                </div>
-                <ReactEChartsCore
-                    echarts={echarts}
-                    option={donutOption}
-                    style={{ height: Math.max(h - headerH, 160), width: "100%" }}
-                    notMerge
-                    lazyUpdate
-                />
-            </div>
-        );
-    }
-
-    // stacked
-    const stackedHeight = Math.max(height ?? 250, 250);
-    if (!showStacked) {
-        return (
-            <div
-                className="flex items-center justify-center text-[11px] text-muted-foreground px-1 text-center"
-                style={{ height: Math.min(stackedHeight, 120) }}
-            >
-                {t("gradeTrendNeedMore", { count: historyDates.length })}
-            </div>
-        );
-    }
-    const share = scrub.activeDate ? historyByDate[scrub.activeDate] : undefined;
-    const scrubLines = share
-        ? [
-            ...NDVI_DAY_GRADE_ORDER.map((grade) => `${gradeLabels[grade]} ${share.pct[grade] ?? 0}%`),
-            share.mean != null ? `${meanLabel} ${share.mean.toFixed(3)}` : "",
-            t("pixelSampleCount", { count: share.n }),
-        ].filter(Boolean)
-        : [];
+    // 拖动时显示指针所在日期，松手后与上方曲线及地图共用同一个选中日期。
+    const date = scrub.activeDate ?? selectedDate ?? historyDates[historyDates.length - 1];
+    const share = scrub.activeDate
+        ? historyByDate[scrub.activeDate]
+        : selectedDate ? selectedShare : historyByDate[date];
+    const mean = share?.mean ?? meanByDate?.[date];
 
     return (
-        <div className="w-full">
-            <ChartScrubReadout
-                active={scrub.scrubbing}
-                hint={t("scrubHint")}
-                title={scrub.activeDate}
-                lines={scrubLines}
-            />
-            <div
-                className="relative select-none"
-                style={{ WebkitTouchCallout: "none" }}
-                onContextMenu={(event) => event.preventDefault()}
-            >
-                <ChartScrubCursor x={scrub.cursorX} />
-                <ReactEChartsCore
-                    echarts={echarts}
-                    option={stackedOption}
-                    style={{ height: stackedHeight, width: "100%", touchAction: "pan-y" }}
-                    onChartReady={scrub.onChartReady}
-                    notMerge
-                    lazyUpdate
-                />
-            </div>
+        <div className="min-w-0 space-y-2">
+            {date && (
+                <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-xs">
+                    <time dateTime={date} className="font-medium">{formatObservationDate(date, locale)}</time>
+                    {share && mean != null && Number.isFinite(mean) && (
+                        <span className="tabular-nums text-muted-foreground">{meanLabel} <strong className="font-semibold text-foreground">{mean.toFixed(2)}</strong></span>
+                    )}
+                </div>
+            )}
+            {share ? (
+                <dl className="grid grid-cols-4 gap-x-1 rounded-lg bg-background/70 px-1 py-2 text-center">
+                    {NDVI_DAY_GRADE_ORDER.map((grade) => (
+                        <div key={grade} className="min-w-0">
+                            <dt className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                                <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: NDVI_DAY_GRADE_COLORS[grade] }} />
+                                {gradeLabels[grade]}
+                            </dt>
+                            <dd className="mt-0.5 text-sm font-semibold tabular-nums">{share.pct[grade]}%</dd>
+                        </div>
+                    ))}
+                </dl>
+            ) : (
+                <p className="px-1 py-2 text-sm text-muted-foreground">{t("gradeNoPixelsToday")}</p>
+            )}
+            {historyDates.length >= 2 && (
+                <div>
+                    <p className="text-[11px] text-muted-foreground">{t("scrubHint")}</p>
+                    <div
+                        className="relative select-none"
+                        style={{ WebkitTouchCallout: "none" }}
+                        onContextMenu={(event) => event.preventDefault()}
+                    >
+                        <ChartScrubCursor x={scrub.cursorX} />
+                        <ReactEChartsCore
+                            echarts={echarts}
+                            option={stackedOption}
+                            style={{ height: 250, width: "100%", touchAction: "pan-y" }}
+                            onChartReady={scrub.onChartReady}
+                            notMerge
+                            lazyUpdate
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

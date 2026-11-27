@@ -32,7 +32,7 @@ function classCounts(layer: EmergenceMapLayer): { key: string; color: string; co
     return [0, 1, 2].map((cls) => ({
         key: String(cls),
         color: EMERGENCE_CLASS_STYLE[cls]!.color,
-        count: tallies.get(String(cls)),
+        count: tallies.get(String(cls)) ?? 0,
     }));
 }
 
@@ -75,7 +75,8 @@ export function rasterizeEmergenceLayer(
     const [min, max] = EMERGENCE_INCREMENT_RANGE;
     const legend: AgriHeatmapLegend = {
         kind: "emergence",
-        label: view === "class" ? "持续抬升分组" : "相对本底增量",
+        date: layer.date,
+        label: view === "class" ? "出苗信号分布" : "绿度变化",
         view,
         min,
         max,

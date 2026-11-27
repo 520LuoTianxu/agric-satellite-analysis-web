@@ -203,15 +203,14 @@ export interface BaseInfoRow {
     [key: string]: unknown;
 }
 
-export async function listBaseinfo(): Promise<BaseInfoRow[]> {
-    const villageToken = getItem(AUTH_KEYS.agricAdminToken);
+export async function listBaseinfo(villageToken = getItem(AUTH_KEYS.agricAdminToken)): Promise<BaseInfoRow[]> {
     const body = await request<{ rows?: BaseInfoRow[] } | BaseInfoRow[]>(
         "/agric-api/agriculture/baseinfo/list",
         {
             method: "GET",
             headers: {
                 ...(villageToken
-                    ? { Authorization: `Bearer ${villageToken}` }
+                    ? { Authorization: `Bearer ${villageToken.replace(/^Bearer\s+/i, "")}` }
                     : {}),
                 "Hr-Base-Id": "-1",
             },

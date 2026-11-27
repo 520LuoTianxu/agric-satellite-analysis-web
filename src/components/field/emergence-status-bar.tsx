@@ -1,15 +1,9 @@
 "use client";
 
-import React from "react";
 import { useTranslations } from "next-intl";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import {
-    EMERGENCE_STATUSES,
-    baselineWindowLabel,
-    type EmergenceMapView,
-    type EmergenceStatus,
-    type EmergenceSummary,
-} from "@/lib/emergence";
+import { baselineWindowLabel, type EmergenceMapView, type EmergenceSummary } from "@/lib/emergence";
 
 interface EmergenceStatusBarProps {
     summary: EmergenceSummary | null;
@@ -20,79 +14,58 @@ interface EmergenceStatusBarProps {
 }
 
 export default function EmergenceStatusBar({
-    summary,
-    loading = false,
-    error = null,
-    view,
-    onViewChange,
+    summary, loading, error, view, onViewChange,
 }: EmergenceStatusBarProps) {
     const t = useTranslations("emergence");
-    const status: EmergenceStatus | null = summary?.status ?? null;
-    const empty =
-        !loading &&
-        !error &&
-        status == null &&
-        (summary?.timeseries.length ?? 0) === 0;
+    const status = summary?.status;
     const baseline = baselineWindowLabel(summary?.baseline.dates);
-    const asOf = summary?.as_of_date;
 
     return (
-        <div className="space-y-2 rounded-xl border border-border bg-card p-2.5">
-            <div
-                role="status"
-                aria-label={t("statusBarLabel")}
-                className="grid grid-cols-4 gap-1 rounded-lg bg-muted/50 p-1"
-            >
-                {EMERGENCE_STATUSES.map((key) => {
-                    const active = !loading && !empty && status === key;
-                    return (
-                        <span
-                            key={key}
-                            aria-current={active ? "true" : undefined}
-                            className={cn(
-                                "rounded-md px-1 py-1 text-center text-[11px] leading-tight",
-                                active
-                                    ? "bg-primary font-semibold text-primary-foreground"
-                                    : "text-muted-foreground",
-                            )}
-                        >
-                            {t(`status_${key}`)}
-                        </span>
-                    );
-                })}
+        <section className="space-y-2 px-1 pt-1">
+            <div role="status" aria-busy={loading || undefined} className="space-y-1">
+                <p className="text-xs text-muted-foreground">{t("seasonAssessment")}</p>
+                {error ? <p className="text-sm text-destructive">{error}</p>
+                    : loading ? (
+                        <>
+                            <span className="sr-only">{t("loading")}</span>
+                            <div aria-hidden="true" className="space-y-2 py-1 motion-reduce:[&_.animate-pulse]:animate-none">
+                                <Skeleton className="h-7 w-24" />
+                                <Skeleton className="h-3 w-4/5" />
+                            </div>
+                        </>
+                    )
+                    : status ? (
+                        <>
+                            <div className="flex flex-wrap items-baseline gap-x-3">
+                                <h3 className="text-2xl font-semibold tracking-tight">{t(`status_${status}`)}</h3>
+                                {status === "emerged" && summary.first_emerged_date && (
+                                    <span className="text-xs text-muted-foreground">{t("confirmedOn", { date: summary.first_emerged_date })}</span>
+                                )}
+                            </div>
+                            <p className="text-sm leading-relaxed">{t(`meaning_${status}`)}</p>
+                        </>
+                    ) : <p className="text-sm">{t(summary?.pending ? "pending" : "emptyResult")}</p>}
             </div>
-            <p className={cn("text-[11px] leading-relaxed", error ? "text-destructive" : "text-muted-foreground")}>
-                {loading
-                    ? t("loading")
-                    : error
-                      ? error
-                      : empty
-                          ? t("emptyResult")
-                          : t("statusMeta", {
-                                baseline: baseline ?? t("baselineMissing"),
-                                asOf: asOf ?? t("sceneMissing"),
-                                frozen: summary?.frozen ? t("frozen") : "",
-                            })}
-            </p>
+            {status && !error && !loading && (
+                <details className="text-xs leading-relaxed text-muted-foreground">
+                    <summary className="w-fit cursor-pointer font-medium text-foreground">{t("howJudged")}</summary>
+                    <p className="mt-1">{t("fieldRule")}</p>
+                    {baseline && <p>{t("baselineDates", { dates: baseline })}</p>}
+                    {summary.frozen && <p>{t("frozenMeaning")}</p>}
+                </details>
+            )}
             {view && onViewChange && (
-                <div className="flex gap-1">
-                    {(["increment", "class"] as EmergenceMapView[]).map((key) => (
-                        <button
-                            key={key}
-                            type="button"
-                            onClick={() => onViewChange(key)}
-                            className={cn(
-                                "h-7 flex-1 rounded-md border text-[11px] font-medium",
-                                view === key
-                                    ? "border-primary bg-primary text-primary-foreground"
-                                    : "border-border bg-background text-muted-foreground",
-                            )}
-                        >
-                            {t(key === "increment" ? "viewIncrement" : "viewClass")}
+                <div role="group" aria-label={t("mapMode")} className="flex flex-wrap items-center gap-1 pt-1">
+                    <span className="mr-1.5 text-xs text-muted-foreground">{t("mapMode")}</span>
+                    {(["class", "increment"] as const).map((key) => (
+                        <button key={key} type="button" aria-pressed={view === key} onClick={() => onViewChange(key)}
+                            className={cn("rounded-full px-3 py-1.5 text-xs font-medium", view === key
+                                ? "bg-foreground text-background" : "bg-muted text-muted-foreground")}>
+                            {t(key === "class" ? "viewClass" : "viewIncrement")}
                         </button>
                     ))}
                 </div>
             )}
-        </div>
+        </section>
     );
 }

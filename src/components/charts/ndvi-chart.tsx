@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import * as echarts from "echarts/core";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { LineChart, BarChart, ScatterChart } from "echarts/charts";
 import {
     GridComponent,
@@ -102,6 +103,8 @@ interface NdviChartProps {
     headerExtra?: React.ReactNode;
     /** 主指标的短名称，例如 NDVI。不放在切换按钮上。 */
     heroLabel?: string;
+    /** 地块详情按自然年显示，切换时同步选中日期。 */
+    browseByYear?: boolean;
 }
 
 export default function NdviChart({
@@ -122,6 +125,7 @@ export default function NdviChart({
     onOnlyRealisticChange,
     headerExtra,
     heroLabel,
+    browseByYear = false,
 }: NdviChartProps) {
     const t = useTranslations("ndviChart");
     const locale = useLocale();
@@ -136,23 +140,42 @@ export default function NdviChart({
         if (onlyRealisticProp === undefined) setOnlyRealisticInternal(value);
         onOnlyRealisticChange?.(value);
     };
-    const displayStats = useMemo(
+    const validStats = useMemo(
         () => (onlyRealistic ? filterRealisticNdviStats(stats, { seasonMonths, peakMonths }) : stats),
         [onlyRealistic, stats, seasonMonths, peakMonths],
     );
-    const axisDates = useMemo(
+    const allAxisDates = useMemo(
         () => uniqueSortedDates([
-            ...displayStats.map((point) => point.date),
+            ...validStats.map((point) => point.date),
             ...(showObservations ? (decloudAltStats ?? []).map((point) => point.date) : []),
         ]),
-        [displayStats, decloudAltStats, showObservations],
+        [validStats, decloudAltStats, showObservations],
     );
-    const onDateSelectRef = useRef(onDateSelect);
-    onDateSelectRef.current = onDateSelect;
-    const scrub = useChartScrub(
-        () => axisDates,
-        (date) => onDateSelectRef.current?.(date),
+    const years = useMemo(() => {
+        if (!browseByYear) return [];
+        return [...new Set([...stats.map((point) => point.date), ...allAxisDates].map((date) => date.slice(0, 4)))].sort();
+    }, [browseByYear, stats, allAxisDates]);
+    const selectedYear = selectedDate?.slice(0, 4);
+    const year = selectedYear && years.includes(selectedYear) ? selectedYear : years[years.length - 1];
+    const yearIndex = year == null ? -1 : years.indexOf(year);
+    const axisDates = useMemo(
+        () => year ? allAxisDates.filter((date) => date.startsWith(year)) : allAxisDates,
+        [allAxisDates, year],
     );
+    const displayStats = useMemo(
+        () => year ? validStats.filter((point) => point.date.startsWith(year)) : validStats,
+        [validStats, year],
+    );
+    const shiftYear = (direction: -1 | 1) => {
+        const targetYear = years[yearIndex + direction];
+        if (!targetYear) return;
+        // 优先选中新一年的最后一个有效观测。有观测但被筛掉的年份仍可打开。
+        const date = allAxisDates.filter((day) => day.startsWith(targetYear)).at(-1)
+            ?? stats.reduce<string | undefined>((latest, point) =>
+                point.date.startsWith(targetYear) && (!latest || point.date > latest) ? point.date : latest, undefined);
+        if (date) onDateSelect?.(date);
+    };
+    const scrub = useChartScrub(() => axisDates, onDateSelect, browseByYear ? shiftYear : undefined);
     useEffect(() => {
         const row = readoutRowRef.current;
         if (!row) return;
@@ -165,19 +188,6 @@ export default function NdviChart({
     const config = INDEX_CONFIG[indexType];
     const seriesName = config.label;
     const isSar = indexType === "VV" || indexType === "VH";
-    const dataVals = displayStats
-        .map((s) => s.mean)
-        .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-    let yMin = config.rescaleMin;
-    let yMax = config.rescaleMax + 0.1;
-    if (isSar && dataVals.length > 0) {
-        const dMin = Math.min(...dataVals);
-        const dMax = Math.max(...dataVals);
-        const pad = Math.max(1, (dMax - dMin) * 0.15 || 2);
-        yMin = Math.min(config.rescaleMin, dMin - pad);
-        yMax = Math.max(config.rescaleMax, dMax + pad);
-    }
-
 
     // Weather data sorted by date for overlay
     const weatherSorted = useMemo(() => {
@@ -234,7 +244,7 @@ export default function NdviChart({
             };
         });
         const altName = t("decloudAltSeries");
-        const altData = (decloudAltStats ?? []).map((s) => {
+        const altData = (decloudAltStats ?? []).filter((point) => !year || point.date.startsWith(year)).map((s) => {
             const unreliable = s.may_be_unreliable || !isGoodDecloudQuality(s.decloud_quality);
             return {
                 value: [s.date, s.mean ?? null] as [string, number | null],
@@ -332,7 +342,7 @@ export default function NdviChart({
         const valueByDate = new Map(displayStats.map((s) => [s.date, s.mean]));
         // 默认仅突出选中日期；风险标记按日期去重并按需显示，避免大量图钉遮住趋势。
         const visibleMarks = showEvents
-            ? [...new Map((eventMarks ?? []).filter((m) => m.date !== selectedDate).map((m) => [m.date, m])).values()]
+            ? [...new Map((eventMarks ?? []).filter((m) => m.date !== selectedDate && axisDateSet.has(m.date)).map((m) => [m.date, m])).values()]
             : [];
         const selectedValue = selectedDate ? valueByDate.get(selectedDate) : null;
         const markPointOption = {
@@ -365,8 +375,23 @@ export default function NdviChart({
             ...(hasAlt ? [altName] : []),
             ...(hasWeather ? ["Precip (mm)", "ET₀ (mm)"] : []),
         ];
+        // 色标范围只作默认刻度；纵轴按当前已绘制的主曲线、分位带和去云点留出边距。
+        const axisMargin = ({ min, max }: { min: number; max: number }) =>
+            isSar && Number.isFinite(min) && Number.isFinite(max) ? Math.max(1, (max - min) * 0.15) : 0.05;
+        const scale = isSar ? 1 : 10;
+        const defaultMax = config.rescaleMax + (isSar ? 0 : 0.1);
+        const readingAxis = valueAxis({
+            min: (extent: { min: number; max: number }) => Number.isFinite(extent.min)
+                ? Math.min(config.rescaleMin, Math.floor((extent.min - axisMargin(extent)) * scale) / scale)
+                : config.rescaleMin,
+            max: (extent: { min: number; max: number }) => Number.isFinite(extent.max)
+                ? Math.max(defaultMax, Math.ceil((extent.max + axisMargin(extent)) * scale) / scale)
+                : defaultMax,
+        });
+        const monthFormat = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
         return {
-            grid: { top: showLegend ? 28 : 8, right: hasWeather ? 46 : 8, bottom: 4, left: 40 },
+            ...(browseByYear ? { animation: false } : {}),
+            grid: { top: showLegend ? 28 : 8, right: hasWeather ? 46 : 8, bottom: browseByYear ? 24 : 4, left: 40 },
             legend: showLegend
                 ? {
                     data: legendData,
@@ -385,14 +410,18 @@ export default function NdviChart({
                 boundaryGap: true,
                 axisLine: { show: false },
                 axisTick: { show: false },
-                axisLabel: { show: false },
+                axisLabel: browseByYear ? axisLabel({
+                    hideOverlap: true,
+                    interval: (index: number, date: string) => axisDates[index - 1]?.slice(0, 7) !== date.slice(0, 7),
+                    formatter: (date: string) => monthFormat.format(new Date(`${date}T00:00:00Z`)),
+                }) : { show: false },
             },
             yAxis: hasWeather
                 ? [
-                    valueAxis({ min: yMin, max: yMax }),
+                    readingAxis,
                     secondaryValueAxis({ name: "mm", nameTextStyle: axisLabel() }),
                 ]
-                : valueAxis({ min: yMin, max: yMax }),
+                : readingAxis,
             series: [
                 // p10 band (invisible base)
                 {
@@ -412,6 +441,8 @@ export default function NdviChart({
                     type: "line",
                     data: bandHighData,
                     stack: "band",
+                    // p10 可以为负，仍需与高低分位差相加，才能得到实际 p90。
+                    stackStrategy: "all",
                     ...ROUNDED_LINE,
                     lineStyle: { opacity: 0 },
                     symbol: "none",
@@ -479,15 +510,14 @@ export default function NdviChart({
                     : []),
             ],
         };
-    }, [axisDates, displayStats, decloudAltStats, selectedDate, config, seriesName, weatherSorted, indexType, yMin, yMax, isSar, seasonMonths, peakMonths, stageBands, bareThreshold, eventMarks, showObservations, showEvents, t]);
+    }, [axisDates, displayStats, decloudAltStats, selectedDate, config, seriesName, weatherSorted, indexType, isSar, seasonMonths, peakMonths, stageBands, bareThreshold, eventMarks, showObservations, showEvents, t, year, browseByYear, locale]);
 
     if (stats.length === 0) {
         return (
             <div className="w-full space-y-2">
                 {headerExtra ? <div className="flex justify-end">{headerExtra}</div> : null}
                 <div
-                    className="flex items-center justify-center text-xs text-muted-foreground"
-                    style={{ height }}
+                    className="py-4 text-center text-sm text-muted-foreground"
                 >
                     {t("empty", { index: config.label })}
                 </div>
@@ -512,6 +542,15 @@ export default function NdviChart({
     const focusCloudText = typeof focusPoint?.cloud_cover === "number" && Number.isFinite(focusPoint.cloud_cover)
         ? t("cloud", { percent: Math.round(focusPoint.cloud_cover) })
         : t("cloudNA");
+    // 仅比较同一条主序列的有效观测，避免混用去云与原始观测。
+    const previousPoint = !scrub.scrubbing && focusPoint && validStats.includes(focusPoint)
+        ? validStats.reduce<typeof focusPoint | undefined>((previous, point) =>
+            point.date < focusPoint.date && Number.isFinite(point.mean) && (!previous || point.date > previous.date)
+                ? point : previous, undefined)
+        : undefined;
+    const change = focusMean != null && previousPoint?.mean != null
+        ? Number(formatIndexValue(focusMean - previousPoint.mean, isSar))
+        : null;
     const focusDateLabel = focusDate ? formatObservationDate(focusDate, locale) : t("scrubHint");
 
     return (
@@ -519,10 +558,25 @@ export default function NdviChart({
             <div className="relative">
                 <div>
                     <div className="flex flex-col gap-2">
-                        <div className={cn(scrub.scrubbing && "invisible")} aria-hidden={scrub.scrubbing || undefined}>
+                        {year && years.length > 1 && (
+                            <div className="mx-auto flex items-center gap-2" role="group" aria-label={t("yearBrowse")}>
+                                <button type="button" aria-label={t("previousYear")} disabled={yearIndex <= 0}
+                                    className="grid size-8 place-items-center rounded-full bg-background text-foreground hover:bg-muted disabled:opacity-35"
+                                    onClick={() => shiftYear(-1)}>
+                                    <ChevronLeft size={16} aria-hidden="true" />
+                                </button>
+                                <span className="min-w-12 text-center text-sm font-semibold tabular-nums">{year}</span>
+                                <button type="button" aria-label={t("nextYear")} disabled={yearIndex >= years.length - 1}
+                                    className="grid size-8 place-items-center rounded-full bg-background text-foreground hover:bg-muted disabled:opacity-35"
+                                    onClick={() => shiftYear(1)}>
+                                    <ChevronRight size={16} aria-hidden="true" />
+                                </button>
+                            </div>
+                        )}
+                        <div className={cn(browseByYear && "min-h-12")}>
                             <ObservationDateRail
                                 dates={axisDates}
-                                activeDate={focusDate}
+                                activeDate={selectedDate ?? null}
                                 label={t("observationDates")}
                                 onSelect={onDateSelect}
                             />
@@ -551,6 +605,12 @@ export default function NdviChart({
                                     <HeroValue text={focusText} suffix={heroLabel} />
                                     <p className="mt-0.5 text-xs leading-none text-muted-foreground">
                                         {focusCloudText}
+                                        {change != null && previousPoint && (
+                                            <span className="ml-2">{t("changeSince", {
+                                                date: previousPoint.date.slice(5).replace("-", "/"),
+                                                change: (change > 0 ? "+" : "") + formatIndexValue(change, isSar),
+                                            })}</span>
+                                        )}
                                     </p>
                                 </div>
                                 {headerExtra ? <div className="ml-auto self-center">{headerExtra}</div> : null}
@@ -562,18 +622,22 @@ export default function NdviChart({
             <div
                 className="relative select-none"
                 style={{ WebkitTouchCallout: "none" }}
-                aria-label={t("scrubHint")}
+                aria-label={t(years.length > 1 ? "yearBrowseHint" : "scrubHint")}
                 onContextMenu={(event) => event.preventDefault()}
             >
                 <ChartScrubCursor x={scrub.cursorX} />
-                <ReactEChartsCore
+                {browseByYear && axisDates.length === 0 ? (
+                    <p className="grid place-items-center text-center text-sm text-muted-foreground" style={{ height }}>
+                        {t("empty", { index: config.label })}
+                    </p>
+                ) : <ReactEChartsCore
                     echarts={echarts}
                     option={option}
                     style={{ height, width: "100%", touchAction: "pan-y" }}
                     onChartReady={scrub.onChartReady}
                     notMerge
-                    lazyUpdate
-                />
+                    lazyUpdate={!browseByYear}
+                />}
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
                 <label className="inline-flex cursor-pointer items-center gap-1.5">

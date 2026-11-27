@@ -1,5 +1,7 @@
 "use client";
 
+import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
+
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import {
@@ -38,6 +40,7 @@ const NdviChart = dynamic(() => import("@/components/charts/ndvi-chart"), {
 
 const AgriTimeseriesPanel = dynamic(() => import("@/components/field/agri-timeseries-panel"), {
     ssr: false,
+    loading: () => <FieldTabSkeleton variant="growth" />,
 });
 
 /* ── Props ────────────────────────────────────────────────────── */
@@ -69,7 +72,7 @@ interface NdviTabProps {
     onEmergenceViewChange?: (view: EmergenceMapView) => void;
 }
 
-export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = null, onShowLayer, onActiveIndexChange, activeIndexOverride, onDataLoaded, onAgriHeatmapChange, agriHeatMode, onAgriHeatModeChange, agriHeatmapEnabled = true, emergenceView = "increment", onEmergenceViewChange }: NdviTabProps) {
+export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = null, onShowLayer, onActiveIndexChange, activeIndexOverride, onDataLoaded, onAgriHeatmapChange, agriHeatMode, onAgriHeatModeChange, agriHeatmapEnabled = true, emergenceView = "class", onEmergenceViewChange }: NdviTabProps) {
     const tMon = useTranslations("monitoring");
     // ── Index selector ───────────────────────────────
     const [activeIndex, setActiveIndex] = useState<IndexType>("NDVI");
@@ -223,19 +226,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
         }
     }, [activeIndexOverride]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    if (loading) {
-        return (
-            <div className="space-y-4 py-4">
-                <Skeleton className="h-10 w-full rounded-lg" />
-                <Skeleton className="h-[200px] w-full rounded-lg" />
-                <div className="space-y-2">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-8 w-full rounded" />
-                    <Skeleton className="h-8 w-full rounded" />
-                </div>
-            </div>
-        );
-    }
+    if (loading) return <FieldTabSkeleton variant="growth" />;
 
     return (
         <div className="space-y-4">
@@ -298,6 +289,7 @@ export default function NdviTab({ landId, cropType, areaHa = null, landAreaMu = 
                     <IndexExplainer index={activeIndex} />
                     <NdviChart
                         stats={stats}
+                        browseByYear
                         selectedDate={selectedDate}
                         onDateSelect={handleChartDateSelect}
                         height={showWeatherOverlay ? 240 : 200}

@@ -1,5 +1,6 @@
 {
   "common": {
+    "loadingContent": "Cargando…",
     "signIn": "Iniciar sesión",
     "signOut": "Cerrar sesión",
     "getStarted": "Comenzar",
@@ -481,6 +482,7 @@
     "emergenceCaption": "Emergencia · vs suelo · {pixels} px"
   },
   "alertsTab": {
+    "triggerValue": "Valor de activación",
     "noAlerts": "Sin alertas",
     "noAlertsDesc": "Este campo no tiene alertas de anomalías. Las alertas se generan durante el análisis NDVI.",
     "open": "abiertas",
@@ -762,6 +764,8 @@
     "unreleased": "Próximamente"
   },
   "weather": {
+    "summaryPeriod": "Periodo meteorológico",
+    "loadFailed": "No se pudieron cargar los datos meteorológicos",
     "avgTemp": "Temp media",
     "totalPrecip": "Precipitación",
     "waterDeficit": "Déficit hídrico",
@@ -817,6 +821,8 @@
     "fetchingProgress": "Obteniendo datos climáticos…"
   },
   "soil": {
+    "priorityRisks": "Riesgo {level} · {items}",
+    "assessedLow": "Riesgo bajo en los {count} factores evaluados",
     "title": "Perfil del suelo",
     "landTooLargeWarning": "Este campo puede ser anómalo: su área de {area} mu supera 5.000 mu. No se pueden descargar datos. Contacta con soporte técnico.",
     "depthProfile": "Textura por profundidad",
@@ -1074,6 +1080,11 @@
     "myLocation": "Mi ubicación"
   },
   "ndviChart": {
+    "yearBrowse": "Ver por año",
+    "previousYear": "Año anterior",
+    "nextYear": "Año siguiente",
+    "yearBrowseHint": "Desliza para cambiar de año o mantén pulsado para explorar fechas",
+    "changeSince": "Desde {date}: {change}",
     "threshold": "Umbral",
     "cloud": "Nubes: {percent}%",
     "cloudNA": "Nubes: N/D",
@@ -1215,6 +1226,19 @@
       "sentinel2": "Las imágenes ópticas permiten calcular índices como NDVI, pero las nubes pueden ocultar el terreno.",
       "sentinel1": "El radar observa a través de las nubes y mide la retrodispersión VV/VH, no los colores de una foto.",
       "emergence": "Subida respecto al suelo base. No es la escala NDVI 0–1, y 0.30 no es la línea de emergencia."
+    },
+    "indexMenuLabels": {
+      "ndvi": "NDVI · Vigor general",
+      "drought": "Riesgo de sequía",
+      "flood": "Monitoreo de inundación",
+      "evi": "EVI · Vigor en cobertura densa",
+      "ndmi": "NDMI · Humedad vegetal",
+      "ndre": "NDRE · Clorofila del dosel",
+      "mndwi": "MNDWI · Agua superficial",
+      "cire": "CIRE · Cambio de clorofila",
+      "vv": "VV · Radar copolarizado",
+      "vh": "VH · Radar de polarización cruzada",
+      "emergence": "Monitoreo de emergencia"
     },
     "indexMenuHints": {
       "ndvi": "Verdor del campo. Puede bajar por madurez o nubes.",
@@ -1414,6 +1438,7 @@
     "harvestUncertainShort": "Evidencia insuficiente"
   },
   "landReportTab": {
+    "scoreNotes": "Criterios de puntuación",
     "title": "Informe de evaluación de tierra",
     "description": "Elija cultivo y ventana histórica; en un clic se encolan clima / RS / suelo y se genera el PDF de evaluación.",
     "generate": "Generar PDF",
@@ -2342,14 +2367,14 @@
     "baselineMissing": "—",
     "sceneMissing": "—",
     "frozen": " · congelado",
-    "viewIncrement": "Incremento",
-    "viewClass": "Clases",
-    "legendIncrement": "Incremento respecto al suelo",
-    "legendClass": "Clases de subida sostenida",
+    "viewIncrement": "Cambio de verdor",
+    "viewClass": "Mapa de emergencia",
+    "legendIncrement": "Cambio de NDVI respecto al suelo",
+    "legendClass": "Señales de emergencia · % de píxeles válidos",
     "legendNote": "Las clases son una ayuda de lectura, no un umbral de producto. El color usa incremento o clase, nunca 0.30.",
-    "class0": "No claramente sobre el suelo",
-    "class1": "Sobre el ruido, aún no sostenido",
-    "class2": "Sostenido sobre el ruido",
+    "class0": "Sin señal de emergencia",
+    "class1": "Posible emergencia",
+    "class2": "Señal sostenida",
     "pixelCount": "{count} px",
     "chartNdvi": "NDVI",
     "chartIncrement": "Incremento de NDVI respecto a la base",
@@ -2392,6 +2417,19 @@
     "sentence_uncertain": "Faltan píxeles despejados o la base de suelo para juzgar la emergencia.",
     "sentence_empty": "Aún no hay resultado de emergencia. Puede cambiar el mapa a la vista de emergencia.",
     "incrementClause": " (mediana del incremento {value})",
-    "dateMissing": "último día despejado"
+    "dateMissing": "último día despejado",
+    "incrementHint": "Un color más oscuro indica un mayor aumento respecto al suelo de referencia.",
+    "seasonAssessment": "Evaluación estacional de la parcela",
+    "confirmedOn": "Primera confirmación por satélite: {date}",
+    "meaning_emerged": "Las imágenes confirman un aumento sostenido y generalizado del verdor. Los píxeles azules superaron la referencia del suelo en dos observaciones seguidas.",
+    "meaning_emerging": "Se observa más verdor, pero su extensión o duración aún no confirma la emergencia de la parcela.",
+    "meaning_not_emerged": "Las observaciones disponibles aún no muestran un aumento claro del verdor.",
+    "meaning_uncertain": "Las observaciones son insuficientes o contradictorias para confirmar la emergencia.",
+    "howJudged": "¿Cómo se determina la emergencia?",
+    "fieldRule": "Las primeras imágenes despejadas establecen el verdor del suelo y su variación normal. En dos observaciones despejadas consecutivas posteriores, al menos el 80 % de los píxeles válidos debe superar esa variación en ambas. La mediana del incremento de la parcela también debe superarla en ambas.",
+    "baselineDates": "Fechas de referencia del suelo: {dates}",
+    "frozenMeaning": "El resultado de la temporada está confirmado. Selecciona una fecha para ver sus píxeles.",
+    "mapMode": "Vista del mapa",
+    "selectedObservation": "Fecha de observación"
   }
 }

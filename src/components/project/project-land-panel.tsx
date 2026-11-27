@@ -46,15 +46,15 @@ export function ProjectLandPanel({ land, groupId, freshnessDays, onClose }: {
     const emptyValue = t("notAvailable");
     const unregistered = t("notRegistered");
     return (
-        <aside aria-label={t("landDetails")} className={cn("flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl", MAP_CHROME)}>
-            <div className="flex items-start justify-between gap-3 border-b p-4">
+        <aside aria-label={t("landDetails")} className={cn("flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl max-md:rounded-[24px] max-md:border-0 max-md:bg-background max-md:shadow-[var(--h5-shadow)]", MAP_CHROME)}>
+            <div className="flex items-start justify-between gap-3 border-b p-4 max-md:border-0 max-md:px-5 max-md:pt-5">
                 <div className="min-w-0 space-y-2">
                     <p className="break-words text-lg font-semibold">{land.landName}</p>
                     <ProjectRiskBadge land={land} />
                 </div>
                 <Button ref={closeRef} variant="ghost" size="icon" onClick={onClose} aria-label={t("closeDetails")}><X aria-hidden="true" className="h-4 w-4" /></Button>
             </div>
-            <div className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto p-4">
+            <div className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto p-4 max-md:px-5">
                 <section className="space-y-3">
                     <h2 className="text-sm font-semibold">{t("overview")}</h2>
                     <dl className="grid grid-cols-2 gap-3 text-sm">

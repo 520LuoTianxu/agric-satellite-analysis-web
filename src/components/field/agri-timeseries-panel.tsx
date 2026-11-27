@@ -15,6 +15,8 @@ import {
     type GrowingSeasonWindow,
     type IndexType,
 } from "@/lib/api";
+import { ObservationDateRail } from "@/components/charts/chart-date-rail";
+import { formatObservationDate } from "@/components/charts/index-readout";
 import { useLocale, useTranslations } from "next-intl";
 import { monthsInWindows, type Phenology } from "@/lib/parcel-insights";
 import PhenologyPicker from "./phenology-picker";
@@ -75,6 +77,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, RefreshCw, History, Check, Plus, Trash2, AlertTriangle, ChevronDown, Leaf, Sun, Waves, Droplets, Sprout, Radio, Radar, Activity, CloudRain } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -447,24 +450,27 @@ function SeriesSwitcher({
                 align="end"
                 sideOffset={6}
                 collisionPadding={12}
-                className="max-h-[min(70vh,24rem)] w-[min(16.75rem,calc(100vw-5rem))] overflow-y-auto rounded-2xl p-1"
+                className="max-h-[min(70vh,24rem)] w-[min(19rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl p-1"
             >
                 {keys.map((key) => {
                     const RowIcon = SERIES_ICONS[key] ?? Leaf;
                     const active = series === key;
+                    const label = t(`indexMenuLabels.${key}`);
                     return (
                         <DropdownMenuItem
                             key={key}
+                            textValue={label}
                             onSelect={() => onChange(key)}
-                            className="items-start gap-2 rounded-xl px-2 py-2"
+                            data-current={active || undefined}
+                            className="items-start gap-2 rounded-xl px-2 py-2 max-md:items-center"
                         >
                             <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-foreground">
                                 {active ? <Check className="h-4 w-4" aria-hidden="true" /> : null}
                             </span>
                             <RowIcon className="mt-0.5 h-[18px] w-[18px] shrink-0 text-muted-foreground" aria-hidden="true" />
                             <span className="min-w-0 flex-1">
-                                <span className="block text-base font-medium leading-5">{t(`indexLabels.${key}`)}</span>
-                                <span className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+                                <span className="block max-md:text-sm text-base font-medium leading-5">{label}</span>
+                                <span className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground max-md:hidden">
                                     {t(`indexMenuHints.${key}`)}
                                 </span>
                             </span>
@@ -553,7 +559,6 @@ function sceneLooksCloudyOrLowVeg(scene: AgriSceneProduct | undefined, key: Seri
     return cloudy || lowVeg;
 }
 
-const UNCROPPED_NDVI = 0.25;
 
 /** Default maize-like stage bands (month ranges) — overridden by crop season when available */
 
@@ -682,7 +687,7 @@ export default function AgriTimeseriesPanel({
     mode: modeProp,
     onModeChange,
     enabled = true,
-    emergenceView = "increment",
+    emergenceView = "class",
     onEmergenceSummary,
     onEmergenceActivity,
 }: AgriTimeseriesPanelProps) {
@@ -726,7 +731,7 @@ export default function AgriTimeseriesPanel({
     const [loadingEarlierSensor, setLoadingEarlierSensor] = useState<"S1" | "S2" | null>(null);
     const [loadEarlierError, setLoadEarlierError] = useState(false);
     const [cropOption, setCropOption] = useState<CropOption | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(Boolean(landId));
     const [error, setError] = useState<string | null>(null);
     const [seriesInternal, setSeriesInternal] = useState<SeriesKey>("ndvi");
     const earlierScenesRequestRef = useRef<AbortController | null>(null);
@@ -736,6 +741,7 @@ export default function AgriTimeseriesPanel({
     const [sowingDate, setSowingDate] = useState("");
     const [emergenceBusy, setEmergenceBusy] = useState(false);
     const [emergenceRequested, setEmergenceRequested] = useState(false);
+    const [emergenceSummaryLoading, setEmergenceSummaryLoading] = useState(Boolean(parseAgriLandId(landId)));
     const [emergenceLoadError, setEmergenceLoadError] = useState<string | null>(null);
     const [emergenceComputeError, setEmergenceComputeError] = useState<string | null>(null);
     const [emergenceReload, setEmergenceReload] = useState(0);
@@ -1209,8 +1215,10 @@ export default function AgriTimeseriesPanel({
             setEmergenceLoadError(null);
             setEmergenceComputeError(null);
             setEmergenceRequested(false);
+            setEmergenceSummaryLoading(false);
             return;
         }
+        setEmergenceSummaryLoading(true);
         let cancelled = false;
         const controller = new AbortController();
         (async () => {
@@ -1227,6 +1235,8 @@ export default function AgriTimeseriesPanel({
                 if (cancelled || controller.signal.aborted) return;
                 setEmergenceLoadError(readApiError(err, teRef.current("loadFailed")));
                 publishEmergence(null);
+            } finally {
+                if (!cancelled) setEmergenceSummaryLoading(false);
             }
         })();
         return () => {
@@ -1870,14 +1880,6 @@ export default function AgriTimeseriesPanel({
         return dates.size;
     }, [scenes]);
 
-    const selectedBare = useMemo(() => {
-        if (!selectedDate || (series !== "ndvi" && series !== "drought" && series !== "evi")) return false;
-        const st = stats.find((s) => s.date === selectedDate);
-        if (!st || st.mean == null) return false;
-        const m = Number(selectedDate.slice(5, 7));
-        return peakMonths.includes(m) && st.mean < UNCROPPED_NDVI;
-    }, [selectedDate, stats, series, peakMonths]);
-
     const areaMu = useMemo(
         () => resolveLandAreaMu(landAreaMu, areaHa),
         [areaHa, landAreaMu],
@@ -2069,7 +2071,7 @@ export default function AgriTimeseriesPanel({
                 type="button"
                 size="sm"
                 variant="default"
-                className="h-7 gap-1.5 text-[11px]"
+                className="h-7 gap-1.5 text-[11px] max-md:min-h-10 max-md:rounded-xl max-md:text-xs"
                 onClick={openRefreshRsDialog}
                 disabled={oversizedLand || pullInFlight}
                 title={oversizedLand ? t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) }) : backfillActive ? (pullTask === "emergence" ? te("pullInProgress") : t("refreshInProgress")) : t("refreshRsTitle")}
@@ -2085,7 +2087,7 @@ export default function AgriTimeseriesPanel({
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-7 gap-1.5 text-[11px]"
+                className="h-7 gap-1.5 text-[11px] max-md:min-h-10 max-md:rounded-xl max-md:text-xs"
                 onClick={() => {
                     setEmergenceComputeError(null);
                     setEmergenceOpen(true);
@@ -2205,20 +2207,6 @@ export default function AgriTimeseriesPanel({
                 </div>
             </CardHeader>
             <CardContent className="space-y-3 p-3 max-md:space-y-2 max-md:p-0">
-                <div className="flex flex-col items-end gap-1 md:hidden">
-                    {renderImageryActions()}
-                    {(emergenceComputeError || emergenceEmpty) && (
-                        <p
-                            role={emergenceComputeError ? "alert" : "status"}
-                            className={cn(
-                                "text-right text-[11px] leading-snug",
-                                emergenceComputeError ? "text-destructive" : "text-muted-foreground",
-                            )}
-                        >
-                            {emergenceComputeError || te("emptyResult")}
-                        </p>
-                    )}
-                </div>
                 <div className="max-md:hidden">
                 <PhenologyPicker landId={landId}
                     onLoaded={data => {
@@ -2350,7 +2338,7 @@ export default function AgriTimeseriesPanel({
                     <DialogContent className="sm:max-w-md">
                         <DialogHeader>
                             <DialogTitle>{te("dialogTitle")}</DialogTitle>
-                            <DialogDescription>{te("dialogDesc")}</DialogDescription>
+                            <DialogDescription className="max-md:sr-only">{te("dialogDesc")}</DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-2 py-2">
                             <Label htmlFor="emergence-sowing-date">{te("sowingDate")}</Label>
@@ -2434,12 +2422,7 @@ export default function AgriTimeseriesPanel({
                         </div>
                     </div>
                 )}
-                {loading && (
-                    <div role="status" aria-live="polite" className="flex items-center justify-center py-8 gap-2 text-muted-foreground text-xs">
-                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                        {t("loading")}
-                    </div>
-                )}
+                {loading && <FieldTabSkeleton variant="growth" />}
                 {error && (
                     <div role="alert" className="flex items-center justify-between gap-2 rounded-lg bg-destructive/5 px-3 py-2 text-[11px]">
                         <span>{error}</span>
@@ -2460,33 +2443,19 @@ export default function AgriTimeseriesPanel({
                                 </div>
                                 {emergenceSummary && emergenceSummary.timeseries.length > 0 ? (
                                     <div className="space-y-2">
-                                    <EmergenceChart
-                                        summary={emergenceSummary}
-                                        selectedDate={selectedDate}
-                                        onDateSelect={setSelectedDate}
-                                        height={280}
-                                    />
-                                    {emergenceDates.length > 1 ? (
-                                        <label className="block space-y-1">
-                                            <span className="text-[11px] text-muted-foreground">
-                                                {te("dateSlider")}
-                                                {selectedDate ? ` · ${selectedDate}` : ""}
-                                            </span>
-                                            <input
-                                                type="range"
-                                                min={0}
-                                                max={emergenceDates.length - 1}
-                                                value={Math.max(0, emergenceDates.indexOf(selectedDate ?? ""))}
-                                                onChange={(event) => {
-                                                    const next = emergenceDates[Number(event.target.value)];
-                                                    if (next) setSelectedDate(next);
-                                                }}
-                                                aria-label={te("dateSlider")}
-                                                className="w-full accent-emerald-700"
-                                            />
-                                        </label>
-                                    ) : null}
+                                        <ObservationDateRail dates={emergenceDates} activeDate={selectedDate} onSelect={setSelectedDate} label={te("selectedObservation")} />
+                                        {selectedDate && (
+                                            <p className="text-center text-sm text-muted-foreground">{formatObservationDate(selectedDate, locale)}</p>
+                                        )}
+                                        <EmergenceChart
+                                            summary={emergenceSummary}
+                                            selectedDate={selectedDate}
+                                            onDateSelect={setSelectedDate}
+                                            height={280}
+                                        />
                                     </div>
+                                ) : emergenceSummaryLoading ? (
+                                    <FieldTabSkeleton variant="growth" />
                                 ) : emergenceLoadError || emergenceComputeError ? (
                                     <p role="alert" className="py-3 text-[11px] leading-relaxed text-destructive">
                                         {emergenceLoadError || emergenceComputeError}
@@ -2514,9 +2483,10 @@ export default function AgriTimeseriesPanel({
                             </p>
                         )}
                         {series !== "emergence" && (
-                        <div className="rounded-lg bg-background p-2.5 max-md:bg-transparent max-md:p-0">
+                        <div className="h5-field-module rounded-lg bg-background p-2.5">
                             <NdviChart
                                 stats={stats}
+                                browseByYear
                                 decloudAltStats={decloudAltStats}
                                 selectedDate={selectedDate}
                                 onDateSelect={(d) => selectDateExplicit(d)}
@@ -2552,46 +2522,18 @@ export default function AgriTimeseriesPanel({
                         </div>
                         )}
                         {(series === "ndvi" || series === "evi" || series === "drought") && (
-                            <>
-                                <div className="space-y-2 rounded-xl bg-muted/30 p-2.5">
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className="text-xs font-medium text-foreground">{t("dayGrowthGrade")}</span>
-                                        <Badge variant="secondary" className="text-[10px]">
-                                            {locale === "zh"
-                                                ? cropOption?.season_label_zh || cropOption?.name_zh || t("cropSeason")
-                                                : locale === "en"
-                                                  ? cropOption?.name || t("cropSeason")
-                                                  : t("cropSeason")}
-                                        </Badge>
-                                        {selectedBare && (
-                                            <Badge variant="destructive" className="text-[10px]">
-                                                {t("bareLandSuspicion", { threshold: UNCROPPED_NDVI })}
-                                            </Badge>
-                                        )}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground leading-snug">
-                                        {t("gradeShareExplanation", { rule: t("gradeShareRule") })}
-                                    </p>
-                                    <NdviGradeSharesChart
-                                        variant="donut"
-                                        selectedShare={selectedDayShare}
-                                        areaMu={areaMu}
-                                        selectedDate={selectedDate}
-                                        height={200}
-                                    />
-                                </div>
-                                <div className="space-y-2 rounded-xl bg-muted/30 p-2.5">
-                                    <span className="text-xs font-medium text-foreground">{t("growthShareTrend")}</span>
-                                    <NdviGradeSharesChart
-                                        variant="stacked"
-                                        historyByDate={stackedHistoryByDate}
-                                        meanByDate={stackedMeanByDate}
-                                        height={250}
-                                    />
-                                </div>
-                            </>
+                            <section className="h5-field-module space-y-2 rounded-xl bg-muted/30 p-3">
+                                <h3 className="text-sm font-semibold">{t("growthShareTrend")}</h3>
+                                <NdviGradeSharesChart
+                                    historyByDate={stackedHistoryByDate}
+                                    meanByDate={stackedMeanByDate}
+                                    selectedDate={selectedDate}
+                                    selectedShare={selectedDayShare}
+                                    onDateSelect={selectDateExplicit}
+                                />
+                            </section>
                         )}
-                        <div data-tour="select-date" className="space-y-2 rounded-xl bg-muted/30 p-2.5">
+                        <div data-tour="select-date" className="space-y-2 rounded-xl bg-muted/30 p-2.5 max-md:bg-transparent max-md:px-0">
                             <p className="text-xs text-muted-foreground leading-snug">
                                 {series === "emergence" && selectedDate
                                     ? te("heatmapDate", { date: selectedDate })
@@ -2713,6 +2655,20 @@ export default function AgriTimeseriesPanel({
                         </div>
                     </>
                 )}
+                <div className="flex flex-col items-end gap-1 pt-2 md:hidden">
+                    {renderImageryActions()}
+                    {(emergenceComputeError || emergenceEmpty) && (
+                        <p
+                            role={emergenceComputeError ? "alert" : "status"}
+                            className={cn(
+                                "text-right text-[11px] leading-snug",
+                                emergenceComputeError ? "text-destructive" : "text-muted-foreground",
+                            )}
+                        >
+                            {emergenceComputeError || te("emptyResult")}
+                        </p>
+                    )}
+                </div>
             </CardContent>
         </Card>
     );

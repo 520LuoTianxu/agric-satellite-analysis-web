@@ -1,5 +1,7 @@
 "use client";
 
+import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
+
 import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { weatherApi } from "@/lib/api";
 import type { WeatherDaily, WeatherForecastDay, WeatherSummary } from "@/lib/api";
@@ -109,23 +111,31 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
         [customStartDate, range],
     );
 
-    const loadWeather = useCallback(async () => {
+    const loadWeather = useCallback(async (signal: AbortSignal) => {
         setLoading(true);
         try {
             const { start, end } = selectedWindow;
-            const res = await weatherApi.get(landId, start, end, false);
+            const res = await weatherApi.get(landId, start, end, false, { signal });
+            if (signal.aborted) return;
             setData(res.data ?? []);
             setForecast(res.forecast ?? []);
             setSummary(res.summary ?? null);
         } catch {
-            // silent - empty state shown
+            if (signal.aborted) return;
+            setData([]);
+            setForecast([]);
+            setSummary(null);
+            toast.error(t("loadFailed"));
         } finally {
-            setLoading(false);
+            if (!signal.aborted) setLoading(false);
         }
-    }, [landId, selectedWindow]);
+    }, [landId, selectedWindow, t]);
 
     useEffect(() => {
-        loadWeather();
+        // 切换时段后丢弃上一时段的响应，避免统计日期和指标错配。
+        const controller = new AbortController();
+        void loadWeather(controller.signal);
+        return () => controller.abort();
     }, [loadWeather]);
 
     const handleBackfill = async () => {
@@ -172,15 +182,9 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
         }
     };
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-        );
-    }
+    if (loading) return <FieldTabSkeleton variant="weather" />;
 
-    const hasWeatherContent = data.length > 0 || forecast.length > 0;
+    const hasWeatherContent = summary != null || data.length > 0 || forecast.length > 0;
 
     return (
         <div className="space-y-4">
@@ -200,7 +204,18 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
             )}
             {/* Range selector */}
             <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between">
-                <div className="flex max-w-full gap-2 overflow-x-auto [scrollbar-width:none] max-md:w-full max-md:flex-nowrap">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 md:hidden">
+                    <div>
+                        <label htmlFor="weather-period" className="block text-xs text-muted-foreground">{t("summaryPeriod")}</label>
+                        <p className="text-sm font-medium tabular-nums">{selectedWindow.start} – {selectedWindow.end}</p>
+                    </div>
+                    <select id="weather-period" value={range} onChange={(event) => setRange(event.target.value as RangeOption)}
+                        className="min-h-10 rounded-lg bg-muted px-2 text-sm font-medium">
+                        {rangeOptions.filter((opt) => opt.value !== "custom" || range === "custom").map((opt) =>
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                    </select>
+                </div>
+                <div className="hidden max-w-full gap-2 overflow-x-auto [scrollbar-width:none] md:flex">
                     {rangeOptions.map((opt) => {
                         const active = range === opt.value;
                         return (
@@ -264,11 +279,11 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
             {/* Unified weather stats grid */}
             {summary && (() => {
                 return (
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-3 gap-3">
+                    <div className="h5-field-module space-y-4">
+                        <div className="h5-weather-primary grid grid-cols-3 gap-3">
                             <div className="min-w-0 text-center">
                                 <p className="text-[11px] font-medium text-muted-foreground">{t("avgTemp")}</p>
-                                <p className="mt-1 text-xl font-bold leading-tight tabular-nums text-sig-temp">
+                                <p className="mt-1 text-xl font-bold leading-tight tabular-nums text-sig-temp max-md:text-warning">
                                     {summary.avg_temperature != null ? `${summary.avg_temperature.toFixed(1)}°C` : "-"}
                                 </p>
                                 {summary.min_temperature != null && summary.max_temperature != null && (
@@ -277,19 +292,19 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                             </div>
                             <div className="min-w-0 text-center">
                                 <p className="text-[11px] font-medium text-muted-foreground">{t("totalPrecip")}</p>
-                                <p className="mt-1 text-xl font-bold leading-tight tabular-nums text-sig-precip">
+                                <p className="mt-1 text-xl font-bold leading-tight tabular-nums text-sig-precip max-md:text-info">
                                     {summary.total_precipitation != null ? `${summary.total_precipitation.toFixed(1)} mm` : "-"}
                                 </p>
                             </div>
                             <div className="min-w-0 text-center">
                                 <p className="text-[11px] font-medium text-muted-foreground">{t("gddCumulative")}</p>
-                                <p className="mt-1 text-xl font-bold leading-tight tabular-nums text-sig-temp">
+                                <p className="mt-1 text-xl font-bold leading-tight tabular-nums text-sig-temp max-md:text-success">
                                     {summary.gdd_cumulative != null ? summary.gdd_cumulative.toFixed(0) : "-"}
                                 </p>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="h5-weather-secondary grid grid-cols-4 gap-2">
                             <div className="min-w-0 text-center">
                                 <p className="whitespace-nowrap text-[9px] leading-tight text-muted-foreground">{t("waterDeficit")}</p>
                                 <p className={`mt-1 whitespace-nowrap text-[11px] font-semibold leading-tight tabular-nums ${summary.water_deficit_mm != null && summary.water_deficit_mm < 0 ? "text-danger" : "text-success"}`}>
@@ -308,43 +323,45 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
                             </div>
                             <div className="min-w-0 text-center">
                                 <p className="whitespace-nowrap text-[9px] leading-tight text-muted-foreground">{t("heatStressDays")}</p>
-                                <p className="mt-1 whitespace-nowrap text-[11px] font-semibold leading-tight tabular-nums text-danger">{summary.heat_stress_days}</p>
+                                <p className={cn("mt-1 whitespace-nowrap text-[11px] font-semibold leading-tight tabular-nums", summary.heat_stress_days > 0 ? "text-danger" : "text-foreground")}>{summary.heat_stress_days}</p>
                             </div>
                         </div>
                     </div>
                 );
             })()}
 
-            {/* 7-day forecast */}
-            {forecast.length > 0 && (
-                <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                        {t("forecast7d")}
-                    </h4>
-                    <ForecastBar forecast={forecast} />
-                </div>
-            )}
-
+            {data.length > 0 && <>
             {/* Temperature & Precipitation chart - in card */}
-            <div className="rounded-lg border bg-card p-3 shadow-sm">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            <div className="h5-field-module rounded-lg border bg-card p-3 shadow-sm max-md:border-0 max-md:shadow-none">
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 max-md:text-sm max-md:normal-case max-md:tracking-normal max-md:text-foreground">
                     {t("tempAndPrecip")}
                 </h4>
                 <WeatherChart data={data} height={200} />
             </div>
 
             {/* ET₀ & Water Balance chart - in card */}
-            <div className="rounded-lg border bg-card p-3 shadow-sm">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            <div className="h5-field-module rounded-lg border bg-card p-3 shadow-sm max-md:border-0 max-md:shadow-none">
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 max-md:text-sm max-md:normal-case max-md:tracking-normal max-md:text-foreground">
                     {t("waterBalanceTitle")}
                 </h4>
                 <WaterBalanceChart data={data} height={180} />
             </div>
+            </>}
+
+            {/* 7-day forecast */}
+            {forecast.length > 0 && (
+                <div className="h5-field-module">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 max-md:text-sm max-md:normal-case max-md:tracking-normal max-md:text-foreground">
+                        {t("forecast7d")}
+                    </h4>
+                    <ForecastBar forecast={forecast} />
+                </div>
+            )}
 
             {/* Soil Moisture by Depth - in card */}
             {data.length > 0 && data[data.length - 1].soil_moisture_0_1cm != null && (
-                <div className="rounded-lg border bg-card p-3 shadow-sm">
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                <div className="h5-field-module rounded-lg border bg-card p-3 shadow-sm max-md:border-0 max-md:shadow-none">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 max-md:text-sm max-md:normal-case max-md:tracking-normal max-md:text-foreground">
                         {t("soilMoistureDepth")}
                     </h4>
                     <SoilMoistureGauge data={data[data.length - 1]} />
@@ -353,8 +370,8 @@ export default function WeatherTab({ landId, landAreaMu = null, areaHa = null }:
 
             {/* Soil Temperature by Depth - in card */}
             {data.length > 0 && data[data.length - 1].soil_temperature_0cm != null && (
-                <div className="rounded-lg border bg-card p-3 shadow-sm">
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                <div className="h5-field-module rounded-lg border bg-card p-3 shadow-sm max-md:border-0 max-md:shadow-none">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 max-md:text-sm max-md:normal-case max-md:tracking-normal max-md:text-foreground">
                         {t("soilTempDepth")}
                     </h4>
                     <div className="space-y-1.5">

@@ -51,7 +51,7 @@ export function ProjectSelector({ value, onChange }: { value: string; onChange: 
             className="flex h-9 w-full items-center justify-between rounded-md border bg-background px-3 text-sm">
             <span className="truncate">{label}</span><ChevronDown className="h-4 w-4 text-muted-foreground" />
         </button>
-        {open && <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-2 shadow-md">
+        {open && <div className="h5-menu absolute z-50 mt-1 w-full rounded-md border bg-popover p-2 shadow-md">
             <div className="relative mb-2"><Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input autoFocus className="h-8 pl-7 text-xs" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("searchProject")} /></div>
             <ul role="listbox" className="max-h-72 overflow-y-auto text-sm">

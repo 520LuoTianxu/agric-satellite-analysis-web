@@ -1,5 +1,6 @@
 {
   "common": {
+    "loadingContent": "正在加载…",
     "signIn": "登录",
     "signOut": "退出登录",
     "getStarted": "开始使用",
@@ -481,6 +482,7 @@
     "emergenceCaption": "出苗 · 相对土壤本底 · {pixels} px"
   },
   "alertsTab": {
+    "triggerValue": "触发值",
     "noAlerts": "暂无预警",
     "noAlertsDesc": "此地块没有异常预警。预警在 NDVI 分析过程中生成。",
     "open": "未关闭",
@@ -762,6 +764,8 @@
     "unreleased": "未发布"
   },
   "weather": {
+    "summaryPeriod": "气象统计时段",
+    "loadFailed": "气象数据读取失败",
     "avgTemp": "平均气温",
     "totalPrecip": "降水量",
     "waterDeficit": "水分亏缺",
@@ -817,6 +821,8 @@
     "fetchingProgress": "正在拉取气象数据…"
   },
   "soil": {
+    "priorityRisks": "{level}风险 · {items}",
+    "assessedLow": "已评估的 {count} 项风险均为低风险",
     "title": "土壤剖面",
     "landTooLargeWarning": "可能为异常地块：面积 {area} 亩，超过 5000 亩，无法下载数据，请联系技术处理。",
     "depthProfile": "分深度质地",
@@ -1074,6 +1080,11 @@
     "myLocation": "定位到我的位置"
   },
   "ndviChart": {
+    "yearBrowse": "按年浏览",
+    "previousYear": "上一年",
+    "nextYear": "下一年",
+    "yearBrowseHint": "轻扫切换年份，长按拖动查看当天",
+    "changeSince": "较 {date} {change}",
     "threshold": "参考阈值",
     "cloud": "云量: {percent}%",
     "cloudNA": "云量: 无",
@@ -1215,6 +1226,19 @@
       "sentinel2": "光学卫星影像可计算 NDVI 等指标，但云雾会遮挡地面。",
       "sentinel1": "全天时雷达观测可穿云；提供 VV/VH 回波强度，不是普通照片。",
       "emergence": "相对土壤本底的抬升。不是 NDVI 0–1 色标，也不以 0.30 为出苗线。"
+    },
+    "indexMenuLabels": {
+      "ndvi": "NDVI · 整体长势",
+      "drought": "Drought · 干旱风险",
+      "flood": "Flood · 洪涝监测",
+      "evi": "EVI · 密植长势",
+      "ndmi": "NDMI · 植被水分",
+      "ndre": "NDRE · 冠层叶绿素",
+      "mndwi": "MNDWI · 地表水体",
+      "cire": "CIRE · 叶绿素变化",
+      "vv": "VV · 同极化雷达",
+      "vh": "VH · 交叉极化雷达",
+      "emergence": "Emergence · 出苗监测"
     },
     "indexMenuHints": {
       "ndvi": "看地表绿度，下降也可能是成熟或云。",
@@ -1414,6 +1438,7 @@
     "harvestUncertainShort": "证据不足"
   },
   "landReportTab": {
+    "scoreNotes": "评分口径",
     "title": "选地体检报告",
     "description": "选择作物与历史年限后，一键排队拉取天气/遥感/土壤并生成白话版选地体检 PDF。面积按亩；长势按绑定作物生育季。",
     "generate": "一键生成 PDF",
@@ -2342,14 +2367,14 @@
     "baselineMissing": "—",
     "sceneMissing": "—",
     "frozen": " · 已冻结",
-    "viewIncrement": "增量",
-    "viewClass": "分组",
-    "legendIncrement": "相对本底增量",
-    "legendClass": "持续抬升分组",
+    "viewIncrement": "绿度变化",
+    "viewClass": "出苗分布",
+    "legendIncrement": "绿度较土壤基准的变化（NDVI）",
+    "legendClass": "出苗信号 · 有效像元占比",
     "legendNote": "分组只用于读图，不是出苗产品阈值。着色用增量或分组，不用 0.30。",
-    "class0": "未明显高于本底",
-    "class1": "高于本底噪声但尚未持续",
-    "class2": "持续高于本底噪声",
+    "class0": "未见出苗信号",
+    "class1": "疑似出苗 · 待确认",
+    "class2": "出苗信号 · 持续见绿",
     "pixelCount": "{count} 像元",
     "chartNdvi": "NDVI",
     "chartIncrement": "相对本底的 NDVI 增量",
@@ -2392,6 +2417,19 @@
     "sentence_uncertain": "晴空像元或土壤本底不足，出苗状态还不能确定。",
     "sentence_empty": "出苗结果还没有返回。可以把地图切到出苗视图。",
     "incrementClause": "（抬升中位数 {value}）",
-    "dateMissing": "最近晴空日"
+    "dateMissing": "最近晴空日",
+    "incrementHint": "颜色越深，较土壤基准的绿度增幅越大。",
+    "seasonAssessment": "本季地块出苗判定",
+    "confirmedOn": "首次遥感确认于 {date}",
+    "meaning_emerged": "影像已确认大范围持续见绿。蓝色像元连续两次观测都比土壤基准明显更绿。",
+    "meaning_emerging": "已观察到变绿，但范围或持续时间尚不足以确认整块地出苗。",
+    "meaning_not_emerged": "目前的有效观测还没有显示地块明显变绿。",
+    "meaning_uncertain": "现有影像无法可靠确认出苗，可能是观测不足或前后信号不一致。",
+    "howJudged": "怎样判断出苗？",
+    "fieldRule": "用早期晴空影像确定土壤绿度及其正常波动。之后连续两次晴空观测中，至少 80% 的有效像元两次都超过正常波动，且两次地块绿度增量的中位数也都超过该范围，才判为已出苗。",
+    "baselineDates": "土壤基准观测日期：{dates}",
+    "frozenMeaning": "本季结论已确认，查看其他日期可回看当时的像元分布。",
+    "mapMode": "地图显示",
+    "selectedObservation": "观测日期"
   }
 }

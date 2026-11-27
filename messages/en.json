@@ -1,5 +1,6 @@
 {
   "common": {
+    "loadingContent": "Loading…",
     "signIn": "Sign in",
     "signOut": "Sign out",
     "getStarted": "Get started",
@@ -481,6 +482,7 @@
     "emergenceCaption": "Emergence · vs soil baseline · {pixels} px"
   },
   "alertsTab": {
+    "triggerValue": "Trigger value",
     "noAlerts": "No alerts",
     "noAlertsDesc": "This field has no anomaly alerts. Alerts are generated during NDVI analysis.",
     "open": "open",
@@ -762,6 +764,8 @@
     "unreleased": "Unreleased"
   },
   "weather": {
+    "summaryPeriod": "Weather reporting period",
+    "loadFailed": "Could not load weather data",
     "avgTemp": "Avg temp",
     "totalPrecip": "Precipitation",
     "waterDeficit": "Water deficit",
@@ -817,6 +821,8 @@
     "fetchingProgress": "Fetching weather data…"
   },
   "soil": {
+    "priorityRisks": "{level} risk · {items}",
+    "assessedLow": "Low risk across {count} assessed factors",
     "title": "Soil profile",
     "landTooLargeWarning": "This may be an abnormal field: {area} mu exceeds 5,000 mu. Data cannot be downloaded. Please contact technical support.",
     "depthProfile": "Texture by depth",
@@ -1074,6 +1080,11 @@
     "myLocation": "My location"
   },
   "ndviChart": {
+    "yearBrowse": "Browse by year",
+    "previousYear": "Previous year",
+    "nextYear": "Next year",
+    "yearBrowseHint": "Swipe to change year, or press and hold to explore dates",
+    "changeSince": "Since {date}: {change}",
     "threshold": "Threshold",
     "cloud": "Cloud: {percent}%",
     "cloudNA": "Cloud: N/A",
@@ -1215,6 +1226,19 @@
       "sentinel2": "Optical satellite imagery supports indices such as NDVI, but clouds can obscure the ground.",
       "sentinel1": "All-weather radar observes through clouds and measures VV/VH backscatter, not photo color.",
       "emergence": "Rise above the soil baseline. Not an NDVI 0–1 scale, and 0.30 is not an emergence line."
+    },
+    "indexMenuLabels": {
+      "ndvi": "NDVI · Overall vigor",
+      "drought": "Drought risk",
+      "flood": "Flood monitoring",
+      "evi": "EVI · Dense canopy vigor",
+      "ndmi": "NDMI · Vegetation moisture",
+      "ndre": "NDRE · Canopy chlorophyll",
+      "mndwi": "MNDWI · Surface water",
+      "cire": "CIRE · Chlorophyll change",
+      "vv": "VV · Co-polarized radar",
+      "vh": "VH · Cross-polarized radar",
+      "emergence": "Emergence monitoring"
     },
     "indexMenuHints": {
       "ndvi": "Field greenness. A drop can be maturity or cloud.",
@@ -1414,6 +1438,7 @@
     "harvestUncertainShort": "Insufficient evidence"
   },
   "landReportTab": {
+    "scoreNotes": "Scoring notes",
     "title": "Land assessment report",
     "description": "Pick a crop and history window, then one-click queue weather / RS / soil pulls and generate the land assessment PDF.",
     "generate": "Generate PDF",
@@ -2342,14 +2367,14 @@
     "baselineMissing": "—",
     "sceneMissing": "—",
     "frozen": " · frozen",
-    "viewIncrement": "Increment",
-    "viewClass": "Classes",
-    "legendIncrement": "Increment vs soil baseline",
-    "legendClass": "Sustained-rise classes",
+    "viewIncrement": "Greenness change",
+    "viewClass": "Emergence map",
+    "legendIncrement": "NDVI change from soil baseline",
+    "legendClass": "Emergence signals · share of valid pixels",
     "legendNote": "Classes are a reading aid, not a product emergence threshold. Color uses increment or class, never 0.30.",
-    "class0": "Not clearly above the soil baseline",
-    "class1": "Above the noise, not yet sustained",
-    "class2": "Sustained above the noise",
+    "class0": "No emergence signal",
+    "class1": "Possible emergence",
+    "class2": "Sustained emergence signal",
     "pixelCount": "{count} px",
     "chartNdvi": "NDVI",
     "chartIncrement": "NDVI increment vs baseline",
@@ -2392,6 +2417,19 @@
     "sentence_uncertain": "Clear pixels or the soil baseline are not enough to call emergence.",
     "sentence_empty": "Emergence results are not back yet. You can still switch the map to the emergence view.",
     "incrementClause": " (increment median {value})",
-    "dateMissing": "latest clear day"
+    "dateMissing": "latest clear day",
+    "incrementHint": "Darker colors show a larger rise above the soil baseline.",
+    "seasonAssessment": "Seasonal field assessment",
+    "confirmedOn": "First confirmed by satellite on {date}",
+    "meaning_emerged": "Satellite observations confirm widespread, sustained greening. Blue pixels were greener than the soil baseline on two successive observations.",
+    "meaning_emerging": "Greening is visible, but its extent or duration is insufficient to confirm field emergence.",
+    "meaning_not_emerged": "Available observations show no clear field greening yet.",
+    "meaning_uncertain": "Observations are insufficient or inconsistent. Emergence cannot yet be confirmed.",
+    "howJudged": "How is emergence assessed?",
+    "fieldRule": "Early clear observations establish normal soil greenness and its variation. In two successive clear observations after that, at least 80% of valid pixels must exceed that variation both times. The median field increase must also exceed it both times.",
+    "baselineDates": "Soil baseline observations: {dates}",
+    "frozenMeaning": "The seasonal result is confirmed. Select an observation date to see its pixel map.",
+    "mapMode": "Map view",
+    "selectedObservation": "Observation date"
   }
 }
