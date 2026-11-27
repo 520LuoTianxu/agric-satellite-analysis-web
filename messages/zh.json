@@ -62,6 +62,7 @@
     "requiredUsername": "请输入您的账号",
     "requiredPassword": "请输入您的密码",
     "ssoChecking": "正在检测登录状态...",
+    "xiangheLandUnavailable": "无法读取该地块。请回到乡合，确认当前基地和地块权限后重新打开。",
     "platformLabel": "地块遥感与农业洞察平台",
     "heroBadge": "卫星遥感 · 地块洞察",
     "heroTitle1": "看见土地的变化",

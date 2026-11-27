@@ -1,5 +1,6 @@
 import { readJointLoginData } from "./session";
 import { AUTH_KEYS, getItem } from "./storage";
+import { getXiangheLandSession } from "./xianghe-land";
 
 export interface CdfinanceCredentials {
     token: string | null;
@@ -28,6 +29,14 @@ function normalizeToken(value: unknown): string | null {
 export function resolveCdfinanceCredentials(
     landGroupId?: string | number | null,
 ): CdfinanceCredentials {
+    const xianghe = getXiangheLandSession();
+    if (xianghe) {
+        return {
+            token: xianghe.token,
+            groupId: firstText(landGroupId, xianghe.groupId),
+            hrBaseId: xianghe.baseId,
+        };
+    }
     const loginData = readJointLoginData();
     const baseSystem = loginData?.certifiedExternalSystems?.find(
         (system) => Number(system.systemType) === 2,

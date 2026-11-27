@@ -62,6 +62,7 @@
     "requiredUsername": "Introduce tu cuenta",
     "requiredPassword": "Introduce tu contraseña",
     "ssoChecking": "Comprobando el estado de sesión...",
+    "xiangheLandUnavailable": "No se puede abrir el campo. Vuelve a Xianghe, comprueba la base seleccionada y tus permisos, y vuelve a abrirlo.",
     "platformLabel": "Teledetección e información agrícola",
     "heroBadge": "Imágenes satelitales · Datos del campo",
     "heroTitle1": "Observa tus parcelas",

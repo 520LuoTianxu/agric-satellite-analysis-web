@@ -10,10 +10,15 @@ import {
     loginWithPassword,
     logout as logoutSession,
     OrgAccessDeniedError,
-    readSession,
     switchTenant as switchTenantSession,
     type AuthSession,
 } from "@/lib/auth";
+import { canOpenXiangheLand } from "@/lib/agric";
+import {
+    clearXiangheLandSession,
+    readXiangheLandEntry,
+    saveXiangheLandSession,
+} from "@/lib/auth/xianghe-land";
 
 export type OrgAccessStatus = "checking" | "allowed" | "denied";
 
@@ -21,6 +26,7 @@ interface AuthContextValue {
     hydrated: boolean;
     accessStatus: OrgAccessStatus;
     session: AuthSession | null;
+    xiangheLandStatus: "ready" | "unavailable" | null;
     switching: boolean;
     login: (username: string, password: string) => Promise<void>;
     switchTenant: (accountRoleId: number) => Promise<void>;
@@ -46,11 +52,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [hydrated, setHydrated] = useState(false);
     const [accessStatus, setAccessStatus] = useState<OrgAccessStatus>("checking");
     const [session, setSession] = useState<AuthSession | null>(null);
+    const [xiangheLandStatus, setXiangheLandStatus] = useState<AuthContextValue["xiangheLandStatus"]>(null);
     const [switching, setSwitching] = useState(false);
     const handoffRef = useRef<Promise<AuthSession> | null>(null);
+    const landEntryRef = useRef<Promise<boolean> | null>(null);
 
     useEffect(() => {
+        if (!landEntryRef.current) {
+            const entry = readXiangheLandEntry();
+            if (entry) {
+                const landSession = entry.session;
+                landEntryRef.current = (async () => {
+                    if (landSession && await canOpenXiangheLand(landSession).catch(() => false)) {
+                        saveXiangheLandSession(landSession);
+                        return true;
+                    }
+                    clearXiangheLandSession();
+                    return false;
+                })();
+            }
+        }
+
         let cancelled = false;
+        if (landEntryRef.current) {
+            void landEntryRef.current.then((opened) => {
+                if (cancelled) return;
+                setXiangheLandStatus(opened ? "ready" : "unavailable");
+                setAccessStatus("allowed");
+                setHydrated(true);
+            });
+            return () => { cancelled = true; };
+        }
         // 开发模式重新执行 effect 时复用同一次换登，避免片段已移除后提早跳到登录页。
         if (!handoffRef.current) {
             const handoff = readXiangheHandoff();
@@ -152,13 +184,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             hydrated,
             accessStatus,
             session,
+            xiangheLandStatus,
             switching,
             login,
             switchTenant,
             logout,
             continueWithAnotherAccount,
         }),
-        [hydrated, accessStatus, session, switching, login, switchTenant, logout, continueWithAnotherAccount],
+        [hydrated, accessStatus, session, xiangheLandStatus, switching, login, switchTenant, logout, continueWithAnotherAccount],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

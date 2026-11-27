@@ -62,6 +62,7 @@
     "requiredUsername": "Enter your account",
     "requiredPassword": "Enter your password",
     "ssoChecking": "Checking sign-in status...",
+    "xiangheLandUnavailable": "Unable to open this field. Return to Xianghe, check the selected base and your field access, then reopen it.",
     "platformLabel": "Field remote sensing and agricultural insights",
     "heroBadge": "Satellite imagery · Field insights",
     "heroTitle1": "See your fields change",
