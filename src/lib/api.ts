@@ -4,6 +4,7 @@ import { buildLandWeatherPath } from "@/lib/land-weather";
 import { getAlertSession } from "@/lib/alert-session";
 import { mutate as mutateCache } from "swr";
 import { AUTH_KEYS, getItem } from "@/lib/auth/storage";
+import { readJointLoginData } from "@/lib/auth/session";
 
 /**
  * agric-satellite-analysis API client.
@@ -75,7 +76,11 @@ export function getSatelliteAuthHeaders(): Record<string, string> {
         getItem(AUTH_KEYS.sldToken) ||
         "";
     if (!token) return {};
-    return { Authorization: `Bearer ${token.replace(/^Bearer\s+/i, "")}` };
+    const baseId = readJointLoginData()?.xiangheBaseId;
+    return {
+        Authorization: `Bearer ${token.replace(/^Bearer\s+/i, "")}`,
+        ...(baseId ? { "Hr-Base-Id": baseId } : {}),
+    };
 }
 
 /** Core fetch wrapper - adds Authorization + X-Org-Id headers. */

@@ -92,6 +92,9 @@ export function AlertRow({
     closedLabel,
     compact = false,
 }: AlertRowProps) {
+    const tSeverity = useTranslations("alertsPage");
+    const tWeather = useTranslations("alertWeather");
+    const tAlert = useTranslations("alertsTab");
     const tRules = useTranslations("alertRules");
     const tRead = useTranslations("alertReading");
     const [reading, setReading] = useState(false);
@@ -148,9 +151,9 @@ export function AlertRow({
                             isClosed ? "border-border text-muted-foreground" : severity.badgeClass,
                         )}
                     >
-                        {alert.severity}
+                        {["high", "medium", "low"].includes(alert.severity) ? tSeverity(alert.severity) : alert.severity}
                     </Badge>
-                    <span className="text-xs font-medium text-muted-foreground truncate">
+                    <span className="min-w-0 text-sm font-semibold leading-snug text-foreground">
                         {ruleLabel(alert.rule_name, tRules)}
                     </span>
                     <span className="font-mono text-[11px] text-muted-foreground ml-auto shrink-0">
@@ -169,9 +172,9 @@ export function AlertRow({
                     <div className="flex items-center gap-2 mt-1.5 text-[10px] text-muted-foreground">
                         <CloudRain className="h-3 w-3 shrink-0" />
                         <span>
-                            Precip 7d: {alert.weather_context.precipitation_7d_mm ?? "-"}mm
+                            {tWeather("precip7d")} {alert.weather_context.precipitation_7d_mm ?? "-"}mm
                             {alert.weather_context.water_deficit_mm != null && (
-                                <> · Deficit: {alert.weather_context.water_deficit_mm}mm</>
+                                <> · {tWeather("waterDeficit")} {alert.weather_context.water_deficit_mm}mm</>
                             )}
                         </span>
                     </div>
@@ -184,7 +187,7 @@ export function AlertRow({
                         <span>
                             {alert.soil_context.layer_depth ?? ""}
                             {alert.soil_context.trigger_value != null && (
-                                <> · Value: {typeof alert.soil_context.trigger_value === "number" ? alert.soil_context.trigger_value.toFixed(1) : alert.soil_context.trigger_value}</>
+                                <> · {tAlert("triggerValue")} {typeof alert.soil_context.trigger_value === "number" ? alert.soil_context.trigger_value.toFixed(1) : alert.soil_context.trigger_value}</>
                             )}
                         </span>
                     </div>
@@ -239,7 +242,7 @@ export function AlertRow({
                             isClosed ? "border-border text-muted-foreground" : severity.badgeClass,
                         )}
                     >
-                        {alert.severity}
+                        {["high", "medium", "low"].includes(alert.severity) ? tSeverity(alert.severity) : alert.severity}
                     </Badge>
                     <span className="text-xs font-medium text-muted-foreground">
                         {ruleLabel(alert.rule_name, tRules)}
@@ -270,7 +273,7 @@ export function AlertRow({
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
                             <CloudRain className="h-3 w-3" />
-                            Precip 7d: {alert.weather_context.precipitation_7d_mm ?? "-"}mm
+                            {tWeather("precip7d")} {alert.weather_context.precipitation_7d_mm ?? "-"}mm
                         </span>
                         {alert.weather_context.et0_7d_mm != null && (
                             <span>ET₀ 7d: {alert.weather_context.et0_7d_mm}mm</span>

@@ -17,6 +17,7 @@ import LandScorecardRadar from "@/components/charts/land-scorecard-radar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DatePicker } from "@/components/ui/date-picker";
+import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     Dialog,
@@ -450,14 +451,8 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
             </div>
             )}
 
-            <EmergenceReportCard landId={landId} onShowOnMap={onShowEmergence} />
-
             {loading ? (
-                <div className="space-y-2">
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-16 w-full" />
-                    <Skeleton className="h-64 w-full" />
-                </div>
+                <FieldTabSkeleton variant="report" />
             ) : (
                 <>
                     {reportActions}
@@ -567,17 +562,7 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
                     {scorecardState === "loading" ? (
                         <Skeleton className="h-64 w-full rounded-lg" />
                     ) : scorecard && scorecardState === "ready" ? (
-                        <div className="rounded-lg border bg-card shadow-sm p-4 space-y-3">
-                            <div className="space-y-1">
-                                <h4 className="text-[15px] font-semibold flex items-center gap-2">
-                                    <Hexagon className="h-4 w-4" />
-                                    {t("chartTitle")}
-                                </h4>
-                                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                    {t("chartCaption")}
-                                </p>
-                            </div>
-
+                        <div className="rounded-lg border bg-card shadow-sm p-4 space-y-3 max-md:border-0 max-md:p-0 max-md:shadow-none">
                             <div className="flex flex-wrap items-end gap-3">
                                 <div
                                     className={`rounded-md px-3 py-2 text-center min-w-[4.5rem] ${lightBadgeClass(light)}`}
@@ -599,6 +584,39 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
                                 </div>
                             </div>
 
+                            <div className="space-y-1">
+                                <h4 className="text-[15px] font-semibold flex items-center gap-2">
+                                    <Hexagon className="h-4 w-4" />
+                                    {t("chartTitle")}
+                                </h4>
+                                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                    {t("chartCaption")}
+                                </p>
+                            </div>
+
+                            <LandScorecardRadar scorecard={scorecard} />
+
+                            <ul className="grid grid-cols-1 gap-2">
+                                {scorecard.dimensions.map((d) => (
+                                    <li
+                                        key={d.key}
+                                        className="flex items-center justify-between gap-2 rounded-lg border p-3"
+                                    >
+                                        <span className="text-xs">
+                                            {t(AXIS_I18N[d.key])}
+                                            {d.weight ? (
+                                                <span className="text-muted-foreground"> · {d.weight}</span>
+                                            ) : null}
+                                        </span>
+                                        <span className="font-mono text-sm font-medium tabular-nums">
+                                            {t("scoreOutOf", { score: d.score })}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                {t("chartWeights")}
+                            </p>
                             {scorecard.ai_reference &&
                                 typeof scorecard.ai_reference.score === "number" && (
                                 <div className="rounded-md border border-dashed border-amber-500/40 bg-amber-500/5 px-3 py-2 space-y-1">
@@ -634,39 +652,15 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
                                     </p>
                                 </div>
                             )}
-
-                            <LandScorecardRadar scorecard={scorecard} />
-
-                            <ul className="grid grid-cols-1 gap-2">
-                                {scorecard.dimensions.map((d) => (
-                                    <li
-                                        key={d.key}
-                                        className="flex items-center justify-between gap-2 rounded-lg border p-3"
-                                    >
-                                        <span className="text-xs">
-                                            {t(AXIS_I18N[d.key])}
-                                            {d.weight ? (
-                                                <span className="text-muted-foreground"> · {d.weight}</span>
-                                            ) : null}
-                                        </span>
-                                        <span className="font-mono text-sm font-medium tabular-nums">
-                                            {t("scoreOutOf", { score: d.score })}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
-                            <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                {t("chartWeights")}
-                            </p>
                         </div>
                     ) : (
-                        <div className="rounded-lg border bg-card shadow-sm p-4 space-y-3">
-                            <div className="rounded-lg border-2 border-dashed p-12 text-center space-y-2">
-                                <Hexagon className="h-12 w-12 mx-auto text-muted-foreground" />
+                        <div className="rounded-lg border bg-card shadow-sm p-4 space-y-3 max-md:border-0 max-md:p-0 max-md:shadow-none">
+                            <div className="rounded-lg py-2 md:border md:border-dashed md:p-12 md:text-center space-y-2">
+                                <Hexagon className="hidden h-12 w-12 mx-auto md:block text-muted-foreground" />
                                 <p className="text-sm font-medium">
                                     {scorecardState === "legacy" ? t("legacyNoScorecard") : t("noScorecard")}
                                 </p>
-                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                <p className="hidden text-xs text-muted-foreground leading-relaxed md:block">
                                     {scorecardState === "legacy"
                                         ? t("legacyNoScorecardHint")
                                         : t("noScorecardHint")}
@@ -733,17 +727,19 @@ export default function LandReportTab({ landId, groupId, cropType, onCropBound, 
                     )}
 
                     {!latest && (
-                        <p className="text-xs text-muted-foreground">{t("empty")}</p>
+                        <p className="hidden text-xs text-muted-foreground md:block">{t("empty")}</p>
                     )}
 
-                    <div className="rounded-md bg-surface-2 p-3 text-[11px] text-muted-foreground space-y-1 leading-relaxed">
+                    {scorecard && <details className="text-xs leading-relaxed text-muted-foreground">
+                        <summary className="cursor-pointer py-1 font-medium">{t("scoreNotes")}</summary>
                         <p>{t("noteVigor")}</p>
                         <p>{t("noteFlood")}</p>
                         <p>{t("noteArea")}</p>
-                    </div>
+                    </details>}
                 </>
             )}
 
+            <EmergenceReportCard landId={landId} onShowOnMap={onShowEmergence} />
         </div>
     );
 }

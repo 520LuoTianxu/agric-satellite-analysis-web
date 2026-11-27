@@ -18,6 +18,8 @@ export interface CertifiedExternalSystem {
 }
 
 export interface JointLoginData {
+    /** 从乡合跳转时，由登录返回的可用基地清单校验过的基地。 */
+    xiangheBaseId?: string;
     agricToken?: string;
     villageToken?: string;
     bmsRefreshToken?: string;

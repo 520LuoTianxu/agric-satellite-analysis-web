@@ -24,7 +24,7 @@ const DialogOverlay = React.forwardRef<
     <DialogPrimitive.Overlay
         ref={ref}
         className={cn(
-            "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 max-md:bg-black/40",
+            "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 h5-overlay",
             className
         )}
         {...props}
@@ -37,21 +37,22 @@ const DialogContent = React.forwardRef<
     React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => {
     const t = useTranslations("common");
-    const localRef = React.useRef<HTMLDivElement | null>(null);
+    const [sheet, setSheet] = React.useState<HTMLDivElement | null>(null);
     const closeRef = React.useRef<HTMLButtonElement | null>(null);
-    const setRefs = (node: HTMLDivElement | null) => {
-        localRef.current = node;
+    const setRefs = React.useCallback((node: HTMLDivElement | null) => {
+        setSheet(node);
         if (typeof ref === "function") ref(node);
         else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
-    };
+    }, [ref]);
 
-    React.useEffect(() => {
-        const el = localRef.current;
+    React.useLayoutEffect(() => {
+        // 弹层通过 Portal 按需挂载，需在内容出现后测量高度并绑定拖动。
+        const el = sheet;
         if (!el || !window.matchMedia("(max-width: 767px)").matches) return;
         const viewportHeight = () => window.innerHeight;
         const h = viewportHeight();
         const wants = el.scrollHeight;
-        const mid = wants > h * 0.72 ? Math.round(h * 0.36) : Math.max(0, h - wants);
+        const mid = Math.max(Math.round(h * 0.10), h - wants);
         let snap = mid;
         el.style.setProperty("--sheet-top", `${mid}px`);
         return bindSheetGesture({
@@ -87,7 +88,7 @@ const DialogContent = React.forwardRef<
                 el.style.setProperty("--sheet-top", `${next}px`);
             },
         });
-    }, []);
+    }, [sheet]);
 
     return (
     <DialogPortal>
@@ -104,10 +105,10 @@ const DialogContent = React.forwardRef<
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-0 top-2 z-10 hidden justify-center max-md:flex"
             >
-                <span className="h-1 w-8 rounded-full bg-muted-foreground/50" />
+                <span className="h-1 w-8 rounded-full bg-muted-foreground/30" />
             </div>
             {children}
-            <DialogPrimitive.Close ref={closeRef} className="absolute right-4 top-4 rounded-full opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground max-md:top-3 max-md:bg-muted max-md:p-1 max-md:opacity-100">
+            <DialogPrimitive.Close ref={closeRef} className="absolute right-4 top-4 rounded-full opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground max-md:right-3 max-md:top-3 max-md:grid max-md:size-9 max-md:place-items-center max-md:bg-muted max-md:text-muted-foreground max-md:opacity-100">
                 <X className="h-4 w-4" />
                 <span className="sr-only">{t("close")}</span>
             </DialogPrimitive.Close>
@@ -123,7 +124,7 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
     <div
         className={cn(
-            "flex flex-col space-y-1.5 text-center sm:text-left max-md:pt-3 max-md:text-left",
+            "flex flex-col space-y-1.5 text-center sm:text-left max-md:pr-9 max-md:pt-1 max-md:text-left",
             className
         )}
         {...props}
@@ -137,7 +138,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
     <div
         className={cn(
-            "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+            "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 max-md:gap-2 max-md:[&>button]:min-h-11 max-md:[&>button]:rounded-xl",
             className
         )}
         {...props}
@@ -152,7 +153,7 @@ const DialogTitle = React.forwardRef<
     <DialogPrimitive.Title
         ref={ref}
         className={cn(
-            "text-lg font-semibold leading-none tracking-tight",
+            "text-lg font-semibold leading-tight tracking-tight",
             className
         )}
         {...props}

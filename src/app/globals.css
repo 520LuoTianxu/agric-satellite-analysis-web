@@ -383,13 +383,16 @@
         right: 0 !important;
         bottom: 0 !important;
         left: 0 !important;
-        top: var(--sheet-top, 36%) !important;
+        top: var(--sheet-top, auto) !important;
         width: 100% !important;
         max-width: none !important;
         height: auto !important;
         max-height: none !important;
         transform: none !important;
-        border-radius: 20px 20px 0 0 !important;
+        border: 0;
+        border-radius: var(--h5-sheet-radius) var(--h5-sheet-radius) 0 0 !important;
+        align-content: start;
+        box-shadow: var(--h5-shadow);
         animation: none !important;
         overflow-x: hidden !important;
         overflow-y: auto !important;
@@ -402,6 +405,89 @@
         transition: none !important;
     }
 
+    :root {
+        --h5-sheet-radius: 24px;
+        --h5-popup-radius: 16px;
+        --h5-shadow: 0 12px 40px hsl(var(--map-scrim) / .16), 0 2px 8px hsl(var(--map-scrim) / .08);
+    }
+
+    .h5-overlay { background: hsl(var(--map-scrim) / .40); }
+    .h5-confirm {
+        width: min(calc(100vw - 32px), 25rem);
+        max-height: calc(100dvh - 48px);
+        overflow-y: auto;
+        border: 0;
+        border-radius: var(--h5-sheet-radius);
+        padding: 24px;
+        gap: 20px;
+        box-shadow: var(--h5-shadow);
+    }
+
+    .h5-menu, .h5-popup, .h5-map-picker, [data-mobile-picker] {
+        border-radius: var(--h5-popup-radius);
+        border-color: hsl(var(--border) / .6);
+        background-color: hsl(var(--popover));
+        box-shadow: var(--h5-shadow);
+    }
+    .h5-map-picker { max-width: calc(100vw - 24px); }
+    .h5-menu { max-height: min(70dvh, var(--radix-dropdown-menu-content-available-height, 70dvh)); overflow-y: auto; }
+    .h5-menu :is([role^="menuitem"], [role="option"]), [data-mobile-picker] [role="option"] {
+        min-height: 42px;
+        border-radius: 10px;
+    }
+    .h5-menu [data-current="true"], [data-mobile-picker] [role="option"][data-state="checked"] {
+        background: hsl(var(--primary-subtle));
+        color: hsl(var(--success));
+    }
+    /* Radix 的定位容器带 transform，底部选择器需要相对视口而非触发按钮定位。 */
+    [data-radix-popper-content-wrapper]:has(> [data-mobile-picker]) {
+        transform: none !important;
+        inset: auto 0 0 !important;
+    }
+
+    .field-sheet {
+        border-radius: var(--h5-sheet-radius) var(--h5-sheet-radius) 0 0;
+        box-shadow: 0 -5px 28px hsl(var(--map-scrim) / .12);
+    }
+    .field-sheet > .flex.min-h-0 {
+        box-shadow: none;
+        background: hsl(var(--background));
+    }
+    .field-sheet [role="tablist"] { padding-inline: 16px; }
+    .field-sheet [role="tabpanel"] { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+    .field-sheet [role="tabpanel"].p-3 { padding-inline: 16px; }
+    .h5-field-module {
+        min-width: 0;
+        border-radius: 16px;
+        background: hsl(var(--surface-2));
+        padding: 12px;
+    }
+    .h5-weather-primary { align-items: baseline; gap: 8px; }
+    .h5-weather-primary p:first-child, .h5-weather-secondary p:first-child {
+        white-space: normal;
+        font-size: .75rem;
+        line-height: 1.4;
+    }
+    .h5-weather-primary p:nth-child(2) {
+        font-size: clamp(1.125rem, 4.4vw, 1.6rem);
+        font-weight: 600;
+        letter-spacing: -.035em;
+    }
+    .h5-weather-secondary {
+        row-gap: 8px;
+    }
+    .h5-weather-secondary p:nth-child(2) { font-size: .8125rem; color: hsl(var(--foreground)); }
+    .h5-weather-secondary p.text-danger { color: hsl(var(--danger)); }
+    .h5-soil { display: flex; flex-direction: column; gap: 20px; }
+    .h5-soil > * { margin-block: 0 !important; }
+    .h5-soil > [role="alert"] { order: -2; }
+    .h5-soil-summary { order: -1; }
+    .h5-soil > section > :is(h3, h4) { font-size: .9375rem; }
+    .h5-soil-properties > .grid { gap: 14px; }
+    .h5-soil-properties > .grid > div { background: transparent; border: 0; padding: 0; }
+    .h5-soil-properties p:first-child { font-size: .75rem; }
+    .h5-soil-properties p.font-bold { color: hsl(var(--foreground)); font-weight: 600; }
+    .h5-soil-properties p:last-child { font-size: .75rem; }
     /* 选择器不用贴在触发器上的小菜单，改成底部圆角卡片。 */
     [data-mobile-picker] {
         position: fixed !important;
@@ -549,4 +635,32 @@
 }
 .overview-hover-popup .maplibregl-popup-tip {
   border-top-color: #fff;
+}
+
+@media (max-width: 767px) {
+    .maplibregl-popup .maplibregl-popup-content {
+        border-radius: var(--h5-popup-radius);
+        box-shadow: var(--h5-shadow);
+        background: hsl(var(--popover));
+        color: hsl(var(--popover-foreground));
+    }
+    .openfarm-popup-body { padding: 14px 16px; line-height: 1.5; }
+    .openfarm-popup-title { padding-inline-end: 24px; font-size: 15px; }
+    .openfarm-popup-meta { font-size: 12px; }
+    .openfarm-popup .maplibregl-popup-close-button { width: 32px; height: 32px; border-radius: 50%; }
+    .h5-tour {
+        border-radius: var(--h5-popup-radius);
+        background: hsl(var(--popover));
+        color: hsl(var(--popover-foreground));
+        box-shadow: var(--h5-shadow);
+    }
+    .h5-tour > [aria-hidden] { background: hsl(var(--popover)); }
+    .h5-tour :is(p, span, button) { color: inherit; }
+    .h5-tour button:last-child.bg-primary-foreground {
+        background: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .mobile-page-sheet, .field-sheet { transition-duration: 0s; }
+    }
 }

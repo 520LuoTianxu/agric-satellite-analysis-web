@@ -1,5 +1,7 @@
 "use client";
 
+import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
+
 import React, { useState, useCallback, useEffect } from "react";
 import { alertsApi, type Alert } from "@/lib/api";
 import { toast } from "sonner";
@@ -9,7 +11,6 @@ import {
     EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslations } from "next-intl";
 import { AlertRow } from "@/components/alert-row";
 import { formatAlertCount } from "@/lib/alert-session";
@@ -24,17 +25,21 @@ interface AlertsTabProps {
 
 export default function AlertsTab({ landId, onOpenCountChange }: AlertsTabProps) {
     const t = useTranslations("alertsTab");
+    const tRead = useTranslations("alertReading");
+    const [loadFailed, setLoadFailed] = useState(false);
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [loading, setLoading] = useState(true);
     const [showClosed, setShowClosed] = useState(false);
     const [togglingId, setTogglingId] = useState<string | null>(null);
 
     const loadAlerts = useCallback(async () => {
+        setLoading(true);
+        setLoadFailed(false);
         try {
             const res = await alertsApi.listForLand(landId, 200);
             setAlerts(res.items ?? []);
         } catch {
-            // silent
+            setLoadFailed(true);
         } finally {
             setLoading(false);
         }
@@ -46,9 +51,10 @@ export default function AlertsTab({ landId, onOpenCountChange }: AlertsTabProps)
 
     // Report open count to parent for badge
     useEffect(() => {
+        if (loading || loadFailed) return;
         const openCount = alerts.filter((a) => a.status === "open").length;
         onOpenCountChange?.(openCount);
-    }, [alerts, onOpenCountChange]);
+    }, [alerts, loading, loadFailed, onOpenCountChange]);
 
     const toggleStatus = async (alert: Alert) => {
         const newStatus = alert.status === "open" ? "closed" : "open";
@@ -66,26 +72,28 @@ export default function AlertsTab({ landId, onOpenCountChange }: AlertsTabProps)
         }
     };
 
-    if (loading) {
-        return (
-            <div className="space-y-3 py-2">
-                {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-16 w-full rounded-lg" />
-                ))}
-            </div>
-        );
+    if (loading) return <FieldTabSkeleton variant="alerts" />;
+
+    if (loadFailed) {
+        return <div role="alert" className="flex items-center justify-between gap-3 py-3 text-sm">
+            {tRead("loadFailed")}
+            <Button size="sm" variant="outline" onClick={loadAlerts}>{tRead("retry")}</Button>
+        </div>;
     }
 
     const openAlerts = alerts.filter((a) => a.status === "open");
     const closedAlerts = alerts.filter((a) => a.status === "closed");
-    const visibleAlerts = showClosed ? alerts : openAlerts;
+    // 待处理项先按严重程度、再按观测日期排列，历史记录单独排在末尾。
+    const severityRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
+    openAlerts.sort((a, b) => (severityRank[b.severity] ?? 0) - (severityRank[a.severity] ?? 0) || b.date.localeCompare(a.date));
+    const visibleAlerts = showClosed ? [...openAlerts, ...closedAlerts.sort((a, b) => b.date.localeCompare(a.date))] : openAlerts;
 
     if (alerts.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center text-center py-12">
+            <div className="flex flex-col items-center justify-center text-center py-5">
                 <CheckCircle2 className="h-8 w-8 text-primary/40 mb-2" />
                 <p className="text-sm font-medium">{t("noAlerts")}</p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1 max-md:hidden">
                     {t("noAlertsDesc")}
                 </p>
             </div>
@@ -97,7 +105,7 @@ export default function AlertsTab({ landId, onOpenCountChange }: AlertsTabProps)
             {/* Summary + filter */}
             <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">{formatAlertCount(openAlerts.length)}</span>{" "}
+                    <span className="font-medium text-foreground max-md:text-2xl max-md:font-semibold max-md:tabular-nums">{formatAlertCount(openAlerts.length)}</span>{" "}
                     {t("open")}
                     {closedAlerts.length > 0 && (
                         <span className="ml-1">

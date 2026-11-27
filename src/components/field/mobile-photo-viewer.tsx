@@ -181,7 +181,7 @@ export function MobilePhotoViewer({
             <button
                 type="button"
                 data-photo-close=""
-                className="absolute right-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/15"
+                className="absolute right-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 ring-1 ring-white/20"
                 style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
                 aria-label={tCommon("close")}
                 onClick={onClose}
@@ -189,8 +189,7 @@ export function MobilePhotoViewer({
                 <X className="h-5 w-5" aria-hidden="true" />
             </button>
             <p
-                className="pointer-events-none absolute inset-x-0 text-center text-sm text-white/80"
-                style={{ bottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+                className="sr-only"
             >
                 {t("pinchHint")}
             </p>

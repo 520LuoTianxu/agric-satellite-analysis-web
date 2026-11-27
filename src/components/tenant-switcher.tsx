@@ -89,7 +89,7 @@ export function TenantSwitcher() {
         <div className="flex items-center gap-0.5">
             {switching && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70">
-                    <p className="text-sm text-muted-foreground">{t("switchingTenant")}</p>
+                    <p role="status" className="text-sm text-muted-foreground max-md:rounded-2xl max-md:bg-popover max-md:px-5 max-md:py-4 max-md:shadow-[var(--h5-shadow)]">{t("switchingTenant")}</p>
                 </div>
             )}
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
+
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import maplibregl from "maplibre-gl";
 import {
@@ -45,7 +47,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { tokenColor } from "@/lib/design-tokens";
 import { useLocale, useTranslations } from "next-intl";
@@ -526,15 +527,7 @@ export default function ScoutingTab({ landId, mapInstance, activeTab }: Scouting
 
     /* ── Render: Loading ───────────────────────────────────── */
 
-    if (loading) {
-        return (
-            <div className="space-y-3 p-4">
-                {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-20 w-full rounded-lg" />
-                ))}
-            </div>
-        );
-    }
+    if (loading) return <FieldTabSkeleton variant="alerts" className="p-3" />;
 
     /* ── Render: Form ──────────────────────────────────────── */
 

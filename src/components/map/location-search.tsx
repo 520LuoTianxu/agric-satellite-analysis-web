@@ -147,7 +147,7 @@ export default function LocationSearch({ onSelect, className = "" }: LocationSea
 
             {/* Dropdown results */}
             {expanded && results.length > 0 && (
-                <div className={`${MAP_CHROME} absolute top-full left-0 mt-1 w-72 rounded-lg overflow-hidden z-50`}>
+                <div className={`${MAP_CHROME} h5-popup absolute top-full left-0 mt-1 w-72 max-md:max-w-[calc(100vw-2rem)] rounded-lg overflow-hidden z-50`}>
                     {results.map((r) => (
                         <button
                             key={r.place_id}
@@ -163,7 +163,7 @@ export default function LocationSearch({ onSelect, className = "" }: LocationSea
 
             {/* Loading indicator */}
             {expanded && loading && (
-                <div className={`${MAP_CHROME} absolute top-full left-0 mt-1 w-72 rounded-lg px-3 py-2 text-xs text-muted-foreground`}>
+                <div className={`${MAP_CHROME} h5-popup absolute top-full left-0 mt-1 w-72 max-md:max-w-[calc(100vw-2rem)] rounded-lg px-3 py-2 text-xs text-muted-foreground`}>
                     Searching...
                 </div>
             )}

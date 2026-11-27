@@ -43,6 +43,7 @@ import { useTranslations } from "next-intl";
 import { MAP_STYLES, usesGcj02Coordinates, type MapStyleId } from "@/lib/pmtiles";
 import { tokenColor, MAP_CHROME } from "@/lib/design-tokens";
 import { wgs84GeometryToGcj02, wgs84ToGcj02 } from "@/lib/coordinate-transform";
+import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TOUR_PREPARE_EVENT, type TourPrepareDetail } from "@/lib/product-tour";
 import { bindSheetGesture } from "@/lib/sheet-gesture";
@@ -76,11 +77,7 @@ const BaseMap = dynamic(() => import("@/components/map/base-map"), {
 
 const NdviTab = dynamic(() => import("@/components/field/ndvi-tab"), {
     ssr: false,
-    loading: () => (
-        <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-    ),
+    loading: () => <FieldTabSkeleton variant="growth" />,
 });
 
 const MapStyleSwitcher = dynamic(() => import("@/components/map/map-style-switcher"), {
@@ -116,62 +113,39 @@ const EmergenceLegend = dynamic(() => import("@/components/field/emergence-legen
 
 const AlertsTab = dynamic(() => import("@/components/field/alerts-tab"), {
     ssr: false,
-    loading: () => (
-        <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-    ),
+    loading: () => <FieldTabSkeleton variant="alerts" />,
 });
 
 
 const ScoutingTab = dynamic(() => import("@/components/field/scouting-tab"), {
     ssr: false,
-    loading: () => (
-        <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-    ),
+    loading: () => <FieldTabSkeleton variant="alerts" className="p-3" />,
 });
 
 const ShareTab = dynamic(() => import("@/components/field/share-tab"), {
     ssr: false,
-    loading: () => (
-        <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-    ),
+    loading: () => <FieldTabSkeleton variant="share" className="p-3" />,
 });
 
 const WeatherTab = dynamic(() => import("@/components/field/weather-tab"), {
     ssr: false,
-    loading: () => (
-        <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-    ),
+    loading: () => <FieldTabSkeleton variant="weather" />,
 });
 
 const SoilTab = dynamic(() => import("@/components/field/soil-tab"), {
     ssr: false,
-    loading: () => (
-        <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-    ),
+    loading: () => <FieldTabSkeleton variant="soil" />,
 });
 
 // 种植双周报：走现有登录态与 /satellite-api，与其他地块接口同一套网关。
-const BiweeklyTab = dynamic(() => import("@/components/biweekly/biweekly-tab"));
+const BiweeklyTab = dynamic(() => import("@/components/biweekly/biweekly-tab"), {
+    loading: () => <FieldTabSkeleton variant="biweekly" className="px-4 py-3 md:py-6" />,
+});
 
 // 选地报告、生育期长势、收获放在「选地报告」页签，首次进入再加载。
 const ParcelAnalysisTab = dynamic(() => import("@/components/field/parcel-analysis-tab"), {
     ssr: false,
-    loading: () => (
-        <div className="p-3 space-y-3">
-            <Skeleton className="h-8 w-40" />
-            <Skeleton className="h-24 w-full" />
-        </div>
-    ),
+    loading: () => <FieldTabSkeleton variant="report" className="p-3" />,
 });
 
 /* ── Index overlay helpers ───────────────────────────────────── */
@@ -372,7 +346,7 @@ function FieldDetailPageContent() {
         ? harvestHeatmap
         : agriHeatmap;
     const [agriHeatMode, setAgriHeatMode] = useState<AgriHeatIndex>("ndvi");
-    const [emergenceView, setEmergenceView] = useState<EmergenceMapView>("increment");
+    const [emergenceView, setEmergenceView] = useState<EmergenceMapView>("class");
     const agriHeatModeRef = useRef(agriHeatMode);
     agriHeatModeRef.current = agriHeatMode;
     const [activeIndexType, setActiveIndexType] = useState<IndexType>("NDVI");
@@ -1642,18 +1616,7 @@ function FieldDetailPageContent() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [land?.land_id]);
 
-    if (loading) {
-        return (
-            <div className="relative h-full w-full overflow-hidden">
-                <Skeleton className="absolute inset-0 rounded-none" />
-                <div className="absolute top-4 left-4 flex gap-2">
-                    <Skeleton className="h-10 w-32 rounded-lg" />
-                    <Skeleton className="h-10 w-28 rounded-lg" />
-                </div>
-                <Skeleton className="absolute top-4 right-4 bottom-4 w-[var(--panel-w)] rounded-xl" />
-            </div>
-        );
-    }
+    if (loading) return <FieldPageSkeleton />;
 
     if (!land) return null;
 
@@ -1862,11 +1825,7 @@ function FieldDetailPageContent() {
                     )}
                 >
                     {shownHeatmap.index === "emergence" ? (
-                        <EmergenceLegend
-                            heatmap={shownHeatmap}
-                            view={emergenceView}
-                            onViewChange={setEmergenceView}
-                        />
+                        <EmergenceLegend heatmap={shownHeatmap} />
                     ) : (
                         <AgriHeatmapLegend heatmap={shownHeatmap} variant="thumb" />
                     )}
@@ -1878,11 +1837,7 @@ function FieldDetailPageContent() {
                 <div className="absolute bottom-6 left-4 z-20 hidden transition-opacity duration-200 md:block">
                     {shownHeatmap ? (
                         shownHeatmap.index === "emergence" ? (
-                            <EmergenceLegend
-                                heatmap={shownHeatmap}
-                                view={emergenceView}
-                                onViewChange={setEmergenceView}
-                            />
+                            <EmergenceLegend heatmap={shownHeatmap} />
                         ) : (
                             <AgriHeatmapLegend heatmap={shownHeatmap} variant="legend" />
                         )
@@ -2402,9 +2357,23 @@ function getAllCoords(geom: GeoJSON.Geometry): number[][] {
     return [];
 }
 
+function FieldPageSkeleton() {
+    return (
+        <div className="relative min-h-svh w-full overflow-hidden">
+            <Skeleton className="absolute inset-0 rounded-none" />
+            <div className="absolute inset-x-0 bottom-0 h-[58svh] rounded-t-3xl bg-background p-4 md:inset-y-4 md:left-auto md:right-4 md:h-auto md:w-[min(42vw,28rem)] md:rounded-2xl">
+                <div className="mb-4 flex gap-3" aria-hidden="true">
+                    {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-5 flex-1" />)}
+                </div>
+                <FieldTabSkeleton variant="growth" />
+            </div>
+        </div>
+    );
+}
+
 export default function FieldDetailPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen" />}>
+        <Suspense fallback={<FieldPageSkeleton />}>
             <FieldDetailPageContent />
         </Suspense>
     );

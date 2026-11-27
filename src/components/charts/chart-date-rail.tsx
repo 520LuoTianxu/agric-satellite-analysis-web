@@ -31,8 +31,8 @@ export function ObservationDateRail({
     if (dates.length === 0) return null;
 
     return (
-        <div role="group" aria-label={label} className="mx-auto w-full max-w-[336px]">
-            <div className="grid grid-cols-7 gap-1">
+        <div role="group" aria-label={label} className="mx-auto w-full" style={{ maxWidth: visibleDates.length * 48 }}>
+            <div className="grid auto-cols-fr grid-flow-col gap-1">
                 {visibleDates.map((date) => {
                     const parsed = new Date(`${date}T00:00:00Z`);
                     return (
@@ -42,7 +42,7 @@ export function ObservationDateRail({
                     );
                 })}
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid auto-cols-fr grid-flow-col gap-1">
                 {visibleDates.map((date) => {
                     const day = Number(date.slice(8, 10));
                     const active = date === activeDate;

@@ -502,9 +502,9 @@ export const EMERGENCE_CLASS_STYLE: Record<
     number,
     { color: string; rgba: [number, number, number, number] }
 > = {
-    0: { color: "#d0d0d0", rgba: [208, 208, 208, 210] },
-    1: { color: "#a1d99b", rgba: [161, 217, 155, 228] },
-    2: { color: "#006d2c", rgba: [0, 109, 44, 236] },
+    0: { color: "#e2e4ea", rgba: [226, 228, 234, 255] },
+    1: { color: "#ed8b18", rgba: [237, 139, 24, 255] },
+    2: { color: "#214cac", rgba: [33, 76, 172, 255] },
 };
 
 export function colorizeRiseClass(riseClass: number): [number, number, number, number] | null {

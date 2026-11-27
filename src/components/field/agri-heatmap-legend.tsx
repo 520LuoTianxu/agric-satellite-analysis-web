@@ -453,9 +453,9 @@ function MobileSatelliteThumb({ heatmap }: { heatmap: AgriHeatmapImage }) {
         <>
             <button
                 type="button"
-                className="block h-16 w-20 overflow-hidden rounded-2xl border-2 border-white bg-muted shadow-lg"
+                className="relative block h-16 w-20 overflow-hidden rounded-2xl border-2 border-white bg-muted shadow-lg"
                 onClick={() => setOpen(true)}
-                aria-label={t("openPreview", { caption: t("viewSatellite") })}
+                aria-label={t("openPreview", { caption: t(preview.captionKey === "heatmap" ? "heatmap" : "viewSatellite") })}
             >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -466,6 +466,9 @@ function MobileSatelliteThumb({ heatmap }: { heatmap: AgriHeatmapImage }) {
                     className="h-full w-full object-cover"
                     onError={() => setIndex((current) => current + 1)}
                 />
+                <span aria-hidden="true" className="absolute inset-x-0 bottom-0 bg-black/65 px-0.5 py-0.5 text-center text-[10px] font-medium leading-tight text-white">
+                    {t(preview.captionKey === "heatmap" ? "heatmap" : "viewSatellite")}
+                </span>
             </button>
             {open ? (
                 <MobilePhotoViewer

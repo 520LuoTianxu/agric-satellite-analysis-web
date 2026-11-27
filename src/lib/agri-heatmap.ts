@@ -401,6 +401,7 @@ export type AgriHeatmapLegend =
       }
     | {
           kind: "emergence";
+          date: string | null;
           label: string;
           view: "increment" | "class";
           min: number;

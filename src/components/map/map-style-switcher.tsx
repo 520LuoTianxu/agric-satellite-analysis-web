@@ -131,7 +131,7 @@ export default function MapStyleSwitcher({
                     role="dialog"
                     aria-label={t("mapMode")}
                     className={cn(
-                        "absolute z-40 rounded-3xl border border-black/5 bg-background/95 p-3 shadow-xl backdrop-blur-md",
+                        "h5-map-picker absolute z-40 rounded-3xl border border-black/5 bg-background/95 p-3 shadow-xl backdrop-blur-md",
                         iconOnly ? "bottom-full right-0 mb-3" : "left-0 top-full mt-2",
                     )}
                     style={{ width: iconOnly ? "calc(100vw - 1.5rem)" : "22rem" }}
@@ -164,13 +164,13 @@ export default function MapStyleSwitcher({
                                 >
                                     <span
                                         className="block aspect-square w-full overflow-hidden rounded-xl border-2"
-                                        style={{ borderColor: selected ? "#0A84FF" : "transparent" }}
+                                        style={{ borderColor: selected ? "hsl(var(--primary))" : "transparent" }}
                                     >
                                         <StyleThumb id={style.id} />
                                     </span>
                                     <span
                                         className={cn("max-w-full truncate text-[11px] leading-none", selected && "font-semibold")}
-                                        style={{ color: selected ? "#0A84FF" : undefined }}
+                                        style={{ color: selected ? "hsl(var(--primary))" : undefined }}
                                     >
                                         {label}
                                     </span>

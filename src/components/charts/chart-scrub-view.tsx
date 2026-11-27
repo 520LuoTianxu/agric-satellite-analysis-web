@@ -14,6 +14,7 @@ function bindChartScrub(
     handlers: {
         onFrame: (date: string, x: number) => void;
         onEnd: (date: string | null) => void;
+        onSwipe?: (direction: -1 | 1) => void;
     },
 ): () => void {
     const dom = chart.getDom();
@@ -27,6 +28,7 @@ function bindChartScrub(
     let startY = 0;
     let distance = 0;
     let armed = false;
+    let swiping = false;
     let lastDate: string | null = null;
 
     const pointOf = (event: PointerEvent) => {
@@ -51,6 +53,7 @@ function bindChartScrub(
         clearTimer();
         const date = commit ? lastDate : null;
         armed = false;
+        swiping = false;
         lastDate = null;
         pointerId = null;
         distance = 0;
@@ -71,6 +74,7 @@ function bindChartScrub(
         startY = event.clientY;
         distance = 0;
         armed = false;
+        swiping = false;
         lastDate = null;
         clearTimer();
         const origin = point;
@@ -90,9 +94,19 @@ function bindChartScrub(
 
     const onMove = (event: PointerEvent) => {
         if (event.pointerId !== pointerId) return;
-        distance = Math.hypot(event.clientX - startX, event.clientY - startY);
+        const dx = event.clientX - startX;
+        const dy = event.clientY - startY;
+        distance = Math.hypot(dx, dy);
         if (!armed) {
-            if (distance > CHART_SCRUB_CANCEL_PX) finish(false);
+            if (swiping || distance <= CHART_SCRUB_CANCEL_PX) return;
+            // 长按成立前横移用于翻年，纵移交回页面滚动。
+            if (!handlers.onSwipe || Math.abs(dx) <= Math.abs(dy) * 1.3) {
+                finish(false);
+                return;
+            }
+            clearTimer();
+            swiping = true;
+            dom.setPointerCapture(event.pointerId);
             return;
         }
         if (event.cancelable) event.preventDefault();
@@ -101,17 +115,23 @@ function bindChartScrub(
 
     const onUp = (event: PointerEvent) => {
         if (event.pointerId !== pointerId) return;
-        const commit = armed;
+        const cancelled = event.type === "pointercancel";
+        const dx = event.clientX - startX;
+        const dy = event.clientY - startY;
+        const switchYear = swiping && !cancelled && Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy);
+        const wasArmed = armed;
         try {
             if (dom.hasPointerCapture(event.pointerId)) dom.releasePointerCapture(event.pointerId);
         } catch {
             /* ignore */
         }
-        finish(commit);
+        finish(wasArmed && !cancelled);
+        if (cancelled && wasArmed) handlers.onEnd(null);
+        if (switchYear) handlers.onSwipe?.(dx > 0 ? -1 : 1);
     };
 
     const onTouchMove = (event: TouchEvent) => {
-        if (!armed || !event.cancelable) return;
+        if ((!armed && !swiping) || !event.cancelable) return;
         event.preventDefault();
     };
 
@@ -131,18 +151,26 @@ function bindChartScrub(
     };
 }
 
-export function useChartScrub(getDates: () => string[], onCommit?: (date: string) => void) {
+export function useChartScrub(
+    getDates: () => string[],
+    onCommit?: (date: string) => void,
+    onSwipe?: (direction: -1 | 1) => void,
+) {
     const [activeDate, setActiveDate] = useState<string | null>(null);
     const [cursorX, setCursorX] = useState<number | null>(null);
     const getDatesRef = useRef(getDates);
     const commitRef = useRef(onCommit);
+    const swipeRef = useRef(onSwipe);
+    const swipeEnabled = onSwipe != null;
     const detachRef = useRef<(() => void) | null>(null);
     getDatesRef.current = getDates;
     commitRef.current = onCommit;
+    swipeRef.current = onSwipe;
 
     const onChartReady = useCallback((chart: ScrubChart) => {
         detachRef.current?.();
         detachRef.current = bindChartScrub(chart, () => getDatesRef.current(), {
+            onSwipe: swipeEnabled ? (direction) => swipeRef.current?.(direction) : undefined,
             onFrame(date, x) {
                 setActiveDate(date);
                 setCursorX(x);
@@ -153,7 +181,7 @@ export function useChartScrub(getDates: () => string[], onCommit?: (date: string
                 if (date) commitRef.current?.(date);
             },
         });
-    }, []);
+    }, [swipeEnabled]);
 
     useEffect(() => () => {
         detachRef.current?.();

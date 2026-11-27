@@ -6,7 +6,7 @@ export function getAlertSession() {
     const baseSystem = login?.certifiedExternalSystems?.find(
         (system) => Number(system.systemType) === 2,
     );
-    const baseId = String(baseSystem?.systemId ?? login?.hrBaseId ?? login?.baseId ?? "").trim();
+    const baseId = String(login?.xiangheBaseId ?? baseSystem?.systemId ?? login?.hrBaseId ?? login?.baseId ?? "").trim();
     // 个人已读固定使用账号列表第一项的 accountId，不取角色 ID，也不依赖农业 token。
     const accountId = String(login?.accountRoleList?.[0]?.accountId ?? "").trim();
     if (!/^[1-9]\d{0,63}$/.test(baseId) || !/^[1-9]\d{0,127}$/.test(accountId)) return null;

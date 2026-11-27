@@ -1,5 +1,7 @@
 "use client";
 
+import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
+
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import { soilApi, jobsApi } from "@/lib/api";
@@ -549,13 +551,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
     };
 
     /* Loading state */
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-        );
-    }
+    if (loading) return <FieldTabSkeleton variant="soil" />;
 
     /* Empty state - no soil profile yet */
     if (!profile?.layers) {
@@ -640,15 +636,27 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
         .slice()
         .sort((a, b) => a.depth_top_cm - b.depth_top_cm);
 
+    const riskDimensions = summary ? [
+        soilRiskDimension(t("acidification"), summary.acidification_risk, t),
+        soilRiskDimension(t("compaction"), summary.compaction_risk, t),
+        soilRiskDimension(t("leaching"), summary.leaching_risk, t),
+        soilRiskDimension(t("rootingConstraint"), summary.rooting_constraint, t),
+        soilRiskDimension(t("waterlogging"), summary.waterlogging_risk, t),
+    ] : [];
+    // 优先展示等级最高的风险；持水量、碳储量和数据质量不参与风险排序。
+    const assessed = riskDimensions.filter((item) => item.score !== null);
+    const priority = assessed.some((item) => item.statusColor === "--danger") ? "--danger" : "--warning";
+    const priorityRisks = assessed.filter((item) => item.statusColor === priority);
+
     return (
-        <div className="space-y-4">
+        <div className="h5-soil space-y-4">
             {oversizedLand && (
                 <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
                     <span>{t("landTooLargeWarning", { area: formatLandAreaMu(areaMu) })}</span>
                 </div>
             )}
             {/* Property cards */}
-            <section>
+            <section className="h5-field-module h5-soil-properties">
                 <h3 className="text-xs font-semibold mb-2">{t("properties")}</h3>
                 <div className="grid grid-cols-2 gap-2">
                     <PhCard layer={layers[0]} t={t} />
@@ -660,15 +668,18 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
 
             {/* AWC & Summary */}
             {summary && (
-                <section>
+                <section className="h5-field-module h5-soil-summary">
                     <h3 className="text-xs font-semibold mb-2">{t("summary")}</h3>
+                    {assessed.length > 0 && (
+                        <p className="mb-1 text-sm font-semibold leading-relaxed md:hidden">
+                            {priorityRisks.length
+                                ? t("priorityRisks", { level: priorityRisks[0].status, items: priorityRisks.map((item) => item.label).join(" / ") })
+                                : t("assessedLow", { count: assessed.length })}
+                        </p>
+                    )}
                     <SoilRiskRadar
                         dimensions={[
-                            soilRiskDimension(t("acidification"), summary.acidification_risk, t),
-                            soilRiskDimension(t("compaction"), summary.compaction_risk, t),
-                            soilRiskDimension(t("leaching"), summary.leaching_risk, t),
-                            soilRiskDimension(t("rootingConstraint"), summary.rooting_constraint, t),
-                            soilRiskDimension(t("waterlogging"), summary.waterlogging_risk, t),
+                            ...riskDimensions,
                             {
                                 label: t("rootzoneAwc"),
                                 score: summary.rootzone_awc_mm == null ? null : Math.min(summary.rootzone_awc_mm / 250, 1),
@@ -680,7 +691,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                                 label: t("socStock"),
                                 score: summary.total_soc_stock_t_ha == null ? null : Math.min(summary.total_soc_stock_t_ha / 150, 1),
                                 value: summary.total_soc_stock_t_ha == null ? "—" : `${summary.total_soc_stock_t_ha.toFixed(1)} ${t("socStockUnit")}`,
-                                status: summary.total_soc_stock_t_ha == null ? "" : t(summary.total_soc_stock_t_ha < 40 ? "qualityLow" : summary.total_soc_stock_t_ha < 80 ? "qualityMedium" : "qualityHigh"),
+                                status: summary.total_soc_stock_t_ha == null ? "" : t(summary.total_soc_stock_t_ha < 40 ? "riskLow" : summary.total_soc_stock_t_ha < 80 ? "riskModerate" : "riskHigh"),
                                 statusColor: summary.total_soc_stock_t_ha == null ? "--muted-foreground" : summary.total_soc_stock_t_ha < 40 ? "--danger" : summary.total_soc_stock_t_ha < 80 ? "--warning" : "--success",
                             },
                             {
@@ -705,12 +716,12 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
 
             {/* Weather × Soil Stress */}
             {weatherStress && (
-                <section className="space-y-2">
+                <section className="h5-field-module space-y-2">
                     <h4 className="text-xs font-semibold flex items-center gap-1.5">
                         <Droplets className="h-4 w-4" />
                         {t("weatherStress")}
                     </h4>
-                    <div className="rounded-lg border bg-card p-3">
+                    <div className="rounded-lg border bg-card p-3 max-md:border-0 max-md:bg-transparent max-md:p-0">
                         <div className="flex items-center gap-2 mb-2">
                             <span className={cn(
                                 "h-2.5 w-2.5 rounded-full shrink-0",
@@ -755,7 +766,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                 </section>
             )}
 
-            <section>
+            <section className="h5-field-module">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-xs font-semibold">{t("depthProfile")}</h3>
                     <div className="flex items-center gap-3">
@@ -784,7 +795,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
 
             {/* Crop Suitability */}
             {cropSuitability && !cropSuitability.weather_available && (
-                <section className="space-y-2">
+                <section className="hidden space-y-2 md:block">
                     <h4 className="text-xs font-semibold flex items-center gap-1.5">
                         <Sprout className="h-4 w-4" />
                         {t("cropSuitability")}
@@ -797,7 +808,7 @@ export default function SoilTab({ landId, landAreaMu = null, areaHa = null, grou
                 </section>
             )}
             {cropSuitability && cropSuitability.weather_available && cropSuitability.crops.length > 0 && (
-                <section className="space-y-2">
+                <section className="hidden space-y-2 md:block">
                     <h4 className="text-xs font-semibold flex items-center gap-1.5">
                         <Sprout className="h-4 w-4" />
                         {t("cropSuitability")}
@@ -1437,8 +1448,8 @@ function SoilRiskRadar({
         <div className="space-y-1">
             {available.length >= 3 ? (
                 <svg
-                    viewBox="0 0 400 330"
-                    className="mx-auto block h-[300px] w-full max-w-[400px]"
+                    viewBox="0 27 400 286"
+                    className="mx-auto block h-auto w-full max-w-[400px]"
                     role="img"
                     aria-label={scaleHint}
                 >

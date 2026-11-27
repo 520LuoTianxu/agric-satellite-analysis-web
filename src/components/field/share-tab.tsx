@@ -1,5 +1,7 @@
 "use client";
 
+import { FieldTabSkeleton } from "@/components/field/field-tab-skeleton";
+
 import React, { useCallback, useEffect, useState } from "react";
 import { shareApi } from "@/lib/api";
 import type { ShareLink } from "@/lib/api";
@@ -117,13 +119,7 @@ export default function ShareTab({ landId }: ShareTabProps) {
         return `${t("expiresOn")} ${d.toLocaleDateString()}`;
     };
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-        );
-    }
+    if (loading) return <FieldTabSkeleton variant="share" className="p-4" />;
 
     return (
         <div className="p-4 space-y-4">
